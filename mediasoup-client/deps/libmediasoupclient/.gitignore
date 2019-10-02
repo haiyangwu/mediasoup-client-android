@@ -1,0 +1,8 @@
+/build/
+/utils/node_modules/
+
+compile_commands.json
+
+# Vim temporal files.
+*.swp
+*.swo
