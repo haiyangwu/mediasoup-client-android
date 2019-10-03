@@ -105,10 +105,18 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 # Public (interface) dependencies.
-target_link_libraries(${PROJECT_NAME} PUBLIC
-	sdptransform
-	${LIBWEBRTC_BINARY_PATH}/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}
-)
+# TODO(haiyangwu): new pull request.
+if("${ANDROID_ABI}" STREQUAL "")
+	target_link_libraries(${PROJECT_NAME} PUBLIC
+		sdptransform
+		${LIBWEBRTC_BINARY_PATH}/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}
+	)
+else()
+	target_link_libraries(${PROJECT_NAME} PUBLIC
+		sdptransform
+		${LIBWEBRTC_BINARY_PATH}/${ANDROID_ABI}/obj/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}
+	)
+endif()
 
 # Compile definitions for libwebrtc.
 target_compile_definitions(${PROJECT_NAME} PUBLIC
