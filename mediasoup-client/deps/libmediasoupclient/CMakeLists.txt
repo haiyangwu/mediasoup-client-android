@@ -112,9 +112,13 @@ if("${ANDROID_ABI}" STREQUAL "")
 		${LIBWEBRTC_BINARY_PATH}/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}
 	)
 else()
+	# Add '-whole-archive' to keep symbols from peerconnection_jni.
+	# https://stackoverflow.com/a/5687860/2085408
+	SET (webrtc -Wl,--whole-archive ${LIBWEBRTC_BINARY_PATH}/${ANDROID_ABI}/obj/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}  -Wl,--no-whole-archive)
+
 	target_link_libraries(${PROJECT_NAME} PUBLIC
 		sdptransform
-		${LIBWEBRTC_BINARY_PATH}/${ANDROID_ABI}/obj/libwebrtc${CMAKE_STATIC_LIBRARY_SUFFIX}
+		${webrtc}
 	)
 endif()
 
