@@ -38,7 +38,9 @@ android {
                         "-DLIBWEBRTC_BINARY_PATH=" + WEBRTC_BINARY_PATH,
                         "-DMEDIASOUPCLIENT_BUILD_TESTS=OFF",
                         "-DSDPTRANSFORM_BUILD_TESTS=OFF",
-                        "-DSDPTRANSFORM_BUILD_READMEHELPER=OFF"
+                        "-DSDPTRANSFORM_BUILD_READMEHELPER=OFF",
+                        "-DMEDIASOUPCLIENT_LOG_TRACE=1",
+                        "-DMEDIASOUPCLIENT_LOG_DEV=1"
             }
 
             ndk {
