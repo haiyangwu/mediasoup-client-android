@@ -1,4 +1,3 @@
 package org.mediasoup.droid;
 
-public class Producer {
-}
+public class Producer {}

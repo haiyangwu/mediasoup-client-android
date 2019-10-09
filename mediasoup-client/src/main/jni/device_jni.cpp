@@ -4,6 +4,7 @@
 #include "Device.hpp"
 #include "Logger.hpp"
 
+#include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/native_api/jni/java_types.h"
 
 using json = nlohmann::json;
@@ -18,7 +19,7 @@ Java_org_mediasoup_droid_Device_nativeNewDevice(
     MSC_TRACE();
 
     auto *device = new Device();
-    return reinterpret_cast<jlong>(device);
+    return webrtc::jni::jlongFromPointer(device);
 }
 
 extern "C"

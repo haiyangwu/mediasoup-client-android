@@ -1,6 +1,3 @@
 package org.mediasoup.droid;
 
-public class Consumer {
-
-
-}
+public class Consumer {}

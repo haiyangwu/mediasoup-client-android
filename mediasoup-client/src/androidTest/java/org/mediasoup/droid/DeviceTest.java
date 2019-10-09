@@ -1,7 +1,5 @@
 package org.mediasoup.droid;
 
-import android.content.Context;
-import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
 import android.text.TextUtils;
 
@@ -17,74 +15,68 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 @RunWith(AndroidJUnit4.class)
-public class DeviceTest {
+public class DeviceTest extends BaseTest {
 
-    private Device mDevice;
+  private Device mDevice;
 
-    @Rule
-    public ExpectedException thrown = ExpectedException.none();
+  @Rule public ExpectedException thrown = ExpectedException.none();
 
-    @Before
-    public void setUp() {
-        Context context = InstrumentationRegistry.getTargetContext();
+  @Before
+  public void setUp() {
+    super.setUp();
+    mDevice = new Device();
+  }
 
-        Logger.setLogLevel(Logger.LogLevel.LOG_DEBUG);
-        Logger.setDefaultHandler();
+  @After
+  public void tearDown() {
+    mDevice.dispose();
+  }
 
-        MediasoupClient.initialize(context.getApplicationContext());
-        mDevice = new Device();
-    }
+  @Test(expected = RuntimeException.class)
+  public void testWithoutLoad() {
+    // 'device->IsLoaded()' is false if not loaded.
+    assertFalse(mDevice.isLoaded());
 
-    @After
-    public void tearDown() {
-        mDevice.dispose();
-    }
+    // 'device->GetRtpCapabilities()' throws if not loaded.
+    mDevice.GetRtpCapabilities();
+    thrown.expect(RuntimeException.class);
+    thrown.expectMessage("Not loaded");
 
-    @Test(expected = RuntimeException.class)
-    public void testWithoutLoad() {
-        // 'device->IsLoaded()' is false if not loaded.
-        assertFalse(mDevice.isLoaded());
+    // 'device->CanProduce()' with audio/video throws if not loaded.
+    mDevice.canProduce("video");
+    thrown.expect(RuntimeException.class);
+    thrown.expectMessage("Not loaded");
+    mDevice.canProduce("audio");
+    thrown.expect(RuntimeException.class);
+    thrown.expectMessage("Not loaded");
 
-        // 'device->GetRtpCapabilities()' throws if not loaded.
-        mDevice.GetRtpCapabilities();
-        thrown.expect(RuntimeException.class);
-        thrown.expectMessage("Not loaded");
+    // 'device->CreateSendTransport()' fails if not loaded".
+    // TODO:
 
-        // 'device->CanProduce()' with audio/video throws if not loaded/
-        mDevice.canProduce("video");
-        thrown.expect(RuntimeException.class);
-        thrown.expectMessage("Not loaded");
-        mDevice.canProduce("audio");
-        thrown.expect(RuntimeException.class);
-        thrown.expectMessage("Not loaded");
+    // 'device->CreateRecvTransport()' fails if not loaded.
+    // TODO:
+  }
 
-        // 'device->CreateSendTransport()' fails if not loaded"
-        // TODO:
+  @Test(expected = RuntimeException.class)
+  public void testLoad() {
+    String routerRtpCapabilities = Parameters.generateRouterRtpCapabilities();
+    assertFalse(TextUtils.isEmpty(routerRtpCapabilities));
 
-        // 'device->CreateRecvTransport()' fails if not loaded
-        // TODO:
-    }
+    // 'device->Load()' succeeds.
+    mDevice.load(routerRtpCapabilities);
+    assertTrue(mDevice.isLoaded());
+    assertFalse(TextUtils.isEmpty(mDevice.GetRtpCapabilities()));
+    assertTrue(mDevice.canProduce("audio"));
+    assertTrue(mDevice.canProduce("video"));
 
-    @Test(expected = RuntimeException.class)
-    public void testLoad() {
-        String routerRtpCapabilities = Parameters.generateRouterRtpCapabilities();
-        assertFalse(TextUtils.isEmpty(routerRtpCapabilities));
+    // device->CanProduce() with invalid kind throws exception.
+    assertTrue(mDevice.canProduce("chicken"));
+    thrown.expect(RuntimeException.class);
 
-        // 'device->Load()' succeeds
-        mDevice.load(routerRtpCapabilities);
-        assertTrue(mDevice.isLoaded());
-        assertFalse(TextUtils.isEmpty(mDevice.GetRtpCapabilities()));
-        assertTrue(mDevice.canProduce("audio"));
-        assertTrue(mDevice.canProduce("video"));
+    // 'device->CreateSendTransport()' succeeds.
+    // TODO;
 
-        // device->CanProduce() with invalid kind throws exception
-        assertTrue(mDevice.canProduce("chicken"));
-        thrown.expect(RuntimeException.class);
-
-        // 'device->CreateSendTransport()' succeeds
-        // TODO;
-
-        // 'device->CreateRecvTransport()' succeeds
-        // TODO:
-    }
+    // 'device->CreateRecvTransport()' succeeds.
+    // TODO:
+  }
 }

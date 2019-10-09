@@ -10,8 +10,8 @@ import static org.junit.Assert.assertEquals;
 @RunWith(AndroidJUnit4.class)
 public class MediasoupClientTest {
 
-    @Test
-    public void version() {
-        assertEquals(MediasoupClient.version(), BuildConfig.VERSION_NAME);
-    }
+  @Test
+  public void version() {
+    assertEquals(MediasoupClient.version(), BuildConfig.VERSION_NAME);
+  }
 }

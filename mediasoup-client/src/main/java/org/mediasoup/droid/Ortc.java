@@ -1,4 +1,3 @@
 package org.mediasoup.droid;
 
-public class Ortc {
-}
+public class Ortc {}
