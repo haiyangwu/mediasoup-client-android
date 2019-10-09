@@ -57,5 +57,6 @@ public class PeerConnectionTest {
     assertFalse(
         "'pc.SetConfiguration()' fails if wrong options are provided",
         pc.setConfiguration(rtcConfiguration));
+    pc.dispose();
   }
 }

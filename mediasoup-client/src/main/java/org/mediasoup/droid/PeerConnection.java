@@ -24,16 +24,6 @@ public class PeerConnection {
 
   public static class PrivateListener implements org.webrtc.PeerConnection.Observer {
 
-    private long mNativeListener;
-
-    public PrivateListener() {
-      mNativeListener = nativeNewListener(this);
-    }
-
-    public void dispose() {
-      nativeFreeListener(mNativeListener);
-    }
-
     @Override
     public void onSignalingChange(org.webrtc.PeerConnection.SignalingState signalingState) {}
 
@@ -78,6 +68,7 @@ public class PeerConnection {
 
   private final Options mOptions;
   private final PrivateListener mListener;
+  private long mNativeListener;
   private long mNativePeerConnection;
 
   public PeerConnection(PrivateListener listener, Options options) {
@@ -99,16 +90,17 @@ public class PeerConnection {
       mOptions.mFactory = options.mFactory;
       nativePeerConnectionFactory = options.mFactory.getNativePeerConnectionFactory();
     }
-    long nativeListener = mListener.mNativeListener;
 
+    mNativeListener = nativeNewListener(mListener);
     mNativePeerConnection =
-        nativeNewPeerConnection(nativeListener, mOptions.mRTCConfig, nativePeerConnectionFactory);
+        nativeNewPeerConnection(mNativeListener, mOptions.mRTCConfig, nativePeerConnectionFactory);
   }
 
   public void dispose() {
     nativeFreePeerConnection(mNativePeerConnection);
     mNativePeerConnection = 0;
-    mListener.dispose();
+    nativeFreeListener(mNativeListener);
+    mNativeListener = 0;
   }
 
   public RTCConfiguration getConfiguration() {
