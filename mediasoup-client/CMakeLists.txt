@@ -57,7 +57,7 @@ set_source_files_properties(${SOURCE_FILES}
 include_directories(SYSTEM "${LIBWEBRTC_INCLUDE_PATH}/third_party/abseil-cpp")
 
 # Private (implementation) header files.
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(${PROJECT_NAME} PUBLIC
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include"
 	"${LIBWEBRTC_INCLUDE_PATH}"
