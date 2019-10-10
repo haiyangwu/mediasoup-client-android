@@ -88,8 +88,8 @@ Java_org_mediasoup_droid_Device_nativeGetRtpCapabilities(
         jclass clazz = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(clazz, e.what());
         env->DeleteLocalRef(clazz);
+        return nullptr;
     }
-    return nullptr;
 }
 
 extern "C"
@@ -112,8 +112,8 @@ Java_org_mediasoup_droid_Device_nativeCanProduce(
         jclass clazz = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(clazz, e.what());
         env->DeleteLocalRef(clazz);
+        return JNI_FALSE;
     }
-    return JNI_FALSE;
 }
 
 }

@@ -1,9 +1,8 @@
 package org.mediasoup.droid;
 
-import android.support.annotation.WorkerThread;
-
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
+import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection.RTCConfiguration;
@@ -11,6 +10,7 @@ import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
 import org.webrtc.RtpSender;
 import org.webrtc.RtpTransceiver;
+import org.webrtc.SessionDescription;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +45,9 @@ public class PeerConnection {
     public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {}
 
     @Override
-    public void onAddStream(MediaStream mediaStream) {}
+    public void onAddStream(MediaStream mediaStream) {
+      Logger.d("TONY", "xxxx: " + mediaStream.getId());
+    }
 
     @Override
     public void onRemoveStream(MediaStream mediaStream) {}
@@ -111,24 +113,34 @@ public class PeerConnection {
     return nativeSetConfiguration(mNativePeerConnection, config);
   }
 
-  public String createOffer() {
-    // TODO:
-    return null;
+  public String createOffer(MediaConstraints constraints) {
+    return nativeCreateOffer(mNativePeerConnection, constraints);
   }
 
-  public String createAnswer() {
-    // TODO:
-    return null;
+  public String createAnswer(MediaConstraints constraints) {
+    return nativeCreateAnswer(mNativePeerConnection, constraints);
   }
 
-  @WorkerThread
-  public void setLocalDescription() {
-    // TODO:
+  public void setLocalDescription(SessionDescription sessionDescription) {
+    if (sessionDescription == null) {
+      throw new IllegalArgumentException("given sessionDescription is null");
+    }
+
+    nativeSetLocalDescription(
+        mNativePeerConnection,
+        sessionDescription.type.canonicalForm(),
+        sessionDescription.description);
   }
 
-  @WorkerThread
-  public void setRemoteDescription() {
-    // TODO:
+  public void setRemoteDescription(SessionDescription sessionDescription) {
+    if (sessionDescription == null) {
+      throw new IllegalArgumentException("given sessionDescription is null");
+    }
+
+    nativeSetRemoteDescription(
+        mNativePeerConnection,
+        sessionDescription.type.canonicalForm(),
+        sessionDescription.description);
   }
 
   public String getLocalDescription() {
@@ -170,17 +182,16 @@ public class PeerConnection {
     return false;
   }
 
-  private String GetStats() {
+  public String getStats() {
+    return nativeGetStats(mNativePeerConnection);
+  }
+
+  public String getStats(RtpSender selector) {
     // TODO:
     return null;
   }
 
-  private String GetStats(RtpSender selector) {
-    // TODO:
-    return null;
-  }
-
-  private String GetStats(RtpReceiver selector) {
+  public String getStats(RtpReceiver selector) {
     // TODO:
     return null;
   }
@@ -196,4 +207,16 @@ public class PeerConnection {
 
   private native boolean nativeSetConfiguration(
       long nativePeerConnection, RTCConfiguration rtcConfig);
+
+  private native String nativeCreateOffer(long nativePeerConnection, MediaConstraints constraints);
+
+  private native String nativeCreateAnswer(long nativePeerConnection, MediaConstraints constraints);
+
+  private native void nativeSetLocalDescription(
+      long nativePeerConnection, String type, String description);
+
+  private native void nativeSetRemoteDescription(
+      long nativePeerConnection, String type, String description);
+
+  private native String nativeGetStats(long nativePeerConnection);
 }

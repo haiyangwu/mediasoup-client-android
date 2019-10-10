@@ -3,12 +3,19 @@ package org.mediasoup.droid;
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
+import android.text.TextUtils;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
+import org.webrtc.MediaConstraints;
+import org.webrtc.SessionDescription;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,6 +28,8 @@ public class PeerConnectionTest {
   private PeerConnection.PrivateListener mListener;
   private PeerConnection.Options mPeerConnectionOptions;
   private PeerConnection mPc;
+
+  @Rule public ExpectedException thrown = ExpectedException.none();
 
   @Before
   public void setUp() {
@@ -58,5 +67,44 @@ public class PeerConnectionTest {
         "'pc.SetConfiguration()' fails if wrong options are provided",
         pc.setConfiguration(rtcConfiguration));
     pc.dispose();
+  }
+
+  @Test
+  public void getStats() {
+    String stats = mPc.getStats();
+    assertFalse("'pc.GetStats()' succeeds", TextUtils.isEmpty(stats));
+  }
+
+  @Test(expected = RuntimeException.class)
+  public void createAnswer() {
+    // 'pc.CreateAnswer()' fails if no remote offer has been provided.
+    mPc.createAnswer(new MediaConstraints());
+    thrown.expect(RuntimeException.class);
+    thrown.expectMessage(
+        "PeerConnection cannot create an answer "
+            + "in a state other than have-remote-offer or have-local-pranswer.");
+  }
+
+  @Test(expected = RuntimeException.class)
+  public void setLocalDescription() {
+    // 'pc.SetRemoteDescription()' fails if incorrect SDP is provided.
+    SessionDescription sessionDescription =
+        new SessionDescription(SessionDescription.Type.OFFER, "");
+    mPc.setLocalDescription(sessionDescription);
+    thrown.expect(RuntimeException.class);
+    thrown.expectMessage("webrtc::CreateSessionDescription failed [:Expect line: v=]");
+  }
+
+  @Test
+  public void setRemoteDescription() throws Exception {
+    // 'pc.SetRemoteDescription()' succeeds if correct SDP is provided.
+    Context ctx = InstrumentationRegistry.getTargetContext();
+    InputStream is = ctx.getResources().getAssets().open("webrtc.sdp");
+    String sdp = Utils.readTextStream(is);
+    is.close();
+
+    SessionDescription sessionDescription =
+        new SessionDescription(SessionDescription.Type.OFFER, sdp);
+    mPc.setRemoteDescription(sessionDescription);
   }
 }
