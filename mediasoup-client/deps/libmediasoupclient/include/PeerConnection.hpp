@@ -117,7 +117,11 @@ public:
 	std::string CreateOffer(const webrtc::PeerConnectionInterface::RTCOfferAnswerOptions& options);
 	std::string CreateAnswer(const webrtc::PeerConnectionInterface::RTCOfferAnswerOptions& options);
 	void SetLocalDescription(PeerConnection::SdpType type, const std::string& sdp);
+	// TODO(haiyangwu): add to PR
+	void SetLocalDescription(const std::string& type, const std::string& sdp);
 	void SetRemoteDescription(PeerConnection::SdpType type, const std::string& sdp);
+    // TODO(haiyangwu): add to PR
+    void SetRemoteDescription(const std::string& type, const std::string& sdp);
 	const std::string GetLocalDescription();
 	const std::string GetRemoteDescription();
 	std::vector<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>> GetTransceivers() const;

@@ -142,6 +142,12 @@ std::string PeerConnection::CreateAnswer(
 
 void PeerConnection::SetLocalDescription(PeerConnection::SdpType type, const std::string& sdp)
 {
+	auto typeStr = sdpType2String[type];
+    return SetLocalDescription(typeStr, sdp);
+}
+
+void PeerConnection::SetLocalDescription(const std::string& typeStr, const std::string& sdp)
+{
 	MSC_TRACE();
 
 	webrtc::SdpParseError error;
@@ -149,7 +155,6 @@ void PeerConnection::SetLocalDescription(PeerConnection::SdpType type, const std
 	rtc::scoped_refptr<SetSessionDescriptionObserver> observer(
 	  new rtc::RefCountedObject<SetSessionDescriptionObserver>());
 
-	auto typeStr = sdpType2String[type];
 	auto future  = observer->GetFuture();
 
 	sessionDescription = webrtc::CreateSessionDescription(typeStr, sdp, &error);
@@ -172,6 +177,12 @@ void PeerConnection::SetLocalDescription(PeerConnection::SdpType type, const std
 
 void PeerConnection::SetRemoteDescription(PeerConnection::SdpType type, const std::string& sdp)
 {
+	auto typeStr = sdpType2String[type];
+    return SetRemoteDescription(typeStr, sdp);
+}
+
+void PeerConnection::SetRemoteDescription(const std::string& typeStr, const std::string& sdp)
+{
 	MSC_TRACE();
 
 	webrtc::SdpParseError error;
@@ -179,7 +190,6 @@ void PeerConnection::SetRemoteDescription(PeerConnection::SdpType type, const st
 	rtc::scoped_refptr<SetSessionDescriptionObserver> observer(
 	  new rtc::RefCountedObject<SetSessionDescriptionObserver>());
 
-	auto typeStr = sdpType2String[type];
 	auto future  = observer->GetFuture();
 
 	sessionDescription = webrtc::CreateSessionDescription(typeStr, sdp, &error);
