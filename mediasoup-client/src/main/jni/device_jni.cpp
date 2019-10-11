@@ -48,8 +48,15 @@ Java_org_mediasoup_droid_Device_nativeLoad(
     auto *device = reinterpret_cast<Device *>(j_device);
     MSC_ASSERT(device != nullptr, "native device pointer null");
 
-    std::string routerRtpCapabilities = webrtc::JavaToStdString(env, j_routerRtpCapabilities);
-    device->Load(json::parse(routerRtpCapabilities));
+    try {
+        std::string routerRtpCapabilities = webrtc::JavaToStdString(env, j_routerRtpCapabilities);
+        device->Load(json::parse(routerRtpCapabilities));
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+    }
 }
 
 extern "C"
