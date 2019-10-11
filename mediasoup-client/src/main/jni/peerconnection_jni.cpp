@@ -3,11 +3,14 @@
 #include <jni.h>
 #include "Logger.hpp"
 #include "PeerConnection.hpp"
+#include "api/rtc_error.h"
 #include "sdk/android/src/jni/jvm.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/pc/peer_connection.h"
 #include "sdk/android/src/jni/pc/peer_connection_factory.h"
 #include "sdk/android/src/jni/pc/session_description.h"
+#include "sdk/android/src/jni/pc/rtp_sender.h"
+#include "sdk/android/src/jni/pc/media_stream_track.h"
 #include "sdk/android/native_api/jni/scoped_java_ref.h"
 #include "sdk/android/native_api/jni/java_types.h"
 
@@ -147,17 +150,22 @@ Java_org_mediasoup_droid_PeerConnection_nativeNewPeerConnection(
     return webrtc::jni::jlongFromPointer(pc);
 }
 
+PeerConnection *ExtractNativePC(JNIEnv *env,
+                                jlong j_peerConnection) {
+    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
+    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
+    return pc;
+}
 
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_mediasoup_droid_PeerConnection_nativeFreePeerConnection(
-        JNIEnv */* env */,
+        JNIEnv *env,
         jclass /* j_type */,
         jlong j_peerConnection) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
+    auto *pc = ExtractNativePC(env, j_peerConnection);
     delete pc;
 }
 
@@ -170,14 +178,11 @@ Java_org_mediasoup_droid_PeerConnection_nativeSetConfiguration(
         jobject j_rtc_config) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-
     webrtc::PeerConnectionInterface::RTCConfiguration rtc_config(
             webrtc::PeerConnectionInterface::RTCConfigurationType::kAggressive);
     webrtc::jni::JavaToNativeRTCConfiguration(env, webrtc::JavaParamRef<jobject>(j_rtc_config),
                                               &rtc_config);
-    bool result = pc->SetConfiguration(rtc_config);
+    bool result = ExtractNativePC(env, j_peerConnection)->SetConfiguration(rtc_config);
     return static_cast<jboolean>(result);
 }
 
@@ -190,16 +195,13 @@ Java_org_mediasoup_droid_PeerConnection_nativeCreateOffer(
         jobject j_constraints) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-
     std::unique_ptr<webrtc::MediaConstraints> constraints =
             webrtc::jni::JavaToNativeMediaConstraints(env,
                                                       webrtc::JavaParamRef<jobject>(j_constraints));
     webrtc::PeerConnectionInterface::RTCOfferAnswerOptions options;
     webrtc::CopyConstraintsIntoOfferAnswerOptions(constraints.release(), &options);
 
-    auto offer = pc->CreateOffer(options);
+    auto offer = ExtractNativePC(env, j_peerConnection)->CreateOffer(options);
     auto j_offer = webrtc::NativeToJavaString(env, offer);
     return j_offer.Release();
 }
@@ -213,9 +215,6 @@ Java_org_mediasoup_droid_PeerConnection_nativeCreateAnswer(
         jobject j_constraints) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-
     std::unique_ptr<webrtc::MediaConstraints> constraints =
             webrtc::jni::JavaToNativeMediaConstraints(env,
                                                       webrtc::JavaParamRef<jobject>(j_constraints));
@@ -223,7 +222,7 @@ Java_org_mediasoup_droid_PeerConnection_nativeCreateAnswer(
     webrtc::CopyConstraintsIntoOfferAnswerOptions(constraints.release(), &options);
 
     try {
-        auto answer = pc->CreateAnswer(options);
+        auto answer = ExtractNativePC(env, j_peerConnection)->CreateAnswer(options);
         auto j_answer = webrtc::NativeToJavaString(env, answer);
         return j_answer.Release();
     } catch (const std::exception &e) {
@@ -245,14 +244,12 @@ Java_org_mediasoup_droid_PeerConnection_nativeSetLocalDescription(
         jstring j_desc) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-
     std::string std_type = webrtc::JavaToStdString(env, j_type);
     std::string std_description = webrtc::JavaToStdString(env, j_desc);
 
     try {
-        pc->SetLocalDescription(std_type, std_description);
+        ExtractNativePC(env, j_peerConnection)->SetLocalDescription(
+                std_type, std_description);
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
@@ -271,14 +268,12 @@ Java_org_mediasoup_droid_PeerConnection_nativeSetRemoteDescription(
         jstring j_desc) {
     MSC_TRACE();
 
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
-    MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-
     std::string std_type = webrtc::JavaToStdString(env, j_type);
     std::string std_description = webrtc::JavaToStdString(env, j_desc);
 
     try {
-        pc->SetRemoteDescription(std_type, std_description);
+        ExtractNativePC(env, j_peerConnection)->SetRemoteDescription(
+                std_type, std_description);
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
@@ -289,7 +284,7 @@ Java_org_mediasoup_droid_PeerConnection_nativeSetRemoteDescription(
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_PeerConnection_nativeGetStats(
+Java_org_mediasoup_droid_PeerConnection_nativeGetLocalDescription(
         JNIEnv *env,
         jobject /* j_object */,
         jlong j_peerConnection) {
@@ -298,7 +293,156 @@ Java_org_mediasoup_droid_PeerConnection_nativeGetStats(
     auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
     MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
 
-    auto stats = pc->GetStats().dump();
+    auto desc = ExtractNativePC(env, j_peerConnection)->GetLocalDescription();
+    auto j_desc = webrtc::NativeToJavaString(env, desc);
+    return j_desc.Release();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetRemoteDescription(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection) {
+    MSC_TRACE();
+
+    auto desc = ExtractNativePC(env, j_peerConnection)->GetRemoteDescription();
+    auto j_desc = webrtc::NativeToJavaString(env, desc);
+    return j_desc.Release();
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetSenders(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection) {
+    MSC_TRACE();
+
+    return webrtc::NativeToJavaList(env,
+                                    ExtractNativePC(env, j_peerConnection)->GetSenders(),
+                                    &webrtc::jni::NativeToJavaRtpSender).Release();
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetTransceivers(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection) {
+    MSC_TRACE();
+
+    return webrtc::NativeToJavaList(env,
+                                    ExtractNativePC(env, j_peerConnection)->GetTransceivers(),
+                                    &webrtc::jni::NativeToJavaRtpTransceiver).Release();
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeRemoveTrack(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection,
+        jlong native_sender) {
+    MSC_TRACE();
+
+    return ExtractNativePC(env, j_peerConnection)->RemoveTrack(
+            reinterpret_cast<webrtc::RtpSenderInterface *>(native_sender));
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeAddTransceiverWithTrack(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection,
+        jlong native_track) {
+    MSC_TRACE();
+
+    webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>> result =
+            ExtractNativePC(env, j_peerConnection)->AddTransceiver(
+                    reinterpret_cast<webrtc::MediaStreamTrackInterface *>(native_track));
+    if (!result.ok()) {
+        MSC_ERROR("Failed to add transceiver: %s", result.error().message());
+        return nullptr;
+    } else {
+        return webrtc::jni::NativeToJavaRtpTransceiver(env, result.MoveValue()).Release();
+    }
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeAddTransceiverOfType(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection,
+        jobject j_media_type) {
+    MSC_TRACE();
+    ExtractNativePC(env, j_peerConnection)->Close();
+
+    webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>> result =
+            ExtractNativePC(env, j_peerConnection)->AddTransceiver(
+                    webrtc::jni::JavaToNativeMediaType(env, webrtc::JavaParamRef<jobject>(
+                            j_media_type)));
+    if (!result.ok()) {
+        MSC_ERROR("Failed to add transceiver:", result.error().message());
+        return nullptr;
+    } else {
+        return webrtc::jni::NativeToJavaRtpTransceiver(env, result.MoveValue()).Release();
+    }
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeClose(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection) {
+    MSC_TRACE();
+    ExtractNativePC(env, j_peerConnection)->Close();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetStats(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection) {
+    MSC_TRACE();
+
+    auto stats = ExtractNativePC(env, j_peerConnection)->GetStats().dump();
+    auto j_stats = webrtc::NativeToJavaString(env, stats);
+    return j_stats.Release();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetStatsForRtpSender(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection,
+        jlong j_selector) {
+    MSC_TRACE();
+
+    auto selector = reinterpret_cast<webrtc::RtpSenderInterface *>(j_selector);
+    auto stats = ExtractNativePC(env, j_peerConnection)->GetStats(
+            rtc::scoped_refptr<webrtc::RtpSenderInterface>(selector)).dump();
+    auto j_stats = webrtc::NativeToJavaString(env, stats);
+    return j_stats.Release();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_PeerConnection_nativeGetStatsForRtpReceiver(
+        JNIEnv *env,
+        jobject /* j_object */,
+        jlong j_peerConnection,
+        jlong j_selector) {
+    MSC_TRACE();
+
+    auto selector = reinterpret_cast<webrtc::RtpReceiverInterface *>(j_selector);
+    auto stats = ExtractNativePC(env, j_peerConnection)->GetStats(
+            rtc::scoped_refptr<webrtc::RtpReceiverInterface>(selector)).dump();
     auto j_stats = webrtc::NativeToJavaString(env, stats);
     return j_stats.Release();
 }

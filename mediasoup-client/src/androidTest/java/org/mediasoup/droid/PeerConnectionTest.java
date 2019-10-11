@@ -14,7 +14,6 @@ import org.junit.runner.RunWith;
 import org.webrtc.MediaConstraints;
 import org.webrtc.SessionDescription;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,5 +105,22 @@ public class PeerConnectionTest {
     SessionDescription sessionDescription =
         new SessionDescription(SessionDescription.Type.OFFER, sdp);
     mPc.setRemoteDescription(sessionDescription);
+  }
+
+  @Test
+  public void createOffer() {
+    // 'pc.CreateOffer()' succeeds.
+    String offer = mPc.createOffer(new MediaConstraints());
+    assertFalse("'pc.CreateOffer()' succeeds", TextUtils.isEmpty(offer));
+
+    // 'pc.SetRemoteDescription()' succeeds.
+    SessionDescription sessionDescription =
+        new SessionDescription(SessionDescription.Type.OFFER, offer);
+    mPc.setRemoteDescription(sessionDescription);
+
+    // 'pc.CreateAnswer()' succeeds if remote offer is provided.
+    String answer = mPc.createAnswer(new MediaConstraints());
+    assertFalse(
+        "'pc.CreateAnswer()' succeeds if remote offer is provided", TextUtils.isEmpty(answer));
   }
 }

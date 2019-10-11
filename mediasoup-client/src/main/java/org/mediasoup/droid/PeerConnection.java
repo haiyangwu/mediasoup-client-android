@@ -1,5 +1,6 @@
 package org.mediasoup.droid;
 
+import org.mediasoup.droid.hack.Utils;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
@@ -13,6 +14,7 @@ import org.webrtc.RtpTransceiver;
 import org.webrtc.SessionDescription;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class PeerConnection {
@@ -72,6 +74,8 @@ public class PeerConnection {
   private final PrivateListener mListener;
   private long mNativeListener;
   private long mNativePeerConnection;
+  private List<RtpSender> mSenders = new ArrayList<>();
+  private List<RtpTransceiver> mTransceivers = new ArrayList<>();
 
   public PeerConnection(PrivateListener listener, Options options) {
     if (listener == null) {
@@ -144,42 +148,64 @@ public class PeerConnection {
   }
 
   public String getLocalDescription() {
-    // TODO:
-    return null;
+    return nativeGetLocalDescription(mNativePeerConnection);
   }
 
   public String getRemoteDescription() {
-    // TODO:
-    return null;
+    return nativeGetRemoteDescription(mNativePeerConnection);
   }
 
   public List<RtpTransceiver> getTransceivers() {
-    // TODO:
-    return null;
+    for (RtpTransceiver transceiver : mTransceivers) {
+      transceiver.dispose();
+    }
+    mTransceivers = nativeGetTransceivers(mNativePeerConnection);
+    return Collections.unmodifiableList(mTransceivers);
   }
 
   public RtpTransceiver addTransceiver(MediaStreamTrack.MediaType mediaType) {
-    // TODO:
-    return null;
+    if (mediaType == null) {
+      throw new NullPointerException("No MediaType specified for addTransceiver.");
+    }
+    RtpTransceiver newTransceiver = nativeAddTransceiverOfType(mNativePeerConnection, mediaType);
+    if (newTransceiver == null) {
+      throw new IllegalStateException("C++ addTransceiver failed.");
+    }
+    mTransceivers.add(newTransceiver);
+    return newTransceiver;
   }
 
   public RtpTransceiver addTransceiver(MediaStreamTrack track) {
-    // TODO:
-    return null;
+    if (track == null) {
+      throw new NullPointerException("No MediaStreamTrack specified for addTransceiver.");
+    }
+    RtpTransceiver newTransceiver =
+        nativeAddTransceiverWithTrack(
+            mNativePeerConnection, Utils.getNativeMediaStreamTrack(track));
+    if (newTransceiver == null) {
+      throw new IllegalStateException("C++ addTransceiver failed.");
+    }
+    mTransceivers.add(newTransceiver);
+    return newTransceiver;
   }
 
   public void close() {
-    // TODO:
+    nativeClose(mNativePeerConnection);
   }
 
   public List<RtpSender> getSenders() {
-    // TODO:
-    return null;
+    for (RtpSender sender : mSenders) {
+      sender.dispose();
+    }
+    mSenders = nativeGetSenders(mNativePeerConnection);
+    return Collections.unmodifiableList(mSenders);
   }
 
   public boolean removeTrack(RtpSender sender) {
-    // TODO:
-    return false;
+    if (sender == null) {
+      throw new NullPointerException("No RtpSender specified for removeTrack.");
+    }
+    return nativeRemoveTrack(mNativePeerConnection, Utils.getNativeRtpSender(sender));
   }
 
   public String getStats() {
@@ -187,13 +213,12 @@ public class PeerConnection {
   }
 
   public String getStats(RtpSender selector) {
-    // TODO:
-    return null;
+    return nativeGetStatsForRtpSender(mNativePeerConnection, Utils.getNativeRtpSender(selector));
   }
 
   public String getStats(RtpReceiver selector) {
-    // TODO:
-    return null;
+    return nativeGetStatsForRtpReceiver(
+        mNativePeerConnection, Utils.getNativeRtpReceiver(selector));
   }
 
   private static native long nativeNewListener(PrivateListener listener);
@@ -218,5 +243,27 @@ public class PeerConnection {
   private native void nativeSetRemoteDescription(
       long nativePeerConnection, String type, String description);
 
+  private native String nativeGetLocalDescription(long nativePeerConnection);
+
+  private native String nativeGetRemoteDescription(long nativePeerConnection);
+
+  private native List<RtpSender> nativeGetSenders(long nativePeerConnection);
+
+  private native List<RtpTransceiver> nativeGetTransceivers(long nativePeerConnection);
+
+  private native boolean nativeRemoveTrack(long nativePeerConnection, long sender);
+
+  private native RtpTransceiver nativeAddTransceiverWithTrack(
+      long nativePeerConnection, long track);
+
+  private native RtpTransceiver nativeAddTransceiverOfType(
+      long nativePeerConnection, MediaStreamTrack.MediaType mediaType);
+
+  private native void nativeClose(long nativePeerConnection);
+
   private native String nativeGetStats(long nativePeerConnection);
+
+  private native String nativeGetStatsForRtpSender(long nativePeerConnection, long selector);
+
+  private native String nativeGetStatsForRtpReceiver(long nativePeerConnection, long selector);
 }
