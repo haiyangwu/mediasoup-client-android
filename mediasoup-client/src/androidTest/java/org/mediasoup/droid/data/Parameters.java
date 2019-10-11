@@ -4,6 +4,8 @@ public class Parameters {
 
   public static native String generateRouterRtpCapabilities();
 
+  public static native String generateRouterRtpCapabilitiesExclude(String exclude);
+
   public static native String generateRtpParametersByKind();
 
   public static native String generateLocalDtlsParameters();

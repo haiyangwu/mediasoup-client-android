@@ -1,5 +1,7 @@
 package org.mediasoup.droid;
 
+import android.text.TextUtils;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
@@ -13,5 +15,20 @@ public class Utils {
       result.write(buffer, 0, length);
     }
     return result.toString("UTF-8");
+  }
+
+  public static boolean exceptionException(Runnable runnable, String errorMessage) {
+    try {
+      runnable.run();
+    } catch (RuntimeException e) {
+      return TextUtils.isEmpty(errorMessage) || e.getMessage().endsWith(errorMessage);
+    } catch (Exception e) {
+      return false;
+    }
+    return false;
+  }
+
+  public static boolean exceptionException(Runnable runnable) {
+    return exceptionException(runnable, null);
   }
 }

@@ -21,6 +21,21 @@ Java_org_mediasoup_droid_data_Parameters_generateRouterRtpCapabilities(
 
 extern "C"
 JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_data_Parameters_generateRouterRtpCapabilitiesExclude(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jstring j_exclude) {
+    std::string exclude = webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(j_exclude));
+    json routerRtpCapabilities = generateRouterRtpCapabilities();
+    for (auto& codec : routerRtpCapabilities["codecs"])
+        codec.erase(exclude);
+
+    ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, routerRtpCapabilities.dump());
+    return result.Release();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
 Java_org_mediasoup_droid_data_Parameters_generateRtpParametersByKind(
         JNIEnv *env,
         jclass /* j_type */) {

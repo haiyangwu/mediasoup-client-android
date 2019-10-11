@@ -7,9 +7,7 @@ import android.text.TextUtils;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.webrtc.MediaConstraints;
 import org.webrtc.SessionDescription;
@@ -20,6 +18,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.mediasoup.droid.Utils.exceptionException;
 
 @RunWith(AndroidJUnit4.class)
 public class PeerConnectionTest {
@@ -27,8 +26,6 @@ public class PeerConnectionTest {
   private PeerConnection.PrivateListener mListener;
   private PeerConnection.Options mPeerConnectionOptions;
   private PeerConnection mPc;
-
-  @Rule public ExpectedException thrown = ExpectedException.none();
 
   @Before
   public void setUp() {
@@ -74,24 +71,23 @@ public class PeerConnectionTest {
     assertFalse("'pc.GetStats()' succeeds", TextUtils.isEmpty(stats));
   }
 
-  @Test(expected = RuntimeException.class)
+  @Test
   public void createAnswer() {
     // 'pc.CreateAnswer()' fails if no remote offer has been provided.
-    mPc.createAnswer(new MediaConstraints());
-    thrown.expect(RuntimeException.class);
-    thrown.expectMessage(
+    exceptionException(
+        () -> mPc.createAnswer(new MediaConstraints()),
         "PeerConnection cannot create an answer "
             + "in a state other than have-remote-offer or have-local-pranswer.");
   }
 
-  @Test(expected = RuntimeException.class)
+  @Test
   public void setLocalDescription() {
     // 'pc.SetRemoteDescription()' fails if incorrect SDP is provided.
     SessionDescription sessionDescription =
         new SessionDescription(SessionDescription.Type.OFFER, "");
-    mPc.setLocalDescription(sessionDescription);
-    thrown.expect(RuntimeException.class);
-    thrown.expectMessage("webrtc::CreateSessionDescription failed [:Expect line: v=]");
+    exceptionException(
+        () -> mPc.setLocalDescription(sessionDescription),
+        "webrtc::CreateSessionDescription failed [:Expect line: v=]");
   }
 
   @Test
