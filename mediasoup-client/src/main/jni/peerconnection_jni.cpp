@@ -393,7 +393,7 @@ Java_org_mediasoup_droid_PeerConnection_nativeAddTransceiverOfType(
 }
 
 extern "C"
-JNIEXPORT jstring JNICALL
+JNIEXPORT void JNICALL
 Java_org_mediasoup_droid_PeerConnection_nativeClose(
         JNIEnv *env,
         jobject /* j_object */,
