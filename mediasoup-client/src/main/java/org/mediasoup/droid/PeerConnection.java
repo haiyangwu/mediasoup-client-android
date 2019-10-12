@@ -71,8 +71,6 @@ public class PeerConnection {
   }
 
   private final Options mOptions;
-  private final PrivateListener mListener;
-  private long mNativeListener;
   private long mNativePeerConnection;
   private List<RtpSender> mSenders = new ArrayList<>();
   private List<RtpTransceiver> mTransceivers = new ArrayList<>();
@@ -83,8 +81,6 @@ public class PeerConnection {
     }
 
     mOptions = new Options();
-    mListener = listener;
-
     if (options != null && options.mRTCConfig != null) {
       mOptions.mRTCConfig = options.mRTCConfig;
     } else {
@@ -97,16 +93,22 @@ public class PeerConnection {
       nativePeerConnectionFactory = options.mFactory.getNativePeerConnectionFactory();
     }
 
-    mNativeListener = nativeNewListener(mListener);
     mNativePeerConnection =
-        nativeNewPeerConnection(mNativeListener, mOptions.mRTCConfig, nativePeerConnectionFactory);
+        nativeNewPeerConnection(listener, mOptions.mRTCConfig, nativePeerConnectionFactory);
   }
 
   public void dispose() {
-    nativeFreePeerConnection(mNativePeerConnection);
+    close();
+    for (RtpSender sender : mSenders) {
+      sender.dispose();
+    }
+    mSenders.clear();
+    for (RtpTransceiver transceiver : mTransceivers) {
+      transceiver.dispose();
+    }
+    mTransceivers.clear();
+    nativeFreeOwnedPeerConnection(mNativePeerConnection);
     mNativePeerConnection = 0;
-    nativeFreeListener(mNativeListener);
-    mNativeListener = 0;
   }
 
   public RTCConfiguration getConfiguration() {
@@ -221,14 +223,10 @@ public class PeerConnection {
         mNativePeerConnection, Utils.getNativeRtpReceiver(selector));
   }
 
-  private static native long nativeNewListener(PrivateListener listener);
-
-  private static native long nativeFreeListener(long nativeListener);
-
   private static native long nativeNewPeerConnection(
-      long nativeListener, RTCConfiguration rtcConfig, long nativePeerConnectionFactory);
+      PrivateListener nativeListener, RTCConfiguration rtcConfig, long nativePeerConnectionFactory);
 
-  private static native void nativeFreePeerConnection(long nativePeerConnection);
+  private static native void nativeFreeOwnedPeerConnection(long nativePeerConnection);
 
   private native boolean nativeSetConfiguration(
       long nativePeerConnection, RTCConfiguration rtcConfig);

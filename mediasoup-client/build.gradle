@@ -73,7 +73,7 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation fileTree(dir: WEBRTC_JAR_PATH, include: ['libwebrtc.jar'])
+    api fileTree(dir: WEBRTC_JAR_PATH, include: ['libwebrtc.jar'])
 
     implementation 'com.android.support:appcompat-v7:28.0.0'
     testImplementation 'junit:junit:4.12'

@@ -16,17 +16,38 @@
 
 namespace mediasoupclient {
 
-class PrivateListenerProxy : public PeerConnection::PrivateListener {
+// Just like OwnedPeerConnection in "sdk/android/src/jni/pc/peer_connection.h"
+//
+// PeerConnection doesn't take ownership of the observer. In Java API, we don't
+// want the client to have to manually dispose the observer. To solve this, this
+// wrapper class is used for object ownership.
+//
+// Also stores reference to the deprecated PeerConnection constraints for now.
+class OwnedPeerConnection {
+public:
+    OwnedPeerConnection(PeerConnection *peer_connection, PeerConnection::PrivateListener *observer)
+            : peer_connection_(peer_connection), observer_(observer) {
+    }
+
+    ~OwnedPeerConnection() = default;
+
+    PeerConnection *pc() const { return peer_connection_.get(); }
+
+private:
+    std::unique_ptr<PeerConnection> peer_connection_;
+    std::unique_ptr<PeerConnection::PrivateListener> observer_;
+};
+
+class PrivateListenerJNI : public PeerConnection::PrivateListener {
 
 private:
     webrtc::jni::PeerConnectionObserverJni observerJni;
 
 public:
-    PrivateListenerProxy(JNIEnv *jni, const webrtc::JavaRef<jobject> &j_observer)
+    PrivateListenerJNI(JNIEnv *jni, const webrtc::JavaRef<jobject> &j_observer)
             : observerJni(jni, j_observer) {
     }
-/*
- * // TODO(haiyangwu): check why lock test thread in PeerConnectionTest#setRemoteDescription
+
     void OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState newState) override {
         PrivateListener::OnSignalingChange(newState);
         observerJni.OnSignalingChange(newState);
@@ -99,45 +120,19 @@ public:
         PrivateListener::OnInterestingUsage(usagePattern);
         observerJni.OnInterestingUsage(usagePattern);
     }
-*/
 };
-
-extern "C"
-JNIEXPORT jlong JNICALL
-Java_org_mediasoup_droid_PeerConnection_nativeNewListener(
-        JNIEnv *env,
-        jclass /* j_type */,
-        jobject j_listener) {
-    MSC_TRACE();
-
-    auto listener = new PrivateListenerProxy(env, webrtc::JavaParamRef<jobject>(j_listener));
-    return webrtc::jni::jlongFromPointer(listener);
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_PeerConnection_nativeFreeListener(
-        JNIEnv */* env */,
-        jclass /* j_type */,
-        jlong j_native_listener) {
-    MSC_TRACE();
-
-    auto *listener = reinterpret_cast<PrivateListenerProxy *>(j_native_listener);
-    MSC_ASSERT(listener != nullptr, "native peerConnection::PrivateListener pointer null");
-    delete listener;
-}
 
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_org_mediasoup_droid_PeerConnection_nativeNewPeerConnection(
         JNIEnv *env,
         jclass /* j_type */,
-        jlong j_native_Listener,
+        jobject j_listener,
         jobject j_rtc_config,
         jlong j_native_peerConnection_factory) {
     MSC_TRACE();
 
-    auto privateListener = reinterpret_cast<PeerConnection::PrivateListener *>(j_native_Listener);
+    auto listener = new PrivateListenerJNI(env, webrtc::JavaParamRef<jobject>(j_listener));
     webrtc::PeerConnectionInterface::RTCConfiguration rtc_config(
             webrtc::PeerConnectionInterface::RTCConfigurationType::kAggressive);
     webrtc::jni::JavaToNativeRTCConfiguration(env, webrtc::JavaParamRef<jobject>(j_rtc_config),
@@ -146,20 +141,20 @@ Java_org_mediasoup_droid_PeerConnection_nativeNewPeerConnection(
     options.config = rtc_config;
     options.factory = reinterpret_cast<webrtc::PeerConnectionFactoryInterface *>(j_native_peerConnection_factory);
 
-    auto *pc = new PeerConnection(privateListener, &options);
-    return webrtc::jni::jlongFromPointer(pc);
+    auto *pc = new PeerConnection(listener, &options);
+    return webrtc::jni::jlongFromPointer(new OwnedPeerConnection(pc, listener));
 }
 
 PeerConnection *ExtractNativePC(JNIEnv *env,
                                 jlong j_peerConnection) {
-    auto *pc = reinterpret_cast<PeerConnection *>(j_peerConnection);
+    auto *pc = reinterpret_cast<OwnedPeerConnection *>(j_peerConnection);
     MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
-    return pc;
+    return pc->pc();
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_PeerConnection_nativeFreePeerConnection(
+Java_org_mediasoup_droid_PeerConnection_nativeFreeOwnedPeerConnection(
         JNIEnv *env,
         jclass /* j_type */,
         jlong j_peerConnection) {
@@ -319,9 +314,8 @@ Java_org_mediasoup_droid_PeerConnection_nativeGetSenders(
         jlong j_peerConnection) {
     MSC_TRACE();
 
-    return webrtc::NativeToJavaList(env,
-                                    ExtractNativePC(env, j_peerConnection)->GetSenders(),
-                                    &webrtc::jni::NativeToJavaRtpSender).Release();
+    auto senders = ExtractNativePC(env, j_peerConnection)->GetSenders();
+    return webrtc::NativeToJavaList(env, senders, &webrtc::jni::NativeToJavaRtpSender).Release();
 }
 
 extern "C"
@@ -332,9 +326,8 @@ Java_org_mediasoup_droid_PeerConnection_nativeGetTransceivers(
         jlong j_peerConnection) {
     MSC_TRACE();
 
-    return webrtc::NativeToJavaList(env,
-                                    ExtractNativePC(env, j_peerConnection)->GetTransceivers(),
-                                    &webrtc::jni::NativeToJavaRtpTransceiver).Release();
+    auto trans = ExtractNativePC(env, j_peerConnection)->GetTransceivers();
+    return webrtc::NativeToJavaList(env, trans, &webrtc::jni::NativeToJavaRtpTransceiver).Release();
 }
 
 extern "C"
@@ -346,8 +339,8 @@ Java_org_mediasoup_droid_PeerConnection_nativeRemoveTrack(
         jlong native_sender) {
     MSC_TRACE();
 
-    return ExtractNativePC(env, j_peerConnection)->RemoveTrack(
-            reinterpret_cast<webrtc::RtpSenderInterface *>(native_sender));
+    auto sender = reinterpret_cast<webrtc::RtpSenderInterface *>(native_sender);
+    return static_cast<jboolean>(ExtractNativePC(env, j_peerConnection)->RemoveTrack(sender));
 }
 
 extern "C"
@@ -399,6 +392,7 @@ Java_org_mediasoup_droid_PeerConnection_nativeClose(
         jobject /* j_object */,
         jlong j_peerConnection) {
     MSC_TRACE();
+
     ExtractNativePC(env, j_peerConnection)->Close();
 }
 

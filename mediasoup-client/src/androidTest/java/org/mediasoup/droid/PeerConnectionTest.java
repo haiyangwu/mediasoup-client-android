@@ -21,7 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.mediasoup.droid.Utils.exceptionException;
 
 @RunWith(AndroidJUnit4.class)
-public class PeerConnectionTest {
+public class PeerConnectionTest extends BaseTest{
 
   private PeerConnection.PrivateListener mListener;
   private PeerConnection.Options mPeerConnectionOptions;
@@ -29,11 +29,7 @@ public class PeerConnectionTest {
 
   @Before
   public void setUp() {
-    Context context = InstrumentationRegistry.getTargetContext();
-    Logger.setLogLevel(Logger.LogLevel.LOG_DEBUG);
-    Logger.setDefaultHandler();
-    MediasoupClient.initialize(context.getApplicationContext());
-
+    super.setUp();
     mListener = new PeerConnection.PrivateListener();
     mPeerConnectionOptions = new PeerConnection.Options();
     mPc = new PeerConnection(mListener, mPeerConnectionOptions);
