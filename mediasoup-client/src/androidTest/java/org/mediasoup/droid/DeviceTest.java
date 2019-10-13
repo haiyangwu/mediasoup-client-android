@@ -3,6 +3,8 @@ package org.mediasoup.droid;
 import android.support.test.runner.AndroidJUnit4;
 import android.text.TextUtils;
 
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -12,15 +14,29 @@ import org.mediasoup.droid.data.Parameters;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
+import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
 
 @RunWith(AndroidJUnit4.class)
 public class DeviceTest extends BaseTest {
 
+  private String mId;
+  private String mIceParameters;
+  private String mIceCandidates;
+  private String mDtlsParameters;
   private Device mDevice;
 
   @Before
   public void setUp() {
     super.setUp();
+    try {
+      JSONObject transportRemoteParameters = new JSONObject(generateTransportRemoteParameters());
+      mId = transportRemoteParameters.getString("id");
+      mIceParameters = transportRemoteParameters.getString("iceParameters");
+      mIceCandidates = transportRemoteParameters.getString("iceCandidates");
+      mDtlsParameters = transportRemoteParameters.getString("dtlsParameters");
+    } catch (JSONException e) {
+      e.printStackTrace();
+    }
     mDevice = new Device();
   }
 
@@ -30,22 +46,42 @@ public class DeviceTest extends BaseTest {
   }
 
   @Test
-  public void testWithoutLoad() {
+  public void testWithoutLoad() throws JSONException {
     // 'device->IsLoaded()' is false if not loaded.
-    assertFalse(mDevice.isLoaded());
+    {
+      assertFalse(mDevice.isLoaded());
+    }
 
     // 'device->GetRtpCapabilities()' throws if not loaded.
-    exceptionException(mDevice::GetRtpCapabilities, "Not loaded");
+    {
+      exceptionException(mDevice::GetRtpCapabilities, "Not loaded");
+    }
 
     // 'device->CanProduce()' with audio/video throws if not loaded.
-    exceptionException(() -> mDevice.canProduce("video"), "Not loaded");
-    exceptionException(() -> mDevice.canProduce("audio"), "Not loaded");
+    {
+      exceptionException(() -> mDevice.canProduce("video"), "Not loaded");
+      exceptionException(() -> mDevice.canProduce("audio"), "Not loaded");
+    }
 
     // 'device->CreateSendTransport()' fails if not loaded".
-    // TODO:
+    {
+      final FakeTransportListener.FakeSendTransportListener listener =
+          new FakeTransportListener.FakeSendTransportListener();
+      exceptionException(
+          () ->
+              mDevice.createSendTransport(
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+    }
 
     // 'device->CreateRecvTransport()' fails if not loaded.
-    // TODO:
+    {
+      final FakeTransportListener.FakeRecvTransportListener listener =
+          new FakeTransportListener.FakeRecvTransportListener();
+      exceptionException(
+          () ->
+              mDevice.createRecvTransport(
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+    }
   }
 
   @Test

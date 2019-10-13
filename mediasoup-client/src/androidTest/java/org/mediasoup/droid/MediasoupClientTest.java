@@ -3,7 +3,6 @@ package org.mediasoup.droid;
 import android.support.test.runner.AndroidJUnit4;
 import android.text.TextUtils;
 
-import org.json.JSONException;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mediasoup.droid.data.Parameters;
@@ -17,7 +16,7 @@ import static org.mediasoup.droid.Utils.exceptionException;
 public class MediasoupClientTest extends BaseTest {
 
   @Test
-  public void mediasoupclient() throws JSONException {
+  public void mediasoupclient() {
     Device device;
     String routerRtpCapabilities;
 

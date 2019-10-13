@@ -29,14 +29,24 @@ public class Device {
     return nativeCanProduce(mNativeDevice, kind);
   }
 
-  private Transport.SendTransport createSendTransport() {
-    // TODO:
-    return null;
+  public Transport.SendTransport createSendTransport(
+      Transport.SendTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters) {
+    return nativeCreateSendTransport(
+        mNativeDevice, listener, id, iceParameters, iceCandidates, dtlsParameters);
   }
 
-  private Transport.RecvTransport createRecvTransport() {
-    // TODO:
-    return null;
+  public Transport.RecvTransport createRecvTransport(
+      Transport.RecvTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters) {
+    return nativeCreateRecvTransport(
+        mNativeDevice, listener, id, iceParameters, iceCandidates, dtlsParameters);
   }
 
   private static native long nativeNewDevice();
@@ -50,4 +60,20 @@ public class Device {
   private native String nativeGetRtpCapabilities(long device);
 
   private native boolean nativeCanProduce(long device, String kind);
+
+  private native Transport.SendTransport nativeCreateSendTransport(
+      long device,
+      Transport.SendTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters);
+
+  private native Transport.RecvTransport nativeCreateRecvTransport(
+      long device,
+      Transport.RecvTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters);
 }
