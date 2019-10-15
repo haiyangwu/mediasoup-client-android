@@ -1,18 +1,14 @@
 #define MSC_CLASS "device_jni"
 
 #include <jni.h>
+#include "common_jni.h"
+#include "transport_jni.h"
 #include "Device.hpp"
 #include "Logger.hpp"
 
-#include "sdk/android/src/jni/jni_helpers.h"
-#include "sdk/android/native_api/jni/java_types.h"
-
-using json = nlohmann::json;
-
 namespace mediasoupclient {
 
-Device *ExtractNativeDevice(JNIEnv *env,
-                            jlong j_device) {
+Device *ExtractNativeDevice(JNIEnv *env, jlong j_device) {
     auto *device = reinterpret_cast<Device *>(j_device);
     MSC_ASSERT(device != nullptr, "native device pointer null");
     return device;
@@ -26,7 +22,7 @@ Java_org_mediasoup_droid_Device_nativeNewDevice(
     MSC_TRACE();
 
     auto *device = new Device();
-    return webrtc::jni::jlongFromPointer(device);
+    return NativeToJavaPointer(device);
 }
 
 extern "C"
@@ -51,8 +47,8 @@ Java_org_mediasoup_droid_Device_nativeLoad(
     MSC_TRACE();
 
     try {
-        std::string routerRtpCapabilities = webrtc::JavaToStdString(env, j_routerRtpCapabilities);
-        ExtractNativeDevice(env, j_device)->Load(json::parse(routerRtpCapabilities));
+        auto capabilities = JavaToNativeString(env, JavaParamRef<jstring>(j_routerRtpCapabilities));
+        ExtractNativeDevice(env, j_device)->Load(json::parse(capabilities));
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
@@ -82,8 +78,7 @@ Java_org_mediasoup_droid_Device_nativeGetRtpCapabilities(
 
     try {
         std::string rtpCap = ExtractNativeDevice(env, j_device)->GetRtpCapabilities().dump();
-        auto j_rtpCap = webrtc::NativeToJavaString(env, rtpCap);
-        return j_rtpCap.Release();
+        return NativeToJavaString(env, rtpCap).Release();
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
@@ -103,7 +98,7 @@ Java_org_mediasoup_droid_Device_nativeCanProduce(
     MSC_TRACE();
 
     try {
-        std::string kind = webrtc::JavaToStdString(env, j_kind);
+        std::string kind = JavaToNativeString(env, JavaParamRef<jstring>(j_kind));
         return static_cast<jboolean>( ExtractNativeDevice(env, j_device)->CanProduce(kind));
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
@@ -128,21 +123,23 @@ Java_org_mediasoup_droid_Device_nativeCreateSendTransport(
     MSC_TRACE();
 
     try {
+        auto listener = new SendTransportListenerJni(env, JavaParamRef<jobject>(j_listener));
         auto device = ExtractNativeDevice(env, j_device);
-        // TODO: wrapper listener
-        auto transport = device->CreateSendTransport(nullptr
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(id))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(iceParameters))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(iceCandidates))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(dtlsParameters))
+
+        auto transport = device->CreateSendTransport(listener
+                , JavaToNativeString(env, JavaParamRef<jstring>(id))
+                , JavaToNativeString(env, JavaParamRef<jstring>(iceParameters))
+                , JavaToNativeString(env, JavaParamRef<jstring>(iceCandidates))
+                , JavaToNativeString(env, JavaParamRef<jstring>(dtlsParameters))
         );
+        // TODO: new Java Transport Object
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(clazz, e.what());
         env->DeleteLocalRef(clazz);
-        return nullptr;
     }
+    return nullptr;
 }
 
 extern "C"
@@ -159,20 +156,23 @@ Java_org_mediasoup_droid_Device_nativeCreateRecvTransport(
     MSC_TRACE();
 
     try {
+        auto listener = new RecvTransportListenerJni(env, JavaParamRef<jobject>(j_listener));
         auto device = ExtractNativeDevice(env, j_device);
-        // TODO: wrapper listener
-        auto transport = device->CreateRecvTransport(nullptr
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(id))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(iceParameters))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(iceCandidates))
-                , webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(dtlsParameters))
+
+        auto transport = device->CreateRecvTransport(listener
+                , JavaToNativeString(env, JavaParamRef<jstring>(id))
+                , JavaToNativeString(env, JavaParamRef<jstring>(iceParameters))
+                , JavaToNativeString(env, JavaParamRef<jstring>(iceCandidates))
+                , JavaToNativeString(env, JavaParamRef<jstring>(dtlsParameters))
         );
+        // TODO: new Java Transport Object
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
         jclass clazz = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(clazz, e.what());
         env->DeleteLocalRef(clazz);
-        return nullptr;
     }
+    return nullptr;
 }
+
 }

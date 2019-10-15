@@ -29,7 +29,7 @@ set(
 )
 
 # TODO(haiyang wu): add condition
-list(APPEND SOURCE_FILES ${SOURCE_DIR}/test/parameters_jni.cpp)
+list(APPEND SOURCE_FILES ${PROJECT_SOURCE_DIR}/src/androidTest/jni/parameters_jni.cpp)
 list(APPEND SOURCE_FILES ${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/test/data/parameters.cpp)
 
 # Create target.
@@ -58,6 +58,7 @@ include_directories(SYSTEM "${LIBWEBRTC_INCLUDE_PATH}/third_party/abseil-cpp")
 
 # Private (implementation) header files.
 target_include_directories(${PROJECT_NAME} PUBLIC
+	"${SOURCE_DIR}/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include"
 	"${LIBWEBRTC_INCLUDE_PATH}"
