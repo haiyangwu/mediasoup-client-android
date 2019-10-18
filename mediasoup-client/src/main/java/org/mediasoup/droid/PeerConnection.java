@@ -1,6 +1,7 @@
 package org.mediasoup.droid;
 
 import org.mediasoup.droid.hack.Utils;
+import org.webrtc.CalledByNative;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
@@ -116,15 +117,15 @@ public class PeerConnection {
   }
 
   public boolean setConfiguration(RTCConfiguration config) {
-    return nativeSetConfiguration(mNativePeerConnection, config);
+    return nativeSetConfiguration(config);
   }
 
   public String createOffer(MediaConstraints constraints) {
-    return nativeCreateOffer(mNativePeerConnection, constraints);
+    return nativeCreateOffer(constraints);
   }
 
   public String createAnswer(MediaConstraints constraints) {
-    return nativeCreateAnswer(mNativePeerConnection, constraints);
+    return nativeCreateAnswer(constraints);
   }
 
   public void setLocalDescription(SessionDescription sessionDescription) {
@@ -133,9 +134,7 @@ public class PeerConnection {
     }
 
     nativeSetLocalDescription(
-        mNativePeerConnection,
-        sessionDescription.type.canonicalForm(),
-        sessionDescription.description);
+        sessionDescription.type.canonicalForm(), sessionDescription.description);
   }
 
   public void setRemoteDescription(SessionDescription sessionDescription) {
@@ -144,24 +143,22 @@ public class PeerConnection {
     }
 
     nativeSetRemoteDescription(
-        mNativePeerConnection,
-        sessionDescription.type.canonicalForm(),
-        sessionDescription.description);
+        sessionDescription.type.canonicalForm(), sessionDescription.description);
   }
 
   public String getLocalDescription() {
-    return nativeGetLocalDescription(mNativePeerConnection);
+    return nativeGetLocalDescription();
   }
 
   public String getRemoteDescription() {
-    return nativeGetRemoteDescription(mNativePeerConnection);
+    return nativeGetRemoteDescription();
   }
 
   public List<RtpTransceiver> getTransceivers() {
     for (RtpTransceiver transceiver : mTransceivers) {
       transceiver.dispose();
     }
-    mTransceivers = nativeGetTransceivers(mNativePeerConnection);
+    mTransceivers = nativeGetTransceivers();
     return Collections.unmodifiableList(mTransceivers);
   }
 
@@ -169,7 +166,7 @@ public class PeerConnection {
     if (mediaType == null) {
       throw new NullPointerException("No MediaType specified for addTransceiver.");
     }
-    RtpTransceiver newTransceiver = nativeAddTransceiverOfType(mNativePeerConnection, mediaType);
+    RtpTransceiver newTransceiver = nativeAddTransceiverOfType(mediaType);
     if (newTransceiver == null) {
       throw new IllegalStateException("C++ addTransceiver failed.");
     }
@@ -182,8 +179,7 @@ public class PeerConnection {
       throw new NullPointerException("No MediaStreamTrack specified for addTransceiver.");
     }
     RtpTransceiver newTransceiver =
-        nativeAddTransceiverWithTrack(
-            mNativePeerConnection, Utils.getNativeMediaStreamTrack(track));
+        nativeAddTransceiverWithTrack(Utils.getNativeMediaStreamTrack(track));
     if (newTransceiver == null) {
       throw new IllegalStateException("C++ addTransceiver failed.");
     }
@@ -192,14 +188,14 @@ public class PeerConnection {
   }
 
   public void close() {
-    nativeClose(mNativePeerConnection);
+    nativeClose();
   }
 
   public List<RtpSender> getSenders() {
     for (RtpSender sender : mSenders) {
       sender.dispose();
     }
-    mSenders = nativeGetSenders(mNativePeerConnection);
+    mSenders = nativeGetSenders();
     return Collections.unmodifiableList(mSenders);
   }
 
@@ -207,61 +203,67 @@ public class PeerConnection {
     if (sender == null) {
       throw new NullPointerException("No RtpSender specified for removeTrack.");
     }
-    return nativeRemoveTrack(mNativePeerConnection, Utils.getNativeRtpSender(sender));
+    return nativeRemoveTrack(Utils.getNativeRtpSender(sender));
   }
 
   public String getStats() {
-    return nativeGetStats(mNativePeerConnection);
+    return nativeGetStats();
   }
 
   public String getStats(RtpSender selector) {
-    return nativeGetStatsForRtpSender(mNativePeerConnection, Utils.getNativeRtpSender(selector));
+    return nativeGetStatsForRtpSender(Utils.getNativeRtpSender(selector));
   }
 
   public String getStats(RtpReceiver selector) {
-    return nativeGetStatsForRtpReceiver(
-        mNativePeerConnection, Utils.getNativeRtpReceiver(selector));
+    return nativeGetStatsForRtpReceiver(Utils.getNativeRtpReceiver(selector));
+  }
+
+  /** Returns a pointer to the native webrtc::PeerConnectionInterface. */
+  public long getNativePeerConnection() {
+    return nativeGetNativePeerConnection();
+  }
+
+  @CalledByNative
+  long getNativeOwnedPeerConnection() {
+    return mNativePeerConnection;
   }
 
   private static native long nativeNewPeerConnection(
       PrivateListener nativeListener, RTCConfiguration rtcConfig, long nativePeerConnectionFactory);
 
-  private static native void nativeFreeOwnedPeerConnection(long nativePeerConnection);
+  private static native void nativeFreeOwnedPeerConnection(long ownedPeerConnection);
 
-  private native boolean nativeSetConfiguration(
-      long nativePeerConnection, RTCConfiguration rtcConfig);
+  private native long nativeGetNativePeerConnection();
 
-  private native String nativeCreateOffer(long nativePeerConnection, MediaConstraints constraints);
+  private native boolean nativeSetConfiguration(RTCConfiguration rtcConfig);
 
-  private native String nativeCreateAnswer(long nativePeerConnection, MediaConstraints constraints);
+  private native String nativeCreateOffer(MediaConstraints constraints);
 
-  private native void nativeSetLocalDescription(
-      long nativePeerConnection, String type, String description);
+  private native String nativeCreateAnswer(MediaConstraints constraints);
 
-  private native void nativeSetRemoteDescription(
-      long nativePeerConnection, String type, String description);
+  private native void nativeSetLocalDescription(String type, String description);
 
-  private native String nativeGetLocalDescription(long nativePeerConnection);
+  private native void nativeSetRemoteDescription(String type, String description);
 
-  private native String nativeGetRemoteDescription(long nativePeerConnection);
+  private native String nativeGetLocalDescription();
 
-  private native List<RtpSender> nativeGetSenders(long nativePeerConnection);
+  private native String nativeGetRemoteDescription();
 
-  private native List<RtpTransceiver> nativeGetTransceivers(long nativePeerConnection);
+  private native List<RtpSender> nativeGetSenders();
 
-  private native boolean nativeRemoveTrack(long nativePeerConnection, long sender);
+  private native List<RtpTransceiver> nativeGetTransceivers();
 
-  private native RtpTransceiver nativeAddTransceiverWithTrack(
-      long nativePeerConnection, long track);
+  private native boolean nativeRemoveTrack(long sender);
 
-  private native RtpTransceiver nativeAddTransceiverOfType(
-      long nativePeerConnection, MediaStreamTrack.MediaType mediaType);
+  private native RtpTransceiver nativeAddTransceiverWithTrack(long track);
 
-  private native void nativeClose(long nativePeerConnection);
+  private native RtpTransceiver nativeAddTransceiverOfType(MediaStreamTrack.MediaType mediaType);
 
-  private native String nativeGetStats(long nativePeerConnection);
+  private native void nativeClose();
 
-  private native String nativeGetStatsForRtpSender(long nativePeerConnection, long selector);
+  private native String nativeGetStats();
 
-  private native String nativeGetStatsForRtpReceiver(long nativePeerConnection, long selector);
+  private native String nativeGetStatsForRtpSender(long selector);
+
+  private native String nativeGetStatsForRtpReceiver(long selector);
 }
