@@ -100,7 +100,8 @@ Java_org_mediasoup_droid_Transport_getNativeConnectionState(
         jobject j_transport) {
     MSC_TRACE();
 
-    auto state = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetStats().dump();
+    auto state = ExtractNativeTransport(env,
+                                        JavaParamRef<jobject>(j_transport))->GetConnectionState();
     return NativeToJavaString(env, state).Release();
 }
 
