@@ -10,9 +10,7 @@
 #include "sdk/android/src/jni/pc/session_description.h"
 #include "sdk/android/src/jni/pc/rtp_sender.h"
 #include "sdk/android/src/jni/pc/media_stream_track.h"
-
-// TODO(haiyangwu): find better solution.
-#include "./generated/peerconnection_jni.h"
+#include "sdk/android/jni/peerconnection_jni.h"
 
 namespace mediasoupclient {
 
@@ -41,7 +39,7 @@ Java_org_mediasoup_droid_PeerConnection_nativeNewPeerConnection(
 
 PeerConnection *ExtractNativePC(JNIEnv *env, const JavaRef<jobject> &j_pc) {
     auto *pc = reinterpret_cast<OwnedPeerConnection *>(
-            Java_MS_PeerConnection_getNativeOwnedPeerConnection(env, j_pc));
+            Java_Mediasoup_PeerConnection_getNativeOwnedPeerConnection(env, j_pc));
     MSC_ASSERT(pc != nullptr, "native peerConnection pointer null");
     return pc->pc();
 }

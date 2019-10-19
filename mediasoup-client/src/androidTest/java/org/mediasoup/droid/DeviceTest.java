@@ -100,9 +100,23 @@ public class DeviceTest extends BaseTest {
     exceptionException(() -> mDevice.canProduce("chicken"));
 
     // 'device->CreateSendTransport()' succeeds.
-    // TODO;
+    {
+      final FakeTransportListener.FakeSendTransportListener listener =
+          new FakeTransportListener.FakeSendTransportListener();
+      SendTransport transport =
+          mDevice.createSendTransport(
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+      transport.dispose();
+    }
 
     // 'device->CreateRecvTransport()' succeeds.
-    // TODO:
+    {
+      final FakeTransportListener.FakeRecvTransportListener listener =
+          new FakeTransportListener.FakeRecvTransportListener();
+      RecvTransport transport =
+          mDevice.createRecvTransport(
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+      transport.dispose();
+    }
   }
 }

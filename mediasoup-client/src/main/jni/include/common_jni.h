@@ -11,7 +11,7 @@ using webrtc::NativeToJavaString;
 using webrtc::JavaToNativeString;
 using webrtc::NativeToJavaPointer;
 using webrtc::NativeToJavaList;
-using webrtc::ScopedJavaGlobalRef;
+using webrtc::ScopedJavaLocalRef;
 using webrtc::ScopedJavaGlobalRef;
 
 using nlohmann::json;

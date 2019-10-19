@@ -1,50 +1,43 @@
 package org.mediasoup.droid;
 
-import org.mediasoup.droid.hack.Utils;
-import org.webrtc.MediaStreamTrack;
-import org.webrtc.RtpParameters;
+import org.webrtc.CalledByNative;
 
-import java.util.List;
-
-public class Transport {
-
-  protected long mNativeTransport;
-
-  protected Transport(long mNativeTransport) {
-    this.mNativeTransport = mNativeTransport;
-  }
+public abstract class Transport {
 
   public String getId() {
-    return getNativeId(mNativeTransport);
+    return getNativeId();
   }
 
   public String getConnectionState() {
-    return getNativeConnectionState(mNativeTransport);
+    return getNativeConnectionState();
   }
 
   public String getAppData() {
-    return getNativeAppData(mNativeTransport);
+    return getNativeAppData();
   }
 
   public String getStats() {
-    return getNativeStats(mNativeTransport);
+    return getNativeStats();
   }
 
   public boolean isClosed() {
-    return isNativeClosed(mNativeTransport);
+    return isNativeClosed();
   }
 
   public void restartIce(String iceParameters) {
-    nativeRestartIce(mNativeTransport, iceParameters);
+    nativeRestartIce(iceParameters);
   }
 
   public void updateIceServers(String iceServers) {
-    nativeUpdateIceServers(mNativeTransport, iceServers);
+    nativeUpdateIceServers(iceServers);
   }
 
   public void close() {
-    nativeClose(mNativeTransport);
+    nativeClose();
   }
+
+  @CalledByNative
+  public abstract long getNativeTransport();
 
   public interface Listener {
 
@@ -53,68 +46,19 @@ public class Transport {
     void OnConnectionStateChange(Transport transport, String connectionState);
   }
 
-  public static class SendTransport extends Transport {
+  private native String getNativeId();
 
-    public interface Listener extends Transport.Listener {}
+  private native String getNativeConnectionState();
 
-    public SendTransport(long mNativeTransport) {
-      super(mNativeTransport);
-    }
+  private native String getNativeAppData();
 
-    Producer produce(
-        Producer.Listener listener,
-        MediaStreamTrack track,
-        List<RtpParameters> parameters,
-        String codecOptions) {
-      return produce(listener, track, parameters, codecOptions, null);
-    }
+  private native String getNativeStats();
 
-    Producer produce(
-        Producer.Listener listener,
-        MediaStreamTrack track,
-        List<RtpParameters> parameters,
-        String codecOptions,
-        String appData) {
-      return nativeProduce(
-          mNativeTransport,
-          listener,
-          Utils.getNativeMediaStreamTrack(track),
-          parameters,
-          codecOptions,
-          appData);
-    }
-  }
+  private native boolean isNativeClosed();
 
-  public static class RecvTransport extends Transport {
+  private native void nativeRestartIce(String iceParameters);
 
-    public interface Listener extends Transport.Listener {}
+  private native void nativeUpdateIceServers(String iceServers);
 
-    public RecvTransport(long mNativeTransport) {
-      super(mNativeTransport);
-    }
-  }
-
-  private native String getNativeId(long nativeTransport);
-
-  private native String getNativeConnectionState(long nativeTransport);
-
-  private native String getNativeAppData(long nativeTransport);
-
-  private native String getNativeStats(long nativeTransport);
-
-  private native boolean isNativeClosed(long nativeTransport);
-
-  private native void nativeRestartIce(long nativeTransport, String iceParameters);
-
-  private native void nativeUpdateIceServers(long nativeTransport, String iceServers);
-
-  private native void nativeClose(long nativeTransport);
-
-  private static native Producer nativeProduce(
-      long mNativeTransport,
-      Producer.Listener listener,
-      long track,
-      List<RtpParameters> parameters,
-      String codecOptions,
-      String appData);
+  private native void nativeClose();
 }
