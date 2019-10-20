@@ -3,10 +3,12 @@
 #include <jni.h>
 #include <sdk/android/native_api/jni/scoped_java_ref.h>
 #include <sdk/android/src/jni/jni_generator_helper.h>
+#include <sdk/android/src/jni/pc/peer_connection.h>
 #include "common_jni.h"
 #include "transport_jni.h"
 #include "Device.hpp"
 #include "Logger.hpp"
+#include "PeerConnection.hpp"
 
 extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_SendTransport_Constructor(
         JNIEnv *env, jlong nativeSendTransport);
@@ -15,6 +17,9 @@ extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_RecvTransport_C
         JNIEnv *env, jlong nativeRecvTransport);
 
 namespace mediasoupclient {
+
+extern void JavaToNativeOptions(
+        JNIEnv *env, const JavaRef<jobject> &j_options, PeerConnection::Options *options);
 
 extern "C"
 JNIEXPORT jlong JNICALL
@@ -122,7 +127,9 @@ Java_org_mediasoup_droid_Device_nativeCreateSendTransport(
         jstring j_id,
         jstring j_iceParameters,
         jstring j_iceCandidates,
-        jstring j_dtlsParameters) {
+        jstring j_dtlsParameters,
+        jobject j_options,
+        jstring j_appData) {
     MSC_TRACE();
 
     try {
@@ -130,13 +137,24 @@ Java_org_mediasoup_droid_Device_nativeCreateSendTransport(
         auto iceParameters = JavaToNativeString(env, JavaParamRef<jstring>(j_iceParameters));
         auto iceCandidates = JavaToNativeString(env, JavaParamRef<jstring>(j_iceCandidates));
         auto dtlsParameters = JavaToNativeString(env, JavaParamRef<jstring>(j_dtlsParameters));
+
+        PeerConnection::Options options;
+        JavaToNativeOptions(env, JavaParamRef<jobject>(j_options), &options);
+
+        json appData = nlohmann::json::object();
+        if (j_appData != nullptr) {
+            appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
+        }
+
         auto transport = reinterpret_cast<Device *>(j_device)
                 ->CreateSendTransport(
                         listener,
                         JavaToNativeString(env, JavaParamRef<jstring>(j_id)),
                         json::parse(iceParameters),
                         json::parse(iceCandidates),
-                        json::parse(dtlsParameters)
+                        json::parse(dtlsParameters),
+                        &options,
+                        appData
                 );
         auto ownedSendTransport = new OwnedSendTransport(transport, listener);
         auto j_transport = Java_Mediasoup_SendTransport_Constructor(
@@ -164,7 +182,9 @@ Java_org_mediasoup_droid_Device_nativeCreateRecvTransport(
         jstring j_id,
         jstring j_iceParameters,
         jstring j_iceCandidates,
-        jstring j_dtlsParameters) {
+        jstring j_dtlsParameters,
+        jobject j_options,
+        jstring j_appData) {
     MSC_TRACE();
 
     try {
@@ -172,13 +192,24 @@ Java_org_mediasoup_droid_Device_nativeCreateRecvTransport(
         auto iceParameters = JavaToNativeString(env, JavaParamRef<jstring>(j_iceParameters));
         auto iceCandidates = JavaToNativeString(env, JavaParamRef<jstring>(j_iceCandidates));
         auto dtlsParameters = JavaToNativeString(env, JavaParamRef<jstring>(j_dtlsParameters));
+
+        PeerConnection::Options options;
+        JavaToNativeOptions(env, JavaParamRef<jobject>(j_options), &options);
+
+        json appData = nlohmann::json::object();
+        if (j_appData != nullptr) {
+            appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
+        }
+
         auto transport = reinterpret_cast<Device *>(j_device)
                 ->CreateRecvTransport(
                         listener,
                         JavaToNativeString(env, JavaParamRef<jstring>(j_id)),
                         json::parse(iceParameters),
                         json::parse(iceCandidates),
-                        json::parse(dtlsParameters)
+                        json::parse(dtlsParameters),
+                        &options,
+                        appData
                 );
         auto ownedRecvTransport = new OwnedRecvTransport(transport, listener);
         auto j_transport = Java_Mediasoup_RecvTransport_Constructor(

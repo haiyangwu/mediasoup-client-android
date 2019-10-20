@@ -3,6 +3,9 @@ package org.mediasoup.droid;
 import android.support.test.runner.AndroidJUnit4;
 import android.text.TextUtils;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mediasoup.droid.data.Parameters;
@@ -11,14 +14,38 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
+import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
 
 @RunWith(AndroidJUnit4.class)
 public class MediasoupClientTest extends BaseTest {
+
+  private String mId;
+  private String mIceParameters;
+  private String mIceCandidates;
+  private String mDtlsParameters;
+
+  @Override
+  @Before
+  public void setUp() {
+    super.setUp();
+    try {
+      JSONObject transportRemoteParameters = new JSONObject(generateTransportRemoteParameters());
+      mId = transportRemoteParameters.getString("id");
+      mIceParameters = transportRemoteParameters.getString("iceParameters");
+      mIceCandidates = transportRemoteParameters.getString("iceCandidates");
+      mDtlsParameters = transportRemoteParameters.getString("dtlsParameters");
+    } catch (JSONException e) {
+      e.printStackTrace();
+    }
+  }
 
   @Test
   public void mediasoupclient() {
     Device device;
     String routerRtpCapabilities;
+
+    SendTransport sendTransport;
+    RecvTransport recvTransport;
 
     // create a Device succeeds.
     {
@@ -39,7 +66,12 @@ public class MediasoupClientTest extends BaseTest {
 
     // 'device->CreateSendTransport()' throws if not loaded.
     {
-      // TODO:
+      final FakeTransportListener.FakeRecvTransportListener listener =
+          new FakeTransportListener.FakeRecvTransportListener();
+      exceptionException(
+          () ->
+              device.createRecvTransport(
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
     }
 
     // device->load() with invalid routerRtpCapabilities throws.
@@ -76,15 +108,33 @@ public class MediasoupClientTest extends BaseTest {
     {
       exceptionException(() -> device.canProduce("chicken"));
     }
-
     // "device->createSendTransport() for sending media succeeds.
     {
-      // TODO:
-    }
+      String appData = "{\"baz\":\"BAZ\"}";
 
+      final FakeTransportListener.FakeSendTransportListener listener =
+          new FakeTransportListener.FakeSendTransportListener();
+      sendTransport =
+          device.createSendTransport(
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null, appData);
+
+      assertEquals(mId, sendTransport.getId());
+      assertFalse(sendTransport.isClosed());
+      assertEquals(appData, sendTransport.getAppData());
+      assertEquals("new", sendTransport.getConnectionState());
+    }
     // device->createRecvTransport() for receiving media succeeds.
     {
-      // TODO:
+      final FakeTransportListener.FakeRecvTransportListener listener =
+          new FakeTransportListener.FakeRecvTransportListener();
+      recvTransport =
+          device.createRecvTransport(
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+
+      assertEquals(mId, recvTransport.getId());
+      assertFalse(recvTransport.isClosed());
+      assertEquals("{}", recvTransport.getAppData());
+      assertEquals("new", recvTransport.getConnectionState());
     }
 
     // "transport.produce() succeeds.
@@ -221,6 +271,11 @@ public class MediasoupClientTest extends BaseTest {
     {
       // TODO:
     }
+
+    // dispose.
+    sendTransport.dispose();
+    recvTransport.dispose();
+    device.dispose();
   }
 
   @Test

@@ -35,8 +35,27 @@ public class Device {
       String iceParameters,
       String iceCandidates,
       String dtlsParameters) {
+    return createSendTransport(
+        listener, id, iceParameters, iceCandidates, dtlsParameters, null, null);
+  }
+
+  public SendTransport createSendTransport(
+      SendTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters,
+      PeerConnection.Options options,
+      String appData) {
     return nativeCreateSendTransport(
-        mNativeDevice, listener, id, iceParameters, iceCandidates, dtlsParameters);
+        mNativeDevice,
+        listener,
+        id,
+        iceParameters,
+        iceCandidates,
+        dtlsParameters,
+        options,
+        appData);
   }
 
   public RecvTransport createRecvTransport(
@@ -45,8 +64,27 @@ public class Device {
       String iceParameters,
       String iceCandidates,
       String dtlsParameters) {
+    return createRecvTransport(
+        listener, id, iceParameters, iceCandidates, dtlsParameters, null, null);
+  }
+
+  public RecvTransport createRecvTransport(
+      RecvTransport.Listener listener,
+      String id,
+      String iceParameters,
+      String iceCandidates,
+      String dtlsParameters,
+      PeerConnection.Options options,
+      String appData) {
     return nativeCreateRecvTransport(
-        mNativeDevice, listener, id, iceParameters, iceCandidates, dtlsParameters);
+        mNativeDevice,
+        listener,
+        id,
+        iceParameters,
+        iceCandidates,
+        dtlsParameters,
+        options,
+        appData);
   }
 
   private static native long nativeNewDevice();
@@ -67,7 +105,9 @@ public class Device {
       String id,
       String iceParameters,
       String iceCandidates,
-      String dtlsParameters);
+      String dtlsParameters,
+      PeerConnection.Options options,
+      String appData);
 
   private static native RecvTransport nativeCreateRecvTransport(
       long device,
@@ -75,5 +115,7 @@ public class Device {
       String id,
       String iceParameters,
       String iceCandidates,
-      String dtlsParameters);
+      String dtlsParameters,
+      PeerConnection.Options options,
+      String appData);
 }

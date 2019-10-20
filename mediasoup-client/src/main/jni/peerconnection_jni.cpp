@@ -14,24 +14,36 @@
 
 namespace mediasoupclient {
 
+void JavaToNativeOptions(
+        JNIEnv *env, const JavaRef<jobject> &j_options, PeerConnection::Options *options) {
+    if (j_options.is_null()) {
+        return;
+    }
+
+    auto j_rtc_config = Java_Mediasoup_PeerConnection_Options_getRTCConfig(env, j_options);
+    auto j_factory = Java_Mediasoup_PeerConnection_Options_getNativeFactory(env, j_options);
+    if (!j_rtc_config.is_null()) {
+        webrtc::PeerConnectionInterface::RTCConfiguration rtc_config(
+                webrtc::PeerConnectionInterface::RTCConfigurationType::kAggressive);
+        webrtc::jni::JavaToNativeRTCConfiguration(env, j_rtc_config, &rtc_config);
+        options->config = rtc_config;
+    }
+    options->factory = reinterpret_cast<webrtc::PeerConnectionFactoryInterface *>(j_factory);
+}
+
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_org_mediasoup_droid_PeerConnection_nativeNewPeerConnection(
         JNIEnv *env,
         jclass /* j_type */,
         jobject j_listener,
-        jobject j_rtc_config,
-        jlong j_native_peerConnection_factory) {
+        jobject j_options) {
     MSC_TRACE();
 
     auto listener = new PrivateListenerJNI(env, JavaParamRef<jobject>(j_listener));
-    webrtc::PeerConnectionInterface::RTCConfiguration rtc_config(
-            webrtc::PeerConnectionInterface::RTCConfigurationType::kAggressive);
-    webrtc::jni::JavaToNativeRTCConfiguration(env, JavaParamRef<jobject>(j_rtc_config),
-                                              &rtc_config);
+
     PeerConnection::Options options;
-    options.config = rtc_config;
-    options.factory = reinterpret_cast<webrtc::PeerConnectionFactoryInterface *>(j_native_peerConnection_factory);
+    JavaToNativeOptions(env, JavaParamRef<jobject>(j_options), &options);
 
     auto *pc = new PeerConnection(listener, &options);
     return NativeToJavaPointer(new OwnedPeerConnection(pc, listener));

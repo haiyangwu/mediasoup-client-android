@@ -21,8 +21,20 @@ import java.util.List;
 public class PeerConnection {
 
   public static class Options {
-    public org.webrtc.PeerConnection.RTCConfiguration mRTCConfig;
-    public PeerConnectionFactory mFactory;
+
+    private org.webrtc.PeerConnection.RTCConfiguration mRTCConfig;
+
+    private PeerConnectionFactory mFactory;
+
+    @CalledByNative("Options")
+    public RTCConfiguration getRTCConfig() {
+      return mRTCConfig;
+    }
+
+    @CalledByNative("Options")
+    public long getNativeFactory() {
+      return mFactory != null ? mFactory.getNativePeerConnectionFactory() : 0;
+    }
   }
 
   public static class PrivateListener implements org.webrtc.PeerConnection.Observer {
@@ -87,15 +99,11 @@ public class PeerConnection {
     } else {
       mOptions.mRTCConfig = new RTCConfiguration(new ArrayList<>());
     }
-
-    long nativePeerConnectionFactory = 0;
     if (options != null && options.mFactory != null) {
       mOptions.mFactory = options.mFactory;
-      nativePeerConnectionFactory = options.mFactory.getNativePeerConnectionFactory();
     }
 
-    mNativePeerConnection =
-        nativeNewPeerConnection(listener, mOptions.mRTCConfig, nativePeerConnectionFactory);
+    mNativePeerConnection = nativeNewPeerConnection(listener, mOptions);
   }
 
   public void dispose() {
@@ -229,7 +237,7 @@ public class PeerConnection {
   }
 
   private static native long nativeNewPeerConnection(
-      PrivateListener nativeListener, RTCConfiguration rtcConfig, long nativePeerConnectionFactory);
+      PrivateListener nativeListener, Options options);
 
   private static native void nativeFreeOwnedPeerConnection(long ownedPeerConnection);
 

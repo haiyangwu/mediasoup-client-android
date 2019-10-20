@@ -68,6 +68,8 @@ class RecvTransportListenerJni : public RecvTransport::Listener {
 public:
     RecvTransportListenerJni(JNIEnv *jni, const JavaRef<jobject> &j_listener_);
 
+    ~RecvTransportListenerJni() = default;
+
     std::future<void> OnConnect(Transport *transport, const json &dtlsParameters) override;
 
     void OnConnectionStateChange(Transport *transport, const std::string &connectionState) override;
