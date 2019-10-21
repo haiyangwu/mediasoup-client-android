@@ -10,8 +10,8 @@
 
 namespace mediasoupclient {
 
-SendTransportListenerJni::SendTransportListenerJni(JNIEnv *jni, const JavaRef<jobject> &j_listener_)
-        : j_listener_(jni, j_listener_) {
+SendTransportListenerJni::SendTransportListenerJni(JNIEnv *env, const JavaRef<jobject> &j_listener_)
+        : j_listener_(env, j_listener_) {
 }
 
 std::future<void>
@@ -50,9 +50,9 @@ SendTransportListenerJni::OnProduce(
 }
 
 
-RecvTransportListenerJni::RecvTransportListenerJni(JNIEnv *jni,
+RecvTransportListenerJni::RecvTransportListenerJni(JNIEnv *env,
                                                    const JavaRef<jobject> &j_listener_)
-        : j_listener_(jni, j_listener_) {
+        : j_listener_(env, j_listener_) {
 }
 
 std::future<void>

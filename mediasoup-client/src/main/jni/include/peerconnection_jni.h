@@ -36,8 +36,8 @@ private:
     webrtc::jni::PeerConnectionObserverJni observerJni;
 
 public:
-    PrivateListenerJNI(JNIEnv *jni, const webrtc::JavaRef<jobject> &j_observer)
-            : observerJni(jni, j_observer) {
+    PrivateListenerJNI(JNIEnv *env, const webrtc::JavaRef<jobject> &j_observer)
+            : observerJni(env, j_observer) {
     }
 
     void OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState newState) override {
