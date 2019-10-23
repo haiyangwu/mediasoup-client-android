@@ -26,6 +26,14 @@ public class PeerConnection {
 
     private PeerConnectionFactory mFactory;
 
+    public void setRTCConfig(RTCConfiguration RTCConfig) {
+      mRTCConfig = RTCConfig;
+    }
+
+    public void setFactory(PeerConnectionFactory factory) {
+      mFactory = factory;
+    }
+
     @CalledByNative("Options")
     public RTCConfiguration getRTCConfig() {
       return mRTCConfig;

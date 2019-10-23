@@ -7,11 +7,13 @@ import org.junit.Before;
 
 public abstract class BaseTest {
 
+  protected Context mContext;
+
   @Before
   public void setUp() {
-    Context context = InstrumentationRegistry.getContext();
-    Logger.setLogLevel(Logger.LogLevel.LOG_DEBUG);
+    mContext = InstrumentationRegistry.getContext();
+    Logger.setLogLevel(Logger.LogLevel.LOG_TRACE);
     Logger.setDefaultHandler();
-    MediasoupClient.initialize(context.getApplicationContext());
+    MediasoupClient.initialize(mContext.getApplicationContext());
   }
 }

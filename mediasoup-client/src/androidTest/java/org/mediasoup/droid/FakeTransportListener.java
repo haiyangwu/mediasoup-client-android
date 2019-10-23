@@ -6,24 +6,47 @@ public class FakeTransportListener {
 
   public static class FakeSendTransportListener implements SendTransport.Listener {
 
-    @Override
-    public void onConnect(Transport transport, String dtlsParameters) {}
+    private static final String TAG = "FakeSendTransportListener";
 
     @Override
-    public void OnConnectionStateChange(Transport transport, String connectionState) {}
+    public void onConnect(String dtlsParameters) {
+      Logger.v(TAG, "onConnect() " + dtlsParameters);
+    }
 
     @Override
-    public String onProduce(
-        Transport transport, String kind, String rtpParameters, String appData) {
+    public void OnConnectionStateChange(String connectionState) {
+      Logger.v(TAG, "OnConnectionStateChange() " + connectionState);
+    }
+
+    @Override
+    public String onProduce(String kind, String rtpParameters, String appData) {
+      Logger.v(TAG, "onProduce() " + kind + "," + rtpParameters + "," + appData);
       return Parameters.generateProducerRemoteId();
     }
   }
 
   public static class FakeRecvTransportListener implements RecvTransport.Listener {
-    @Override
-    public void onConnect(Transport transport, String dtlsParameters) {}
+
+    private static final String TAG = "FakeRecvTransportListener";
 
     @Override
-    public void OnConnectionStateChange(Transport transport, String connectionState) {}
+    public void onConnect(String dtlsParameters) {
+      Logger.v(TAG, "onConnect() " + dtlsParameters);
+    }
+
+    @Override
+    public void OnConnectionStateChange(String connectionState) {
+      Logger.v(TAG, "OnConnectionStateChange() " + connectionState);
+    }
+  }
+
+  public static class FakeProducerListener implements Producer.Listener {
+
+    private static final String TAG = "FakeProducerListener";
+
+    @Override
+    public void onTransportClose() {
+      Logger.v(TAG, "onTransportClose() ");
+    }
   }
 }

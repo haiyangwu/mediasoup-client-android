@@ -161,7 +161,6 @@ Java_org_mediasoup_droid_Device_nativeCreateSendTransport(
                 env,
                 NativeToJavaPointer(ownedSendTransport)
         );
-        listener->setTransport(env, JavaParamRef<jobject>(j_transport.obj()));
         return j_transport.Release();
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
@@ -216,7 +215,6 @@ Java_org_mediasoup_droid_Device_nativeCreateRecvTransport(
                 env,
                 NativeToJavaPointer(ownedRecvTransport)
         );
-        listener->setTransport(env, JavaParamRef<jobject>(j_transport.obj()));
         return j_transport.Release();
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());

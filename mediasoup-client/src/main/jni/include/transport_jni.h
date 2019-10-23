@@ -27,6 +27,8 @@ class SendTransportListenerJni : public SendTransport::Listener {
 public:
     SendTransportListenerJni(JNIEnv *env, const JavaRef<jobject> &j_listener_);
 
+    ~SendTransportListenerJni() = default;
+
     std::future<void> OnConnect(Transport *transport, const json &dtlsParameters) override;
 
     void OnConnectionStateChange(Transport *transport, const std::string &connectionState) override;
@@ -36,15 +38,8 @@ public:
             const std::string &kind,
             json rtpParameters,
             const json &appData) override;
-
-public:
-    void setTransport(JNIEnv *env, const JavaRef<jobject> &j_transport) {
-        j_transport_ = ScopedJavaLocalRef<jobject>(env, j_transport);
-    }
-
 private:
-    const ScopedJavaLocalRef<jobject> j_listener_;
-    ScopedJavaLocalRef<jobject> j_transport_;
+    const ScopedJavaGlobalRef<jobject> j_listener_;
 };
 
 class OwnedRecvTransport {
@@ -74,14 +69,8 @@ public:
 
     void OnConnectionStateChange(Transport *transport, const std::string &connectionState) override;
 
-public:
-    void setTransport(JNIEnv *env, const JavaRef<jobject> &j_transport) {
-        j_transport_ = ScopedJavaLocalRef<jobject>(env, j_transport);
-    }
-
 private:
-    const ScopedJavaLocalRef<jobject> j_listener_;
-    ScopedJavaLocalRef<jobject> j_transport_;
+    const ScopedJavaGlobalRef<jobject> j_listener_;
 };
 
 }

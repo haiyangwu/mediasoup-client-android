@@ -1,5 +1,18 @@
 package org.mediasoup.droid;
 
+import org.webrtc.CalledByNative;
+
 public class Producer {
-  public static class Listener {}
+
+  public interface Listener {
+
+    @CalledByNative
+    void onTransportClose();
+  }
+
+  private long mNativeProducer;
+
+  public Producer(long nativeProducer) {
+    mNativeProducer = nativeProducer;
+  }
 }

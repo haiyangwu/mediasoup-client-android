@@ -2,9 +2,11 @@ package org.mediasoup.droid.hack;
 
 import android.support.annotation.NonNull;
 
+import org.webrtc.AudioTrack;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.RtpReceiver;
 import org.webrtc.RtpSender;
+import org.webrtc.VideoTrack;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -17,7 +19,12 @@ public class Utils {
     long nativeMediaStreamTrack = 0L;
     try {
       Class<?> clazz = track.getClass();
-      Method retrieveItems = clazz.getDeclaredMethod("getNativeMediaStreamTrack");
+      Method retrieveItems;
+      if(track instanceof AudioTrack || track instanceof VideoTrack){
+        retrieveItems = clazz.getSuperclass().getDeclaredMethod("getNativeMediaStreamTrack");
+      } else {
+        retrieveItems = clazz.getDeclaredMethod("getNativeMediaStreamTrack");
+      }
       retrieveItems.setAccessible(true);
       nativeMediaStreamTrack = (long) retrieveItems.invoke(track);
     } catch (NoSuchMethodException e) {

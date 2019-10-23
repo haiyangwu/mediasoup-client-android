@@ -9,9 +9,12 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mediasoup.droid.data.Parameters;
+import org.webrtc.AudioTrack;
+import org.webrtc.VideoTrack;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
 import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
@@ -46,6 +49,12 @@ public class MediasoupClientTest extends BaseTest {
 
     SendTransport sendTransport;
     RecvTransport recvTransport;
+
+    AudioTrack audioTrack;
+    VideoTrack videoTrack;
+
+    Producer audioProducer;
+    Producer videoProducer;
 
     // create a Device succeeds.
     {
@@ -139,7 +148,20 @@ public class MediasoupClientTest extends BaseTest {
 
     // "transport.produce() succeeds.
     {
-      // TODO:
+      String appData = "{\"baz\":\"BAZ\"}";
+      audioTrack = PeerConnectionUtils.createAudioTrack(mContext, "audio-track-id");
+      assertNotEquals(0, org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(audioTrack));
+      videoTrack = PeerConnectionUtils.createVideoTrack(mContext, "video-track-id");
+      assertNotEquals(0, org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(videoTrack));
+
+      // Pause the audio track before creating its Producer.
+      audioTrack.setEnabled(false);
+
+      String codecOptions = "{{\"opusStereo\":true},{\"opusDtx\":true}}";
+      final FakeTransportListener.FakeProducerListener producerListener =
+          new FakeTransportListener.FakeProducerListener();
+      audioProducer = sendTransport.produce(producerListener, audioTrack, codecOptions, appData);
+      videoProducer = sendTransport.produce(producerListener, videoTrack, null);
     }
 
     // transport.produce() without track throws.
@@ -273,9 +295,13 @@ public class MediasoupClientTest extends BaseTest {
     }
 
     // dispose.
+    sendTransport.close();
     sendTransport.dispose();
+    recvTransport.close();
     recvTransport.dispose();
     device.dispose();
+    audioTrack.dispose();
+    videoTrack.dispose();
   }
 
   @Test
