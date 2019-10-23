@@ -5,11 +5,11 @@
 #include "Logger.hpp"
 #include "PeerConnection.hpp"
 #include "api/rtc_error.h"
-#include "sdk/android/src/jni/pc/peer_connection.h"
-#include "sdk/android/src/jni/pc/peer_connection_factory.h"
-#include "sdk/android/src/jni/pc/session_description.h"
-#include "sdk/android/src/jni/pc/rtp_sender.h"
-#include "sdk/android/src/jni/pc/media_stream_track.h"
+#include <sdk/android/src/jni/pc/peer_connection.h>
+#include <sdk/android/src/jni/pc/peer_connection_factory.h>
+#include <sdk/android/src/jni/pc/session_description.h>
+#include <sdk/android/src/jni/pc/rtp_sender.h>
+#include <sdk/android/src/jni/pc/media_stream_track.h>
 #include "sdk/android/jni/peerconnection_jni.h"
 
 namespace mediasoupclient {
@@ -71,9 +71,11 @@ extern "C"
 JNIEXPORT jlong JNICALL
 Java_org_mediasoup_droid_PeerConnection_nativeGetNativePeerConnection(
         JNIEnv *env,
-        jobject /* j_object */) {
+        jobject j_pc) {
     MSC_TRACE();
 
+    auto result = ExtractNativePC(env, JavaParamRef<jobject>(j_pc));
+    return NativeToJavaPointer(result);
 }
 
 extern "C"

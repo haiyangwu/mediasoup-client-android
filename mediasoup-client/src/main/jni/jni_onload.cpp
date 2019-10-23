@@ -1,8 +1,8 @@
 #include <jni.h>
 #include "mediasoupclient.hpp"
-#include "modules/utility/include/jvm_android.h"
-#include "sdk/android/src/jni/class_reference_holder.h"
-#include "sdk/android/src/jni/jni_helpers.h"
+#include <modules/utility/include/jvm_android.h>
+#include <sdk/android/src/jni/class_reference_holder.h>
+#include <sdk/android/src/jni/jni_helpers.h>
 
 namespace mediasoupclient {
 

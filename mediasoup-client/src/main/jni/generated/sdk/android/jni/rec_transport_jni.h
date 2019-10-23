@@ -2,7 +2,7 @@
 #define GEN_MEDIASOUP_CLIENT_ANDROID_REC_TRANSPORT_JNI_H
 
 #include <jni.h>
-#include "sdk/android/src/jni/jni_generator_helper.h"
+#include <sdk/android/src/jni/jni_generator_helper.h>
 
 const char kClassPath_org_mediasoup_droid_RecvTransport[] =
         "org/mediasoup/droid/RecvTransport";
