@@ -23,6 +23,7 @@ public class SendTransport extends Transport {
   }
 
   public void dispose() {
+    checkTransportExists();
     nativeFreeTransport(mNativeTransport);
     mNativeTransport = 0;
   }
@@ -30,6 +31,12 @@ public class SendTransport extends Transport {
   @CalledByNative
   long getNativeOwnedSendTransport() {
     return mNativeTransport;
+  }
+
+  private void checkTransportExists() {
+    if (mNativeTransport == 0) {
+      throw new IllegalStateException("SendTransport has been disposed.");
+    }
   }
 
   @Override

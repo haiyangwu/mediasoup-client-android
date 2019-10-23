@@ -14,6 +14,7 @@ public class RecvTransport extends Transport {
   }
 
   public void dispose() {
+    checkTransportExists();
     nativeFreeTransport(mNativeTransport);
     mNativeTransport = 0;
   }
@@ -21,6 +22,12 @@ public class RecvTransport extends Transport {
   @Override
   public long getNativeTransport() {
     return nativeGetNativeTransport(mNativeTransport);
+  }
+
+  private void checkTransportExists() {
+    if (mNativeTransport == 0) {
+      throw new IllegalStateException("RecvTransport has been disposed.");
+    }
   }
 
   private static native long nativeGetNativeTransport(long nativeTransport);

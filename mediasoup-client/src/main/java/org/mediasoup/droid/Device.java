@@ -9,23 +9,28 @@ public class Device {
   }
 
   public void dispose() {
+    checkDeviceExists();
     nativeFreeDevice(mNativeDevice);
     mNativeDevice = 0;
   }
 
   public void load(String routerRtpCapabilities) {
+    checkDeviceExists();
     nativeLoad(mNativeDevice, routerRtpCapabilities);
   }
 
   public boolean isLoaded() {
+    checkDeviceExists();
     return nativeIsLoaded(mNativeDevice);
   }
 
   public String GetRtpCapabilities() {
+    checkDeviceExists();
     return nativeGetRtpCapabilities(mNativeDevice);
   }
 
   public boolean canProduce(String kind) {
+    checkDeviceExists();
     return nativeCanProduce(mNativeDevice, kind);
   }
 
@@ -47,6 +52,7 @@ public class Device {
       String dtlsParameters,
       PeerConnection.Options options,
       String appData) {
+    checkDeviceExists();
     return nativeCreateSendTransport(
         mNativeDevice,
         listener,
@@ -76,6 +82,7 @@ public class Device {
       String dtlsParameters,
       PeerConnection.Options options,
       String appData) {
+    checkDeviceExists();
     return nativeCreateRecvTransport(
         mNativeDevice,
         listener,
@@ -85,6 +92,12 @@ public class Device {
         dtlsParameters,
         options,
         appData);
+  }
+
+  private void checkDeviceExists() {
+    if (mNativeDevice == 0) {
+      throw new IllegalStateException("Device has been disposed.");
+    }
   }
 
   private static native long nativeNewDevice();
