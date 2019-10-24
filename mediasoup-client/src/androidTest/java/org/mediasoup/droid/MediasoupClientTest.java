@@ -174,30 +174,39 @@ public class MediasoupClientTest extends BaseTest {
           sendTransportListener.mOnConnectTimesCalled);
 
       assertEquals(sendTransport.getId(), sendTransportListener.mId);
-
       assertEquals(
           ++sendTransportListener.mOnProduceExpectedTimesCalled,
           sendTransportListener.mOnProduceTimesCalled);
-
       assertEquals(appData, sendTransportListener.mAppData);
 
+      assertEquals(audioProducer.getId(), sendTransportListener.mAudioProducerId);
+      assertFalse(audioProducer.isClosed());
+      assertEquals("audio", audioProducer.getKind());
+      assertEquals(
+          org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(audioTrack),
+          audioProducer.getTrack());
+      assertTrue(audioProducer.isPaused());
+      assertEquals(0, audioProducer.getMaxSpatialLayer());
+      assertEquals(appData, audioProducer.getAppData());
+
       /**
-       * REQUIRE(audioProducer->GetId() == sendTransportListener.audioProducerId);
-       * REQUIRE(!audioProducer->IsClosed()); REQUIRE(audioProducer->GetKind() == "audio");
-       * REQUIRE(audioProducer->GetTrack() == audioTrack); REQUIRE(audioProducer->IsPaused());
-       * REQUIRE(audioProducer->GetMaxSpatialLayer() == 0); REQUIRE(audioProducer->GetAppData() ==
-       * appData); REQUIRE(audioProducer->GetRtpParameters()["codecs"].size() == 1);
+       * REQUIRE(audioProducer->GetRtpParameters()["codecs"].size() == 1);
        *
-       * <p>codecs = audioProducer->GetRtpParameters()["codecs"]; REQUIRE(codecs[0].is_object());
+       * codecs = audioProducer->GetRtpParameters()["codecs"];
+       * REQUIRE(codecs[0].is_object());
        *
-       * <p>headerExtensions = audioProducer->GetRtpParameters()["headerExtensions"];
+       * headerExtensions = audioProducer->GetRtpParameters()["headerExtensions"];
        * REQUIRE(headerExtensions.is_array());
        *
-       * <p>auto enc = audioProducer->GetRtpParameters()["encodings"]; REQUIRE(enc.is_array());
-       * REQUIRE(enc.size() == 1); REQUIRE(enc[0].is_object()); REQUIRE(enc[0].find("ssrc") !=
-       * enc[0].end()); REQUIRE(enc[0]["ssrc"].is_number());
+       * auto enc = audioProducer->GetRtpParameters()["encodings"];
+       * REQUIRE(enc.is_array());
+       * REQUIRE(enc.size() == 1);
+       * REQUIRE(enc[0].is_object());
+       * REQUIRE(enc[0].find("ssrc") !=enc[0].end());
+       * REQUIRE(enc[0]["ssrc"].is_number());
        *
-       * <p>rtcp = audioProducer->GetRtpParameters()["rtcp"]; REQUIRE(rtcp.is_object());
+       * rtcp = audioProducer->GetRtpParameters()["rtcp"];
+       * REQUIRE(rtcp.is_object());
        * REQUIRE(rtcp["cname"].is_string());
        */
       videoProducer = sendTransport.produce(producerListener, videoTrack, null);

@@ -60,7 +60,7 @@ SendTransportListenerJni::OnProduce(
             NativeToJavaString(env, rtpParameters.dump()),
             NativeToJavaString(env, appData.dump()));
     std::promise<std::string> promise;
-    promise.set_value(result);
+    promise.set_value(JavaToNativeString(env, result));
     return promise.get_future();
 }
 

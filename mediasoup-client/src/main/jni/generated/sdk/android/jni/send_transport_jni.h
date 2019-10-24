@@ -58,7 +58,7 @@ base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_SendTransport_Construc
 
 static std::atomic<jmethodID> g_org_mediasoup_droid_SendTransport_Listener_onProduce(nullptr);
 
-static std::string
+static base::android::ScopedJavaLocalRef<jstring>
 Java_Mediasoup_Listener_OnProduce(JNIEnv *env, const base::android::JavaRef<jobject> &obj,
                                   const base::android::JavaRef<jobject> &transport,
                                   const base::android::JavaRef<jstring> &kind,
@@ -84,7 +84,7 @@ Java_Mediasoup_Listener_OnProduce(JNIEnv *env, const base::android::JavaRef<jobj
                                   kind.obj(),
                                   rtpParameters.obj(),
                                   appData.obj()));
-    return JavaToNativeString(env, JavaParamRef<jstring>(result));
+    return base::android::ScopedJavaLocalRef<jstring> (env, result);
 }
 
 #endif //GEN_MEDIASOUP_CLIENT_ANDROID_SEND_TRANSPORT_JNI_H

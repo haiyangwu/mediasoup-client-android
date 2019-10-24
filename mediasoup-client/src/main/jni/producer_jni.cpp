@@ -19,4 +19,88 @@ void ProducerListenerJNI::OnTransportClose(Producer *producer) {
     Java_Mediasoup_Producer_Listener_onTransportClose(env, j_listener_);
 }
 
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Producer_getNativeId(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetId();
+    return NativeToJavaString(env, result).Release();
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_mediasoup_droid_Producer_isNativeClosed(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->IsClosed();
+    return static_cast<jboolean>(result);
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Producer_getNativeKind(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetKind();
+    return NativeToJavaString(env, result).Release();
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_mediasoup_droid_Producer_getNativeTrack(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetTrack();
+    return NativeToJavaPointer(result);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_mediasoup_droid_Producer_isNativePaused(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->IsPaused();
+    return static_cast<jboolean>(result);
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_org_mediasoup_droid_Producer_getNativeMaxSpatialLayer(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetMaxSpatialLayer();
+    return result;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Producer_getNativeAppData(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetAppData();
+    return NativeToJavaString(env, result.dump()).Release();
+}
+
 }

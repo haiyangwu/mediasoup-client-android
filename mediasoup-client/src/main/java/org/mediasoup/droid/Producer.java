@@ -15,4 +15,47 @@ public class Producer {
   public Producer(long nativeProducer) {
     mNativeProducer = nativeProducer;
   }
+
+  public String getId() {
+    return getNativeId(mNativeProducer);
+  }
+
+  public boolean isClosed() {
+    return isNativeClosed(mNativeProducer);
+  }
+
+  public String getKind() {
+    return getNativeKind(mNativeProducer);
+  }
+
+  // TODO(haiyangwu): return native track pointer for now.
+  public long getTrack() {
+    return getNativeTrack(mNativeProducer);
+  }
+
+  public boolean isPaused() {
+    return isNativePaused(mNativeProducer);
+  }
+
+  public int getMaxSpatialLayer() {
+    return getNativeMaxSpatialLayer(mNativeProducer);
+  }
+
+  public String getAppData() {
+    return getNativeAppData(mNativeProducer);
+  }
+
+  private static native String getNativeId(long nativeProducer);
+
+  private static native boolean isNativeClosed(long nativeProducer);
+
+  private static native String getNativeKind(long nativeProducer);
+
+  private static native long getNativeTrack(long nativeProducer);
+
+  private static native boolean isNativePaused(long nativeProducer);
+
+  private static native int getNativeMaxSpatialLayer(long nativeProducer);
+
+  private static native String getNativeAppData(long nativeProducer);
 }
