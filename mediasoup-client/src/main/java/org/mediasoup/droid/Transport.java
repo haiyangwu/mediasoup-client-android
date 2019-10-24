@@ -42,10 +42,10 @@ public abstract class Transport {
   public interface Listener {
 
     @CalledByNative
-    void onConnect(String dtlsParameters);
+    void onConnect(Transport transport, String dtlsParameters);
 
     @CalledByNative
-    void OnConnectionStateChange(String connectionState);
+    void onConnectionStateChange(Transport transport, String connectionState);
   }
 
   private native String getNativeId();

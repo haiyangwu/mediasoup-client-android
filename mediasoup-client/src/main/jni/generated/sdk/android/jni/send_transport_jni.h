@@ -60,6 +60,7 @@ static std::atomic<jmethodID> g_org_mediasoup_droid_SendTransport_Listener_onPro
 
 static std::string
 Java_Mediasoup_Listener_OnProduce(JNIEnv *env, const base::android::JavaRef<jobject> &obj,
+                                  const base::android::JavaRef<jobject> &transport,
                                   const base::android::JavaRef<jstring> &kind,
                                   const base::android::JavaRef<jstring> &rtpParameters,
                                   const base::android::JavaRef<jstring> &appData) {
@@ -73,13 +74,15 @@ Java_Mediasoup_Listener_OnProduce(JNIEnv *env, const base::android::JavaRef<jobj
             env,
             clazz,
             "onProduce",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+            "(Lorg/mediasoup/droid/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
             &g_org_mediasoup_droid_SendTransport_Listener_onProduce);
 
     jstring result = static_cast<jstring>(
             env->CallObjectMethod(obj.obj(),
                                   call_context.base.method_id,
-                                  kind.obj(), rtpParameters.obj(),
+                                  transport.obj(),
+                                  kind.obj(),
+                                  rtpParameters.obj(),
                                   appData.obj()));
     return JavaToNativeString(env, JavaParamRef<jstring>(result));
 }

@@ -27,7 +27,7 @@ public class PeerConnectionUtils {
 
   // PeerConnection factory creation.
   private static void createPeerConnectionFactory(Context context) {
-    Logger.d("tony", "createPeerConnectionFactory()");
+    Logger.d(TAG, "createPeerConnectionFactory()");
     PeerConnectionFactory.Builder builder = PeerConnectionFactory.builder();
     builder.setOptions(null);
 
@@ -104,7 +104,7 @@ public class PeerConnectionUtils {
 
   // Audio source creation.
   private static void createAudioSource(Context context) {
-    Logger.d("tony", "createAudioSource()");
+    Logger.d(TAG, "createAudioSource()");
     if (mPeerConnectionFactory == null) {
       createPeerConnectionFactory(context);
     }
@@ -123,11 +123,11 @@ public class PeerConnectionUtils {
 
   // Audio track creation.
   public static AudioTrack createAudioTrack(Context context, String id) {
-    Logger.d("tony", "createAudioTrack()");
+    Logger.d(TAG, "createAudioTrack()");
     if (mAudioSource == null) {
       createAudioSource(context);
     }
-    Logger.d("tony", mAudioSource.toString());
+    Logger.d(TAG, mAudioSource.toString());
     return mPeerConnectionFactory.createAudioTrack(id, mAudioSource);
   }
 

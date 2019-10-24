@@ -47,6 +47,9 @@ public class MediasoupClientTest extends BaseTest {
     Device device;
     String routerRtpCapabilities;
 
+    FakeTransportListener.FakeSendTransportListener sendTransportListener;
+    FakeTransportListener.FakeRecvTransportListener recvTransportListener;
+
     SendTransport sendTransport;
     RecvTransport recvTransport;
 
@@ -121,11 +124,16 @@ public class MediasoupClientTest extends BaseTest {
     {
       String appData = "{\"baz\":\"BAZ\"}";
 
-      final FakeTransportListener.FakeSendTransportListener listener =
-          new FakeTransportListener.FakeSendTransportListener();
+      sendTransportListener = new FakeTransportListener.FakeSendTransportListener();
       sendTransport =
           device.createSendTransport(
-              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null, appData);
+              sendTransportListener,
+              mId,
+              mIceParameters,
+              mIceCandidates,
+              mDtlsParameters,
+              null,
+              appData);
 
       assertEquals(mId, sendTransport.getId());
       assertFalse(sendTransport.isClosed());
@@ -134,11 +142,10 @@ public class MediasoupClientTest extends BaseTest {
     }
     // device->createRecvTransport() for receiving media succeeds.
     {
-      final FakeTransportListener.FakeRecvTransportListener listener =
-          new FakeTransportListener.FakeRecvTransportListener();
+      recvTransportListener = new FakeTransportListener.FakeRecvTransportListener();
       recvTransport =
           device.createRecvTransport(
-              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+              recvTransportListener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
 
       assertEquals(mId, recvTransport.getId());
       assertFalse(recvTransport.isClosed());
@@ -157,10 +164,42 @@ public class MediasoupClientTest extends BaseTest {
       // Pause the audio track before creating its Producer.
       audioTrack.setEnabled(false);
 
-      String codecOptions = "{{\"opusStereo\":true},{\"opusDtx\":true}}";
+      String codecOptions = "[{\"opusStereo\":true},{\"opusDtx\":true}]";
       final FakeTransportListener.FakeProducerListener producerListener =
           new FakeTransportListener.FakeProducerListener();
       audioProducer = sendTransport.produce(producerListener, audioTrack, codecOptions, appData);
+
+      assertEquals(
+          ++sendTransportListener.mOnConnectExpectedTimesCalled,
+          sendTransportListener.mOnConnectTimesCalled);
+
+      assertEquals(sendTransport.getId(), sendTransportListener.mId);
+
+      assertEquals(
+          ++sendTransportListener.mOnProduceExpectedTimesCalled,
+          sendTransportListener.mOnProduceTimesCalled);
+
+      assertEquals(appData, sendTransportListener.mAppData);
+
+      /**
+       * REQUIRE(audioProducer->GetId() == sendTransportListener.audioProducerId);
+       * REQUIRE(!audioProducer->IsClosed()); REQUIRE(audioProducer->GetKind() == "audio");
+       * REQUIRE(audioProducer->GetTrack() == audioTrack); REQUIRE(audioProducer->IsPaused());
+       * REQUIRE(audioProducer->GetMaxSpatialLayer() == 0); REQUIRE(audioProducer->GetAppData() ==
+       * appData); REQUIRE(audioProducer->GetRtpParameters()["codecs"].size() == 1);
+       *
+       * <p>codecs = audioProducer->GetRtpParameters()["codecs"]; REQUIRE(codecs[0].is_object());
+       *
+       * <p>headerExtensions = audioProducer->GetRtpParameters()["headerExtensions"];
+       * REQUIRE(headerExtensions.is_array());
+       *
+       * <p>auto enc = audioProducer->GetRtpParameters()["encodings"]; REQUIRE(enc.is_array());
+       * REQUIRE(enc.size() == 1); REQUIRE(enc[0].is_object()); REQUIRE(enc[0].find("ssrc") !=
+       * enc[0].end()); REQUIRE(enc[0]["ssrc"].is_number());
+       *
+       * <p>rtcp = audioProducer->GetRtpParameters()["rtcp"]; REQUIRE(rtcp.is_object());
+       * REQUIRE(rtcp["cname"].is_string());
+       */
       videoProducer = sendTransport.produce(producerListener, videoTrack, null);
     }
 

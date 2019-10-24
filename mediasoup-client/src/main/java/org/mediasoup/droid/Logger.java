@@ -26,7 +26,12 @@ public class Logger {
       throw new IllegalArgumentException("Logging level may not be null.");
     }
     loggableLevel = level;
-    nativeSetLogLevel(level.ordinal());
+    if (loggableLevel.ordinal() <= LogLevel.LOG_DEBUG.ordinal()) {
+      nativeSetLogLevel(level.ordinal());
+    } else {
+      // TODO(haiyangwu): native log level means different.
+      nativeSetLogLevel(LogLevel.LOG_DEBUG.ordinal());
+    }
   }
 
   public static void setDefaultHandler() {

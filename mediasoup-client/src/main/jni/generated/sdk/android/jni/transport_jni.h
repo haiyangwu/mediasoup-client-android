@@ -62,6 +62,7 @@ static std::atomic<jmethodID> g_org_mediasoup_droid_Transport_Listener_onConnect
 
 static void
 Java_Mediasoup_Listener_OnConnect(JNIEnv *env, const base::android::JavaRef<jobject> &obj,
+                                  const base::android::JavaRef<jobject> &transport,
                                   const base::android::JavaRef<jstring> &dtlsParameters) {
     jclass clazz = org_mediasoup_droid_Transport_Listener_clazz(env);
     CHECK_CLAZZ(env, obj.obj(),
@@ -73,16 +74,20 @@ Java_Mediasoup_Listener_OnConnect(JNIEnv *env, const base::android::JavaRef<jobj
             env,
             clazz,
             "onConnect",
-            "(Ljava/lang/String;)V",
+            "(Lorg/mediasoup/droid/Transport;Ljava/lang/String;)V",
             &g_org_mediasoup_droid_Transport_Listener_onConnect);
 
     env->CallVoidMethod(obj.obj(),
-                        call_context.base.method_id, dtlsParameters.obj());
+                        call_context.base.method_id, transport.obj(), dtlsParameters.obj());
 }
+
+static std::atomic<jmethodID> g_org_mediasoup_droid_Transport_Listener_onConnectionStateChange(
+        nullptr);
 
 static void
 Java_Mediasoup_Listener_OnConnectionStateChange(JNIEnv *env,
                                                 const base::android::JavaRef<jobject> &obj,
+                                                const base::android::JavaRef<jobject> &transport,
                                                 const base::android::JavaRef<jstring> &connectionState) {
     jclass clazz = org_mediasoup_droid_Transport_Listener_clazz(env);
     CHECK_CLAZZ(env, obj.obj(),
@@ -94,11 +99,11 @@ Java_Mediasoup_Listener_OnConnectionStateChange(JNIEnv *env,
             env,
             clazz,
             "onConnectionStateChange",
-            "(Ljava/lang/String;)V",
-            &g_org_mediasoup_droid_Transport_Listener_onConnect);
+            "(Lorg/mediasoup/droid/Transport;Ljava/lang/String;)V",
+            &g_org_mediasoup_droid_Transport_Listener_onConnectionStateChange);
 
     env->CallVoidMethod(obj.obj(),
-                        call_context.base.method_id, connectionState.obj());
+                        call_context.base.method_id, transport.obj(), connectionState.obj());
 }
 
 #endif //GEN_MEDIASOUP_CLIENT_ANDROID_TRANSPORT_JNI_H

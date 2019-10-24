@@ -9,7 +9,8 @@ public class SendTransport extends Transport {
   public interface Listener extends Transport.Listener {
 
     /** @return producer Id */
-    String onProduce(String kind, String rtpParameters, String appData);
+    @CalledByNative
+    String onProduce(Transport transport, String kind, String rtpParameters, String appData);
   }
 
   private long mNativeTransport;

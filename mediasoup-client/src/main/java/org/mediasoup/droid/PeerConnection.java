@@ -68,9 +68,7 @@ public class PeerConnection {
     public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {}
 
     @Override
-    public void onAddStream(MediaStream mediaStream) {
-      Logger.d("TONY", "xxxx: " + mediaStream.getId());
-    }
+    public void onAddStream(MediaStream mediaStream) {}
 
     @Override
     public void onRemoveStream(MediaStream mediaStream) {}

@@ -23,8 +23,11 @@ SendTransportListenerJni::SendTransportListenerJni(JNIEnv *env, const JavaRef<jo
 std::future<void>
 SendTransportListenerJni::OnConnect(Transport */*transport*/, const json &dtlsParameters) {
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    Java_Mediasoup_Listener_OnConnect(env, j_listener_,
-                                      NativeToJavaString(env, dtlsParameters.dump()));
+    Java_Mediasoup_Listener_OnConnect(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_transport_),
+            NativeToJavaString(env, dtlsParameters.dump()));
     std::promise<void> promise;
     promise.set_value();
     return promise.get_future();
@@ -35,8 +38,11 @@ SendTransportListenerJni::OnConnectionStateChange(
         Transport */*transport*/,
         const std::string &connectionState) {
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    Java_Mediasoup_Listener_OnConnectionStateChange(env, j_listener_,
-                                                    NativeToJavaString(env, connectionState));
+    Java_Mediasoup_Listener_OnConnectionStateChange(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_transport_),
+            NativeToJavaString(env, connectionState));
 }
 
 std::future<std::string>
@@ -46,10 +52,13 @@ SendTransportListenerJni::OnProduce(
         json rtpParameters,
         const json &appData) {
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    auto result = Java_Mediasoup_Listener_OnProduce(env, j_listener_,
-                                                    NativeToJavaString(env, kind),
-                                                    NativeToJavaString(env, rtpParameters.dump()),
-                                                    NativeToJavaString(env, appData.dump()));
+    auto result = Java_Mediasoup_Listener_OnProduce(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_transport_),
+            NativeToJavaString(env, kind),
+            NativeToJavaString(env, rtpParameters.dump()),
+            NativeToJavaString(env, appData.dump()));
     std::promise<std::string> promise;
     promise.set_value(result);
     return promise.get_future();
@@ -64,8 +73,11 @@ RecvTransportListenerJni::RecvTransportListenerJni(JNIEnv *env,
 std::future<void>
 RecvTransportListenerJni::OnConnect(Transport */*transport*/, const json &dtlsParameters) {
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    Java_Mediasoup_Listener_OnConnect(env, j_listener_,
-                                      NativeToJavaString(env, dtlsParameters.dump()));
+    Java_Mediasoup_Listener_OnConnect(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_transport_),
+            NativeToJavaString(env, dtlsParameters.dump()));
 
     std::promise<void> promise;
     promise.set_value();
@@ -77,8 +89,11 @@ RecvTransportListenerJni::OnConnectionStateChange(
         Transport */*transport*/,
         const std::string &connectionState) {
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    Java_Mediasoup_Listener_OnConnectionStateChange(env, j_listener_,
-                                                    NativeToJavaString(env, connectionState));
+    Java_Mediasoup_Listener_OnConnectionStateChange(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_transport_),
+            NativeToJavaString(env, connectionState));
 }
 
 Transport *ExtractNativeTransport(JNIEnv *env, const JavaRef<jobject> &j_transport) {
@@ -223,11 +238,12 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
         auto track = reinterpret_cast<webrtc::MediaStreamTrackInterface *>(j_track);
         json codecOptions = json::object();
         if (j_codecOptions != nullptr) {
-            JavaToNativeString(env, JavaParamRef<jstring>(j_codecOptions));
+            codecOptions = json::parse(
+                    JavaToNativeString(env, JavaParamRef<jstring>(j_codecOptions)));
         }
         json appData = json::object();
         if (j_appData != nullptr) {
-            JavaToNativeString(env, JavaParamRef<jstring>(j_appData));
+            appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
         }
         std::vector<webrtc::RtpEncodingParameters> *encodings = nullptr;
 
