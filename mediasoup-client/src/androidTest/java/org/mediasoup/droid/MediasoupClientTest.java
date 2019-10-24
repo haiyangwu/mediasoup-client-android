@@ -3,6 +3,7 @@ package org.mediasoup.droid;
 import android.support.test.runner.AndroidJUnit4;
 import android.text.TextUtils;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.Before;
@@ -10,11 +11,17 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mediasoup.droid.data.Parameters;
 import org.webrtc.AudioTrack;
+import org.webrtc.RTCUtils;
+import org.webrtc.RtpParameters;
 import org.webrtc.VideoTrack;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
 import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
@@ -43,7 +50,7 @@ public class MediasoupClientTest extends BaseTest {
   }
 
   @Test
-  public void mediasoupclient() {
+  public void mediasoupclient() throws JSONException {
     Device device;
     String routerRtpCapabilities;
 
@@ -156,10 +163,16 @@ public class MediasoupClientTest extends BaseTest {
     // "transport.produce() succeeds.
     {
       String appData = "{\"baz\":\"BAZ\"}";
+
+      List<RtpParameters.Encoding> encodings = new ArrayList<>();
+      encodings.add(RTCUtils.genRtpEncodingParameters(false, 0, 0, 0, 0, 0.0d, 0L));
+      encodings.add(RTCUtils.genRtpEncodingParameters(false, 0, 0, 0, 0, 0.0d, 0L));
+      encodings.add(RTCUtils.genRtpEncodingParameters(false, 0, 0, 0, 0, 0.0d, 0L));
+
       audioTrack = PeerConnectionUtils.createAudioTrack(mContext, "audio-track-id");
-      assertNotEquals(0, org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(audioTrack));
+      assertNotEquals(0, RTCUtils.getNativeMediaStreamTrack(audioTrack));
       videoTrack = PeerConnectionUtils.createVideoTrack(mContext, "video-track-id");
-      assertNotEquals(0, org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(videoTrack));
+      assertNotEquals(0, RTCUtils.getNativeMediaStreamTrack(videoTrack));
 
       // Pause the audio track before creating its Producer.
       audioTrack.setEnabled(false);
@@ -167,7 +180,8 @@ public class MediasoupClientTest extends BaseTest {
       String codecOptions = "[{\"opusStereo\":true},{\"opusDtx\":true}]";
       final FakeTransportListener.FakeProducerListener producerListener =
           new FakeTransportListener.FakeProducerListener();
-      audioProducer = sendTransport.produce(producerListener, audioTrack, codecOptions, appData);
+      audioProducer =
+          sendTransport.produce(producerListener, audioTrack, null, codecOptions, appData);
 
       assertEquals(
           ++sendTransportListener.mOnConnectExpectedTimesCalled,
@@ -182,34 +196,77 @@ public class MediasoupClientTest extends BaseTest {
       assertEquals(audioProducer.getId(), sendTransportListener.mAudioProducerId);
       assertFalse(audioProducer.isClosed());
       assertEquals("audio", audioProducer.getKind());
-      assertEquals(
-          org.mediasoup.droid.hack.Utils.getNativeMediaStreamTrack(audioTrack),
-          audioProducer.getTrack());
+      assertEquals(RTCUtils.getNativeMediaStreamTrack(audioTrack), audioProducer.getTrack());
       assertTrue(audioProducer.isPaused());
       assertEquals(0, audioProducer.getMaxSpatialLayer());
       assertEquals(appData, audioProducer.getAppData());
 
-      /**
-       * REQUIRE(audioProducer->GetRtpParameters()["codecs"].size() == 1);
-       *
-       * codecs = audioProducer->GetRtpParameters()["codecs"];
-       * REQUIRE(codecs[0].is_object());
-       *
-       * headerExtensions = audioProducer->GetRtpParameters()["headerExtensions"];
-       * REQUIRE(headerExtensions.is_array());
-       *
-       * auto enc = audioProducer->GetRtpParameters()["encodings"];
-       * REQUIRE(enc.is_array());
-       * REQUIRE(enc.size() == 1);
-       * REQUIRE(enc[0].is_object());
-       * REQUIRE(enc[0].find("ssrc") !=enc[0].end());
-       * REQUIRE(enc[0]["ssrc"].is_number());
-       *
-       * rtcp = audioProducer->GetRtpParameters()["rtcp"];
-       * REQUIRE(rtcp.is_object());
-       * REQUIRE(rtcp["cname"].is_string());
-       */
-      videoProducer = sendTransport.produce(producerListener, videoTrack, null);
+      JSONObject rtpParameters = new JSONObject(audioProducer.getRtpParameters());
+      assertTrue(rtpParameters.has("codecs"));
+      JSONArray codecs = rtpParameters.getJSONArray("codecs");
+      assertEquals(1, codecs.length());
+      assertNotNull(codecs.getJSONObject(0));
+
+      JSONArray headerExtensions = rtpParameters.getJSONArray("headerExtensions");
+      assertNotNull(headerExtensions);
+
+      JSONArray enc = rtpParameters.getJSONArray("encodings");
+      assertNotNull(enc);
+      assertEquals(1, enc.length());
+      JSONObject firstEnc = enc.getJSONObject(0);
+      assertNotNull(firstEnc);
+      assertTrue(firstEnc.has("ssrc"));
+      assertTrue(firstEnc.getLong("ssrc") != 0);
+
+      JSONObject rtcp = rtpParameters.getJSONObject("rtcp");
+      assertNotNull(rtcp);
+      assertFalse(TextUtils.isEmpty(rtcp.getString("cname")));
+
+      audioProducer.resume();
+
+      videoProducer = sendTransport.produce(producerListener, videoTrack, encodings, null, null);
+
+      assertEquals(
+          sendTransportListener.mOnConnectExpectedTimesCalled,
+          sendTransportListener.mOnConnectTimesCalled);
+      assertEquals(
+          ++sendTransportListener.mOnProduceExpectedTimesCalled,
+          sendTransportListener.mOnProduceTimesCalled);
+      assertEquals(videoProducer.getId(), sendTransportListener.mVideoProducerId);
+      assertFalse(videoProducer.isClosed());
+      assertEquals("video", videoProducer.getKind());
+      assertEquals(RTCUtils.getNativeMediaStreamTrack(videoTrack), videoProducer.getTrack());
+
+      rtpParameters = new JSONObject(videoProducer.getRtpParameters());
+      assertTrue(rtpParameters.has("codecs"));
+      codecs = rtpParameters.getJSONArray("codecs");
+      assertNotEquals(0, codecs.length());
+      assertNotNull(codecs.getJSONObject(0));
+
+      headerExtensions = rtpParameters.getJSONArray("headerExtensions");
+      assertNotNull(headerExtensions);
+
+      enc = rtpParameters.getJSONArray("encodings");
+      assertNotNull(enc);
+      assertEquals(3, enc.length());
+      firstEnc = enc.getJSONObject(0);
+      assertNotNull(firstEnc);
+      assertTrue(firstEnc.has("ssrc"));
+      assertTrue(firstEnc.has("rtx"));
+      assertTrue(firstEnc.getLong("ssrc") != 0);
+      JSONObject rtx = firstEnc.getJSONObject("rtx");
+      assertNotNull(rtx);
+      assertTrue(rtx.has("ssrc"));
+      assertTrue(rtx.getLong("ssrc") != 0);
+
+      rtcp = rtpParameters.getJSONObject("rtcp");
+      assertNotNull(rtcp);
+      assertFalse(TextUtils.isEmpty(rtcp.getString("cname")));
+
+      videoProducer.setMaxSpatialLayer(2);
+      assertFalse(videoProducer.isPaused());
+      assertEquals(2, videoProducer.getMaxSpatialLayer());
+      assertEquals("{}", videoProducer.getAppData());
     }
 
     // transport.produce() without track throws.

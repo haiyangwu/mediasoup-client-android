@@ -1,8 +1,11 @@
 package org.mediasoup.droid;
 
-import org.mediasoup.droid.hack.Utils;
 import org.webrtc.CalledByNative;
 import org.webrtc.MediaStreamTrack;
+import org.webrtc.RTCUtils;
+import org.webrtc.RtpParameters;
+
+import java.util.List;
 
 public class SendTransport extends Transport {
 
@@ -42,15 +45,21 @@ public class SendTransport extends Transport {
     return nativeGetNativeTransport(mNativeTransport);
   }
 
-  public Producer produce(Producer.Listener listener, MediaStreamTrack track, String codecOptions) {
-    return produce(listener, track, codecOptions, null);
-  }
-
   public Producer produce(
-      Producer.Listener listener, MediaStreamTrack track, String codecOptions, String appData) {
+      Producer.Listener listener,
+      MediaStreamTrack track,
+      List<RtpParameters.Encoding> encodings,
+      String codecOptions,
+      String appData) {
     checkTransportExists();
-    long nativeTrack = Utils.getNativeMediaStreamTrack(track);
-    return nativeProduce(mNativeTransport, listener, nativeTrack, codecOptions, appData);
+    long nativeTrack = RTCUtils.getNativeMediaStreamTrack(track);
+    RtpParameters.Encoding[] pEncodings = null;
+    if (encodings != null && !encodings.isEmpty()) {
+      pEncodings = new RtpParameters.Encoding[encodings.size()];
+      encodings.toArray(pEncodings);
+    }
+    return nativeProduce(
+        mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, appData);
   }
 
   private static native long nativeGetNativeTransport(long nativeTransport);
@@ -59,6 +68,7 @@ public class SendTransport extends Transport {
       long mNativeTransport,
       Producer.Listener listener,
       long track,
+      RtpParameters.Encoding[] encodings,
       String codecOptions,
       String appData);
 

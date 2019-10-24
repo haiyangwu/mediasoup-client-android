@@ -45,6 +45,18 @@ public class Producer {
     return getNativeAppData(mNativeProducer);
   }
 
+  public String getRtpParameters() {
+    return getNativeRtpParameters(mNativeProducer);
+  }
+
+  public void resume() {
+    nativeResume(mNativeProducer);
+  }
+
+  public void setMaxSpatialLayer(int layer) {
+    setNativeMaxSpatialLayer(mNativeProducer, layer);
+  }
+
   private static native String getNativeId(long nativeProducer);
 
   private static native boolean isNativeClosed(long nativeProducer);
@@ -58,4 +70,10 @@ public class Producer {
   private static native int getNativeMaxSpatialLayer(long nativeProducer);
 
   private static native String getNativeAppData(long nativeProducer);
+
+  private static native String getNativeRtpParameters(long nativeProducer);
+
+  private static native void nativeResume(long nativeProducer);
+
+  private static native void setNativeMaxSpatialLayer(long nativeProducer, int layer);
 }

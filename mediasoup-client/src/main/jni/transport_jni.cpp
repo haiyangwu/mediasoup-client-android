@@ -229,6 +229,7 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
         jlong j_transport,
         jobject j_listener,
         jlong j_track,
+        jobjectArray j_encodings,
         jstring j_codecOptions,
         jstring j_appData) {
     MSC_TRACE();
@@ -236,6 +237,13 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
     try {
         auto listener = new ProducerListenerJNI(env, JavaParamRef<jobject>(j_listener));
         auto track = reinterpret_cast<webrtc::MediaStreamTrackInterface *>(j_track);
+        std::vector<webrtc::RtpEncodingParameters> encodings;
+        if (j_encodings != nullptr) {
+            encodings = webrtc::JavaToNativeVector<webrtc::RtpEncodingParameters>(
+                    env,
+                    JavaParamRef<jobjectArray>(j_encodings),
+                    &webrtc::jni::JavaToNativeRtpEncodingParameters);
+        }
         json codecOptions = json::object();
         if (j_codecOptions != nullptr) {
             codecOptions = json::parse(
@@ -245,19 +253,11 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
         if (j_appData != nullptr) {
             appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
         }
-        std::vector<webrtc::RtpEncodingParameters> *encodings = nullptr;
-
-        // TODO (haiyangwu): add parameters for RtpEncodingParameters.
-        /*if (j_parameters != nullptr) {
-            auto parameters = webrtc::jni::JavaToNativeRtpParameters(
-                    env, JavaParamRef<jobject>(j_parameters));
-            encodings = &parameters.encodings;
-        }*/
         auto transport = (reinterpret_cast<OwnedSendTransport *>(j_transport))->transport();
         auto originProducer = transport->Produce(
                 listener,
                 track,
-                encodings,
+                &encodings,
                 &codecOptions,
                 appData);
 

@@ -1,6 +1,5 @@
 package org.mediasoup.droid;
 
-import org.mediasoup.droid.hack.Utils;
 import org.webrtc.CalledByNative;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
@@ -9,6 +8,7 @@ import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection.RTCConfiguration;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RTCUtils;
 import org.webrtc.RtpReceiver;
 import org.webrtc.RtpSender;
 import org.webrtc.RtpTransceiver;
@@ -193,7 +193,7 @@ public class PeerConnection {
       throw new NullPointerException("No MediaStreamTrack specified for addTransceiver.");
     }
     RtpTransceiver newTransceiver =
-        nativeAddTransceiverWithTrack(Utils.getNativeMediaStreamTrack(track));
+        nativeAddTransceiverWithTrack(RTCUtils.getNativeMediaStreamTrack(track));
     if (newTransceiver == null) {
       throw new IllegalStateException("C++ addTransceiver failed.");
     }
@@ -217,7 +217,7 @@ public class PeerConnection {
     if (sender == null) {
       throw new NullPointerException("No RtpSender specified for removeTrack.");
     }
-    return nativeRemoveTrack(Utils.getNativeRtpSender(sender));
+    return nativeRemoveTrack(RTCUtils.getNativeRtpSender(sender));
   }
 
   public String getStats() {
@@ -225,11 +225,11 @@ public class PeerConnection {
   }
 
   public String getStats(RtpSender selector) {
-    return nativeGetStatsForRtpSender(Utils.getNativeRtpSender(selector));
+    return nativeGetStatsForRtpSender(RTCUtils.getNativeRtpSender(selector));
   }
 
   public String getStats(RtpReceiver selector) {
-    return nativeGetStatsForRtpReceiver(Utils.getNativeRtpReceiver(selector));
+    return nativeGetStatsForRtpReceiver(RTCUtils.getNativeRtpReceiver(selector));
   }
 
   /** Returns a pointer to the native webrtc::PeerConnectionInterface. */

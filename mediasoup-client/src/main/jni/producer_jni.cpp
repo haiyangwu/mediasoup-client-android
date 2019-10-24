@@ -103,4 +103,41 @@ Java_org_mediasoup_droid_Producer_getNativeAppData(
     return NativeToJavaString(env, result.dump()).Release();
 }
 
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Producer_getNativeRtpParameters(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetRtpParameters();
+    return NativeToJavaString(env, result.dump()).Release();
+}
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Producer_nativeResume(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedProducer *>(j_producer)->producer()->Resume();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Producer_setNativeMaxSpatialLayer(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer,
+        jint j_layer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedProducer *>(j_producer)->producer()->SetMaxSpatialLayer(
+            static_cast<uint8_t>(j_layer));
+}
+
 }
