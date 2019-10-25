@@ -1,17 +1,15 @@
 package org.webrtc;
 
-import android.support.annotation.NonNull;
-
 import java.lang.reflect.Field;
 
 public class RTCUtils {
 
-  public static long getNativeMediaStreamTrack(@NonNull MediaStreamTrack track) {
-    return track.getNativeMediaStreamTrack();
+  public static long getNativeMediaStreamTrack(MediaStreamTrack track) {
+    return track != null ? track.getNativeMediaStreamTrack() : 0L;
   }
 
   public static long getNativeRtpSender(RtpSender sender) {
-    return sender.getNativeRtpSender();
+    return sender != null ? sender.getNativeRtpSender() : 0L;
   }
 
   // use Reflection to get RtpReceiver#nativeRtpReceiver

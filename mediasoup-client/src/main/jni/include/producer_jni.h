@@ -26,12 +26,23 @@ class ProducerListenerJNI : public Producer::Listener {
 
 public:
     ProducerListenerJNI(JNIEnv *env, const JavaRef<jobject> &j_listener_);
-    ~ProducerListenerJNI() = default;
+
+    ~ProducerListenerJNI(){
+        if (j_producer_ != nullptr) {
+            webrtc::AttachCurrentThreadIfNeeded()->DeleteGlobalRef(j_producer_);
+        }
+    }
 
     void OnTransportClose(Producer *producer) override;
 
+public:
+    void SetProducer(JNIEnv *env, const JavaRef<jobject> &j_producer) {
+        j_producer_ = env->NewGlobalRef(j_producer.obj());
+    }
+
 private:
     const ScopedJavaGlobalRef<jobject> j_listener_;
+    jobject j_producer_;
 };
 
 }

@@ -16,7 +16,10 @@ void ProducerListenerJNI::OnTransportClose(Producer *producer) {
     MSC_TRACE();
 
     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
-    Java_Mediasoup_Producer_Listener_onTransportClose(env, j_listener_);
+    Java_Mediasoup_Producer_Listener_onTransportClose(
+            env,
+            j_listener_,
+            JavaParamRef<jobject>(j_producer_));
 }
 
 extern "C"

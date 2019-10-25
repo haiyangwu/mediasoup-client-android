@@ -49,6 +49,14 @@ public class SendTransport extends Transport {
       Producer.Listener listener,
       MediaStreamTrack track,
       List<RtpParameters.Encoding> encodings,
+      String codecOptions) {
+    return produce(listener, track, encodings, codecOptions, null);
+  }
+
+  public Producer produce(
+      Producer.Listener listener,
+      MediaStreamTrack track,
+      List<RtpParameters.Encoding> encodings,
       String codecOptions,
       String appData) {
     checkTransportExists();

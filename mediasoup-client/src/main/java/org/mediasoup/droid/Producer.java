@@ -7,7 +7,7 @@ public class Producer {
   public interface Listener {
 
     @CalledByNative
-    void onTransportClose();
+    void onTransportClose(Producer producer);
   }
 
   private long mNativeProducer;

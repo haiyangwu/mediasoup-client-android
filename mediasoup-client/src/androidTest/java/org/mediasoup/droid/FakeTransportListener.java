@@ -92,7 +92,7 @@ public class FakeTransportListener {
     private static final String TAG = "FakeProducerListener";
 
     @Override
-    public void onTransportClose() {
+    public void onTransportClose(Producer producer) {
       Logger.v(TAG, "onTransportClose() ");
     }
   }

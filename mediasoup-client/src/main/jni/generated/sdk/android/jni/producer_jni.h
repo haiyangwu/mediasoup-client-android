@@ -61,7 +61,8 @@ static std::atomic<jmethodID> g_org_mediasoup_droid_Producer_Listener_onTranspor
 
 static void Java_Mediasoup_Producer_Listener_onTransportClose(
         JNIEnv *env,
-        const base::android::JavaRef<jobject> &obj) {
+        const base::android::JavaRef<jobject> &obj,
+        const base::android::JavaRef<jobject> &producer) {
     jclass clazz = org_mediasoup_droid_Producer_Listener_clazz(env);
     CHECK_CLAZZ(env, obj.obj(),
                 org_mediasoup_droid_Producer_Listener_clazz(env), 0);
@@ -72,10 +73,10 @@ static void Java_Mediasoup_Producer_Listener_onTransportClose(
             env,
             clazz,
             "onTransportClose",
-            "()V",
+            "(Lorg/mediasoup/droid/Producer;)V",
             &g_org_mediasoup_droid_Producer_Listener_onTransportClose);
 
-    env->CallVoidMethod(obj.obj(), call_context.base.method_id);
+    env->CallVoidMethod(obj.obj(), call_context.base.method_id, producer.obj());
 }
 
 #endif //GEN_MEDIASOUP_CLIENT_ANDROID_PRODUCER_JNI_H

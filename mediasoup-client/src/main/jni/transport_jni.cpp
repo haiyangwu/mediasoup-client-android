@@ -266,6 +266,7 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
                 env,
                 NativeToJavaPointer(producer)
         );
+        listener->SetProducer(env, j_producer);
         return j_producer.Release();
     } catch (const std::exception &e) {
         MSC_ERROR("%s", e.what());
