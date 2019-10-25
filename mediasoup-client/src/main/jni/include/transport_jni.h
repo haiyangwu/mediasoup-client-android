@@ -56,8 +56,8 @@ private:
 class OwnedRecvTransport {
 
 public:
-    OwnedRecvTransport(RecvTransport *peer_connection, RecvTransport::Listener *listener)
-            : transport_(peer_connection), listener_(listener) {
+    OwnedRecvTransport(RecvTransport *transport, RecvTransport::Listener *listener)
+            : transport_(transport), listener_(listener) {
     }
 
     ~OwnedRecvTransport() = default;

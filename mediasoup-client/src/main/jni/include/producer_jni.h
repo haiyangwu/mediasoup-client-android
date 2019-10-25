@@ -9,8 +9,8 @@ namespace mediasoupclient {
 
 class OwnedProducer {
 public:
-    OwnedProducer(Producer *peer_connection, Producer::Listener *listener)
-            : producer_(peer_connection), listener_(listener) {
+    OwnedProducer(Producer *producer, Producer::Listener *listener)
+            : producer_(producer), listener_(listener) {
     }
 
     ~OwnedProducer() = default;
