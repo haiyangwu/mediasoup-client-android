@@ -30,7 +30,32 @@ public class RecvTransport extends Transport {
     }
   }
 
+  public Consumer consume(
+      Consumer.Listener listener, String id, String producerId, String kind, String rtpParameters) {
+    return consume(listener, id, producerId, kind, rtpParameters, null);
+  }
+
+  public Consumer consume(
+      Consumer.Listener listener,
+      String id,
+      String producerId,
+      String kind,
+      String rtpParameters,
+      String appData) {
+    checkTransportExists();
+    return nativeConsume(mNativeTransport, listener, id, producerId, kind, rtpParameters, appData);
+  }
+
   private static native long nativeGetNativeTransport(long nativeTransport);
+
+  private static native Consumer nativeConsume(
+      long mNativeTransport,
+      Consumer.Listener listener,
+      String id,
+      String producerId,
+      String kind,
+      String rtpParameters,
+      String appData);
 
   private static native void nativeFreeTransport(long nativeTransport);
 }

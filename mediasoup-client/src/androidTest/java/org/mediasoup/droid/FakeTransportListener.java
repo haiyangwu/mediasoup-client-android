@@ -96,4 +96,14 @@ public class FakeTransportListener {
       Logger.v(TAG, "onTransportClose() ");
     }
   }
+
+  public static class FakeConsumerListener implements Consumer.Listener {
+
+    private static final String TAG = "FakeConsumerListener";
+
+    @Override
+    public void onTransportClose(Consumer consumer) {
+      Logger.v(TAG, "onTransportClose() ");
+    }
+  }
 }

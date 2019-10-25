@@ -12,6 +12,7 @@ public class Producer {
 
   private long mNativeProducer;
 
+  @CalledByNative
   public Producer(long nativeProducer) {
     mNativeProducer = nativeProducer;
   }

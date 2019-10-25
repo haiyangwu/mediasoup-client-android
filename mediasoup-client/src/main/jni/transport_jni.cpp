@@ -4,6 +4,7 @@
 #include "transport_jni.h"
 #include "Logger.hpp"
 #include "producer_jni.h"
+#include "consumer_jni.h"
 #include <sdk/android/native_api/jni/java_types.h>
 #include <sdk/android/src/jni/jni_generator_helper.h>
 #include <sdk/android/src/jni/pc/rtp_parameters.h>
@@ -13,6 +14,9 @@
 
 extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_Producer_Constructor(
         JNIEnv *env, jlong nativeProducer);
+
+extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_Consumer_Constructor(
+        JNIEnv *env, jlong nativeConsumer);
 
 namespace mediasoupclient {
 
@@ -273,8 +277,8 @@ Java_org_mediasoup_droid_SendTransport_nativeProduce(
         jclass clazz = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(clazz, e.what());
         env->DeleteLocalRef(clazz);
+        return nullptr;
     }
-    return nullptr;
 }
 
 extern "C"
@@ -297,6 +301,49 @@ Java_org_mediasoup_droid_RecvTransport_nativeGetNativeTransport(
     MSC_TRACE();
 
     return NativeToJavaPointer(reinterpret_cast<OwnedRecvTransport *>(j_transport)->transport());
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_org_mediasoup_droid_RecvTransport_nativeConsume(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_transport,
+        jobject j_listener,
+        jstring j_id,
+        jstring j_producerId,
+        jstring j_kind,
+        jstring j_rtpParameters,
+        jstring j_appData) {
+    MSC_TRACE();
+
+    try {
+        auto listener = new ConsumerListenerJNI(env, JavaParamRef<jobject>(j_listener));
+        auto id = JavaToNativeString(env, JavaParamRef<jstring>(j_id));
+        auto producerId = JavaToNativeString(env, JavaParamRef<jstring>(j_producerId));
+        auto kind = JavaToNativeString(env, JavaParamRef<jstring>(j_kind));
+        auto rtpParameters = json::object();
+        if (j_rtpParameters != nullptr) {
+            rtpParameters = json::parse(
+                    JavaToNativeString(env, JavaParamRef<jstring>(j_rtpParameters)));
+        }
+        auto appData = json::object();
+        if (j_appData != nullptr) {
+            appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
+        }
+
+        auto transport = (reinterpret_cast<OwnedRecvTransport *>(j_transport))->transport();
+        auto consumer = transport->Consume(listener, id, producerId, kind, &rtpParameters, appData);
+        auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(consumer));
+        listener->SetConsumer(env, j_consumer);
+        return j_consumer.Release();
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
 }
 
 extern "C"

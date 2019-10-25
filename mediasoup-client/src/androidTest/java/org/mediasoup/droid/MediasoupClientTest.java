@@ -66,6 +66,9 @@ public class MediasoupClientTest extends BaseTest {
     Producer audioProducer;
     Producer videoProducer;
 
+    Consumer audioConsumer;
+    Consumer videoConsumer;
+
     // create a Device succeeds.
     {
       device = new Device();
@@ -271,12 +274,30 @@ public class MediasoupClientTest extends BaseTest {
 
     // transport.produce() without track throws.
     {
-      // TODO:
+      final FakeTransportListener.FakeProducerListener producerListener =
+          new FakeTransportListener.FakeProducerListener();
+      exceptionException(() -> sendTransport.produce(producerListener, null, null, null));
     }
 
     // transport.consume() succeeds.
     {
-      // TODO:
+      String appData = "{\"baz\":\"BAZ\"}";
+
+      JSONObject audioConsumerRemoteParameters =
+          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/opus"));
+      JSONObject videoConsumerRemoteParameters =
+          new JSONObject(Parameters.generateConsumerRemoteParameters("video/VP8"));
+
+      final FakeTransportListener.FakeConsumerListener consumerListener =
+          new FakeTransportListener.FakeConsumerListener();
+      audioConsumer =
+          recvTransport.consume(
+              consumerListener,
+              audioConsumerRemoteParameters.getString("id"),
+              audioConsumerRemoteParameters.getString("producerId"),
+              audioConsumerRemoteParameters.getString("kind"),
+              audioConsumerRemoteParameters.getString("rtpParameters"),
+              appData);
     }
 
     // transport.consume() with unsupported consumerRtpParameters throws.
