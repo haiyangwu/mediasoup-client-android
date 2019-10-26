@@ -149,8 +149,18 @@ Java_org_mediasoup_droid_Transport_getNativeStats(
         jobject j_transport) {
     MSC_TRACE();
 
-    auto stats = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetStats().dump();
-    return NativeToJavaString(env, stats).Release();
+    try {
+        auto stats = ExtractNativeTransport(
+                env,
+                JavaParamRef<jobject>(j_transport))->GetStats().dump();
+        return NativeToJavaString(env, stats).Release();
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
 }
 
 extern "C"
@@ -173,7 +183,11 @@ Java_org_mediasoup_droid_Transport_nativeRestartIce(
     MSC_TRACE();
 
     try {
-        auto iceParameters = JavaToNativeString(env, JavaParamRef<jstring>(j_iceParameters));
+        auto iceParameters = json::object();
+        if (j_iceParameters != nullptr) {
+            iceParameters = json::parse(
+                    JavaToNativeString(env, JavaParamRef<jstring>(j_iceParameters)));
+        }
         ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))
                 ->RestartIce(iceParameters);
     } catch (const std::exception &e) {
@@ -193,7 +207,11 @@ Java_org_mediasoup_droid_Transport_nativeUpdateIceServers(
     MSC_TRACE();
 
     try {
-        auto iceServers = JavaToNativeString(env, JavaParamRef<jstring>(j_iceServers));
+        auto iceServers = json::array();
+        if (j_iceServers != nullptr) {
+            iceServers = json::parse(
+                    JavaToNativeString(env, JavaParamRef<jstring>(j_iceServers)));
+        }
         ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))
                 ->UpdateIceServers(iceServers);
     } catch (const std::exception &e) {
@@ -335,7 +353,8 @@ Java_org_mediasoup_droid_RecvTransport_nativeConsume(
         auto transport = (reinterpret_cast<OwnedRecvTransport *>(j_transport))->transport();
         auto consumer = transport->Consume(listener, id, producerId, kind, &rtpParameters, appData);
         auto ownedConsumer = new OwnedConsumer(consumer, listener);
-        auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(ownedConsumer));
+        auto j_consumer = Java_Mediasoup_Consumer_Constructor(env,
+                                                              NativeToJavaPointer(ownedConsumer));
         listener->SetConsumer(env, j_consumer);
         return j_consumer.Release();
     } catch (const std::exception &e) {

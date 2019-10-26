@@ -1,6 +1,8 @@
 package org.mediasoup.droid;
 
 import org.webrtc.CalledByNative;
+import org.webrtc.MediaStreamTrack;
+import org.webrtc.RTCUtils;
 
 public class Producer {
 
@@ -58,6 +60,23 @@ public class Producer {
     setNativeMaxSpatialLayer(mNativeProducer, layer);
   }
 
+  public void pause() {
+    nativePause(mNativeProducer);
+  }
+
+  public void replaceTrack(MediaStreamTrack track) {
+    long nativeMediaStreamTrack = RTCUtils.getNativeMediaStreamTrack(track);
+    nativeReplaceTrack(mNativeProducer, nativeMediaStreamTrack);
+  }
+
+  public String getStats() {
+    return getNativeStats(mNativeProducer);
+  }
+
+  public void close() {
+    nativeClose(mNativeProducer);
+  }
+
   private static native String getNativeId(long nativeProducer);
 
   private static native boolean isNativeClosed(long nativeProducer);
@@ -74,7 +93,15 @@ public class Producer {
 
   private static native String getNativeRtpParameters(long nativeProducer);
 
+  private static native String getNativeStats(long nativeProducer);
+
   private static native void nativeResume(long nativeProducer);
 
   private static native void setNativeMaxSpatialLayer(long nativeProducer, int layer);
+
+  private static native void nativePause(long nativeProducer);
+
+  private static native void nativeReplaceTrack(long nativeProducer, long track);
+
+  private static native void nativeClose(long nativeProducer);
 }

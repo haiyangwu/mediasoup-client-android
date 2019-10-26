@@ -118,6 +118,26 @@ Java_org_mediasoup_droid_Producer_getNativeRtpParameters(
     return NativeToJavaString(env, result.dump()).Release();
 }
 
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Producer_getNativeStats(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    try {
+        auto result = reinterpret_cast<OwnedProducer *>(j_producer)->producer()->GetStats();
+        return NativeToJavaString(env, result.dump()).Release();
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
+}
+
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -139,8 +159,58 @@ Java_org_mediasoup_droid_Producer_setNativeMaxSpatialLayer(
         jint j_layer) {
     MSC_TRACE();
 
-    reinterpret_cast<OwnedProducer *>(j_producer)->producer()->SetMaxSpatialLayer(
-            static_cast<uint8_t>(j_layer));
+    try {
+        reinterpret_cast<OwnedProducer *>(j_producer)->producer()->SetMaxSpatialLayer(
+                static_cast<uint8_t>(j_layer));
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+    }
 }
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Producer_nativePause(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedProducer *>(j_producer)->producer()->Pause();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Producer_nativeReplaceTrack(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer,
+        jlong j_track) {
+    MSC_TRACE();
+
+    try {
+        auto track = reinterpret_cast<webrtc::MediaStreamTrackInterface *>(j_track);
+        reinterpret_cast<OwnedProducer *>(j_producer)->producer()->ReplaceTrack(track);
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Producer_nativeClose(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_producer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedProducer *>(j_producer)->producer()->Close();
+}
+
 
 }

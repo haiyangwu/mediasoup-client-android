@@ -12,6 +12,11 @@ public class Consumer {
 
   private long mNativeConsumer;
 
+  @CalledByNative
+  public Consumer(long nativeProducer) {
+    mNativeConsumer = nativeProducer;
+  }
+
   public String getId() {
     return getNativeId(mNativeConsumer);
   }
@@ -40,9 +45,20 @@ public class Consumer {
     return getNativeAppData(mNativeConsumer);
   }
 
-  @CalledByNative
-  public Consumer(long nativeProducer) {
-    mNativeConsumer = nativeProducer;
+  public void resume() {
+    nativeResume(mNativeConsumer);
+  }
+
+  public void pause() {
+    nativePause(mNativeConsumer);
+  }
+
+  public String getStats() {
+    return getNativeStats(mNativeConsumer);
+  }
+
+  public void close() {
+    nativeClose(mNativeConsumer);
   }
 
   private static native String getNativeId(long nativeConsumer);
@@ -58,4 +74,12 @@ public class Consumer {
   private static native String getNativeRtpParameters(long nativeConsumer);
 
   private static native String getNativeAppData(long nativeConsumer);
+
+  private static native void nativeResume(long nativeConsumer);
+
+  private static native void nativePause(long nativeConsumer);
+
+  private static native String getNativeStats(long nativeConsumer);
+
+  private static native void nativeClose(long nativeConsumer);
 }

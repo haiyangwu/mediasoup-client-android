@@ -63,6 +63,11 @@ public class MediasoupClientTest extends BaseTest {
     AudioTrack audioTrack;
     VideoTrack videoTrack;
 
+    final FakeTransportListener.FakeProducerListener producerListener =
+        new FakeTransportListener.FakeProducerListener();
+    final FakeTransportListener.FakeConsumerListener consumerListener =
+        new FakeTransportListener.FakeConsumerListener();
+
     Producer audioProducer;
     Producer videoProducer;
 
@@ -181,8 +186,6 @@ public class MediasoupClientTest extends BaseTest {
       audioTrack.setEnabled(false);
 
       String codecOptions = "[{\"opusStereo\":true},{\"opusDtx\":true}]";
-      final FakeTransportListener.FakeProducerListener producerListener =
-          new FakeTransportListener.FakeProducerListener();
       audioProducer =
           sendTransport.produce(producerListener, audioTrack, null, codecOptions, appData);
 
@@ -274,8 +277,6 @@ public class MediasoupClientTest extends BaseTest {
 
     // transport.produce() without track throws.
     {
-      final FakeTransportListener.FakeProducerListener producerListener =
-          new FakeTransportListener.FakeProducerListener();
       exceptionException(() -> sendTransport.produce(producerListener, null, null, null));
     }
 
@@ -288,8 +289,6 @@ public class MediasoupClientTest extends BaseTest {
       JSONObject videoConsumerRemoteParameters =
           new JSONObject(Parameters.generateConsumerRemoteParameters("video/VP8"));
 
-      final FakeTransportListener.FakeConsumerListener consumerListener =
-          new FakeTransportListener.FakeConsumerListener();
       audioConsumer =
           recvTransport.consume(
               consumerListener,
@@ -322,133 +321,261 @@ public class MediasoupClientTest extends BaseTest {
           "{\"channels\":2,\"clockRate\":48000,\"mimeType\":\"audio/opus\",\"parameters\":{\"useinbandfec\":\"1\"},\"payloadType\":100,\"rtcpFeedback\":[]}",
           codecs.getJSONObject(0).toString().replace("\\", ""));
 
-
       JSONObject rtcp = rtpParameters.getJSONObject("rtcp");
       assertNotNull(rtcp);
       assertFalse(TextUtils.isEmpty(rtcp.getString("cname")));
       assertFalse(audioConsumer.isPaused());
       assertEquals(appData, audioConsumer.getAppData());
 
+      videoConsumer =
+          recvTransport.consume(
+              consumerListener,
+              videoConsumerRemoteParameters.getString("id"),
+              videoConsumerRemoteParameters.getString("producerId"),
+              videoConsumerRemoteParameters.getString("kind"),
+              videoConsumerRemoteParameters.getString("rtpParameters"));
+
+      assertEquals(
+          recvTransportListener.mOnConnectExpectedTimesCalled,
+          recvTransportListener.mOnConnectTimesCalled);
+      assertEquals(videoConsumerRemoteParameters.getString("id"), videoConsumer.getId());
+      assertEquals(
+          videoConsumerRemoteParameters.getString("producerId"), videoConsumer.getProducerId());
+      assertFalse(videoConsumer.isClosed());
+      assertEquals("video", videoConsumer.getKind());
+
+      rtpParameters = new JSONObject(videoConsumer.getRtpParameters());
+      assertTrue(rtpParameters.has("codecs"));
+      codecs = rtpParameters.getJSONArray("codecs");
+      assertNotNull(codecs);
+      assertEquals(2, codecs.length());
+      assertEquals(
+          "{\"clockRate\":90000,\"mimeType\":\"video/VP8\",\"parameters\":{\"x-google-start-bitrate\":\"1500\"},\"payloadType\":101,\"rtcpFeedback\":[{\"type\":\"nack\"},{\"parameter\":\"pli\",\"type\":\"nack\"},{\"parameter\":\"sli\",\"type\":\"nack\"},{\"parameter\":\"rpsi\",\"type\":\"nack\"},{\"parameter\":\"app\",\"type\":\"nack\"},{\"parameter\":\"fir\",\"type\":\"ccm\"},{\"type\":\"goog-remb\"}]}",
+          codecs.getJSONObject(0).toString().replace("\\", ""));
+
+      assertEquals(
+          "{\"clockRate\":90000,\"mimeType\":\"video/rtx\",\"parameters\":{\"apt\":\"101\"},\"payloadType\":102,\"rtcpFeedback\":[]}",
+          codecs.getJSONObject(1).toString().replace("\\", ""));
+
+      JSONArray headerExtensions = rtpParameters.getJSONArray("headerExtensions");
+      assertEquals(
+          "[{\"id\":2,\"uri\":\"urn:ietf:params:rtp-hdrext:toffset\"},{\"id\":3,\"uri\":\"http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\"}]",
+          headerExtensions.toString().replace("\\", ""));
+
+      JSONArray enc = rtpParameters.getJSONArray("encodings");
+      assertNotNull(enc);
+      assertEquals(1, enc.length());
+      JSONObject firstEnc = enc.getJSONObject(0);
+      assertNotNull(firstEnc);
+      assertTrue(firstEnc.has("ssrc"));
+      assertTrue(firstEnc.has("rtx"));
+      assertTrue(firstEnc.getLong("ssrc") != 0);
+      JSONObject rtx = firstEnc.getJSONObject("rtx");
+      assertNotNull(rtx);
+      assertTrue(rtx.has("ssrc"));
+      assertTrue(rtx.getLong("ssrc") != 0);
+
+      rtcp = rtpParameters.getJSONObject("rtcp");
+      assertNotNull(rtcp);
+      assertFalse(TextUtils.isEmpty(rtcp.getString("cname")));
+
+      assertFalse(videoConsumer.isPaused());
+      assertEquals("{}", videoConsumer.getAppData());
     }
 
     // transport.consume() with unsupported consumerRtpParameters throws.
     {
-      // TODO:
+      JSONObject consumerRemoteParameters =
+          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/ISAC"));
+      exceptionException(
+          () -> {
+            try {
+              recvTransport.consume(
+                  consumerListener,
+                  consumerRemoteParameters.getString("id"),
+                  consumerRemoteParameters.getString("producerId"),
+                  consumerRemoteParameters.getString("kind"),
+                  consumerRemoteParameters.getString("rtpParameters"));
+            } catch (JSONException e) {
+              e.printStackTrace();
+            }
+          });
     }
 
     // 'sendTransport.GetStats()' succeeds.
     {
-      // TODO:
+      assertFalse(TextUtils.isEmpty(sendTransport.getStats()));
     }
 
     // sendTransport.RestartIce()' succeeds.
     {
-      // TODO:
+      sendTransport.restartIce(mIceParameters);
     }
 
     // 'sendTransport.UpdateIceServers()' succeeds.
     {
-      // TODO:
+      sendTransport.updateIceServers(new JSONArray().toString());
     }
 
     // 'producer->Pause()' succeeds.
     {
-      // TODO:
+      videoProducer.pause();
+      assertTrue(videoProducer.isPaused());
     }
 
     // 'producer->Resume()' succeeds.
     {
-      // TODO:
+      videoProducer.resume();
+      assertFalse(videoProducer.isPaused());
     }
 
     // 'producer->ReplaceTrack()' succeeds.
     {
-      // TODO:
+      // Have the audio Producer paused.
+      audioProducer.pause();
+      AudioTrack newAudioTrack = PeerConnectionUtils.createAudioTrack(mContext, "audio-track-id-2");
+      audioProducer.replaceTrack(newAudioTrack);
+      assertEquals(RTCUtils.getNativeMediaStreamTrack(newAudioTrack), audioProducer.getTrack());
+
+      // Producer was already paused.
+      assertTrue(audioProducer.isPaused());
+
+      // Reset the audio paused state.
+      audioProducer.resume();
+
+      VideoTrack newVideoTrack = PeerConnectionUtils.createVideoTrack(mContext, "video-track-id-2");
+      videoProducer.replaceTrack(newVideoTrack);
+      assertEquals(RTCUtils.getNativeMediaStreamTrack(newVideoTrack), videoProducer.getTrack());
+      assertFalse(videoProducer.isPaused());
+
+      videoTrack.dispose();
+      videoTrack = newVideoTrack;
     }
 
     // 'producer->ReplaceTrack()' fails if null track is provided.
     {
-      // TODO:
+      exceptionException(() -> videoProducer.replaceTrack(null));
     }
 
     // 'producer->SetMaxSpatialLayer()' succeeds.
     {
-      // TODO:
+      videoProducer.setMaxSpatialLayer(1);
+      assertEquals(1, videoProducer.getMaxSpatialLayer());
     }
 
     // 'producer->SetMaxSpatialLayer()' in an audio Producer throws.
     {
-      // TODO:
+      exceptionException(() -> audioProducer.setMaxSpatialLayer(1));
     }
 
     // 'producer->GetStats()' succeeds.
     {
-      // TODO:
+      assertFalse(TextUtils.isEmpty(videoProducer.getStats()));
     }
 
     // 'consumer->Resume()' succeeds.
     {
-      // TODO:
+      videoConsumer.resume();
+      assertFalse(videoConsumer.isPaused());
     }
 
     // 'consumer->Pause()' succeeds.
     {
-      // TODO:
+      videoConsumer.pause();
+      assertTrue(videoConsumer.isPaused());
     }
 
     // 'consumer->GetStats()' succeeds.
     {
-      // TODO:
+      assertFalse(TextUtils.isEmpty(videoConsumer.getStats()));
     }
 
     // 'producer->Close()' succeeds.
     {
-      // TODO:
+      audioProducer.close();
+      assertTrue(audioProducer.isClosed());
     }
 
     // producer->getStats() throws if closed.
     {
-      // TODO:
+      exceptionException(() -> audioProducer.getStats());
     }
 
     // consumer->Close()' succeeds.
     {
-      // TODO:
+      audioConsumer.close();
+      assertTrue(audioConsumer.isClosed());
     }
 
     // consumer->getStats() throws if closed.
     {
-      // TODO:
+      exceptionException(() -> audioConsumer.getStats());
     }
 
     // transport->Close() fires 'OnTransportClose' in live Producers/Consumers.
     {
-      // TODO:
+      // Audio Producer was already closed.
+      assertTrue(audioProducer.isClosed());
+      assertFalse(videoProducer.isClosed());
+
+      sendTransport.close();
+      assertTrue(sendTransport.isClosed());
+      assertTrue(videoProducer.isClosed());
+      // Audio Producer was already closed.
+      assertEquals(
+          ++producerListener.mOnTransportCloseExpetecTimesCalled,
+          producerListener.mOnTransportCloseTimesCalled);
+
+      // Audio Consumer was already closed.
+      assertTrue(audioConsumer.isClosed());
+      assertFalse(videoConsumer.isClosed());
+
+      recvTransport.close();
+      assertTrue(recvTransport.isClosed());
+      assertTrue(videoConsumer.isClosed());
+      // Audio Producer was already closed.
+      assertEquals(
+          ++consumerListener.mOnTransportCloseExpetecTimesCalled,
+          consumerListener.mOnTransportCloseTimesCalled);
     }
 
     // transport.produce() throws if closed.
     {
-      // TODO:
+      exceptionException(() -> sendTransport.produce(producerListener, audioTrack, null, null));
     }
 
     // transport.consume() throws if closed.
     {
-      // TODO:
+      final JSONObject audioConsumerRemoteParameters =
+          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/opus"));
+      exceptionException(
+          () -> {
+            try {
+              recvTransport.consume(
+                  consumerListener,
+                  audioConsumerRemoteParameters.getString("id"),
+                  audioConsumerRemoteParameters.getString("producerId"),
+                  audioConsumerRemoteParameters.getString("kind"),
+                  audioConsumerRemoteParameters.getString("rtpParameters"));
+            } catch (JSONException e) {
+              e.printStackTrace();
+            }
+          });
     }
 
     // transport.getStats() throws if closed.
     {
-      // TODO:
+      exceptionException(() -> sendTransport.getStats());
     }
 
     // transport.restartIce() throws if closed".
     {
-      // TODO:
+      exceptionException(() -> sendTransport.restartIce(null));
     }
 
-    // transport.restartIce() throws if closed".
+    // transport.updateIceServers() throws if closed".
     {
-      // TODO:
+      exceptionException(() -> sendTransport.updateIceServers(null));
     }
 
     // dispose.

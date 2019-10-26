@@ -94,7 +94,11 @@ public class FakeTransportListener {
     @Override
     public void onTransportClose(Producer producer) {
       Logger.v(TAG, "onTransportClose() ");
+      ++mOnTransportCloseTimesCalled;
     }
+
+    public int mOnTransportCloseTimesCalled = 0;
+    public int mOnTransportCloseExpetecTimesCalled = 0;
   }
 
   public static class FakeConsumerListener implements Consumer.Listener {
@@ -104,6 +108,10 @@ public class FakeTransportListener {
     @Override
     public void onTransportClose(Consumer consumer) {
       Logger.v(TAG, "onTransportClose() ");
+      ++mOnTransportCloseTimesCalled;
     }
+
+    public int mOnTransportCloseTimesCalled = 0;
+    public int mOnTransportCloseExpetecTimesCalled = 0;
   }
 }

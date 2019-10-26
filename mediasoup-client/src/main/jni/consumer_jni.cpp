@@ -108,4 +108,57 @@ Java_org_mediasoup_droid_Consumer_getNativeAppData(
     return NativeToJavaString(env, result.dump()).Release();
 }
 
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Consumer_nativeResume(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_consumer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedConsumer *>(j_consumer)->consumer()->Resume();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Consumer_nativePause(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_consumer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedConsumer *>(j_consumer)->consumer()->Pause();
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_mediasoup_droid_Consumer_getNativeStats(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_consumer) {
+    MSC_TRACE();
+
+    try {
+        auto result = reinterpret_cast<OwnedConsumer *>(j_consumer)->consumer()->GetStats();
+        return NativeToJavaString(env, result.dump()).Release();
+    } catch (const std::exception &e) {
+        MSC_ERROR("%s", e.what());
+        jclass clazz = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(clazz, e.what());
+        env->DeleteLocalRef(clazz);
+        return nullptr;
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_mediasoup_droid_Consumer_nativeClose(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_consumer) {
+    MSC_TRACE();
+
+    reinterpret_cast<OwnedConsumer *>(j_consumer)->consumer()->Close();
+}
+
 }
