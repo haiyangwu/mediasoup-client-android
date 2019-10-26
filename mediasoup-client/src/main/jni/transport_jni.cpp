@@ -334,7 +334,8 @@ Java_org_mediasoup_droid_RecvTransport_nativeConsume(
 
         auto transport = (reinterpret_cast<OwnedRecvTransport *>(j_transport))->transport();
         auto consumer = transport->Consume(listener, id, producerId, kind, &rtpParameters, appData);
-        auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(consumer));
+        auto ownedConsumer = new OwnedConsumer(consumer, listener);
+        auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(ownedConsumer));
         listener->SetConsumer(env, j_consumer);
         return j_consumer.Release();
     } catch (const std::exception &e) {

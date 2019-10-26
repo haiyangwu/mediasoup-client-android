@@ -298,6 +298,37 @@ public class MediasoupClientTest extends BaseTest {
               audioConsumerRemoteParameters.getString("kind"),
               audioConsumerRemoteParameters.getString("rtpParameters"),
               appData);
+
+      assertEquals(
+          ++recvTransportListener.mOnConnectExpectedTimesCalled,
+          recvTransportListener.mOnConnectTimesCalled);
+      assertEquals(recvTransport.getId(), recvTransportListener.mId);
+      new JSONObject(recvTransportListener.mDtlsParameters);
+
+      assertEquals(audioConsumerRemoteParameters.getString("id"), audioConsumer.getId());
+      assertEquals(
+          audioConsumerRemoteParameters.getString("producerId"), audioConsumer.getProducerId());
+      assertFalse(audioConsumer.isClosed());
+      assertEquals("audio", audioConsumer.getKind());
+
+      JSONObject rtpParameters = new JSONObject(audioConsumer.getRtpParameters());
+
+      assertTrue(rtpParameters.has("codecs"));
+      JSONArray codecs = rtpParameters.getJSONArray("codecs");
+      assertNotNull(codecs);
+      // JSONObject toString may add extra slash. replace it.
+      // https://stackoverflow.com/q/13939925/2085408
+      assertEquals(
+          "{\"channels\":2,\"clockRate\":48000,\"mimeType\":\"audio/opus\",\"parameters\":{\"useinbandfec\":\"1\"},\"payloadType\":100,\"rtcpFeedback\":[]}",
+          codecs.getJSONObject(0).toString().replace("\\", ""));
+
+
+      JSONObject rtcp = rtpParameters.getJSONObject("rtcp");
+      assertNotNull(rtcp);
+      assertFalse(TextUtils.isEmpty(rtcp.getString("cname")));
+      assertFalse(audioConsumer.isPaused());
+      assertEquals(appData, audioConsumer.getAppData());
+
     }
 
     // transport.consume() with unsupported consumerRtpParameters throws.
