@@ -83,6 +83,18 @@ Java_org_mediasoup_droid_Consumer_getNativeKind(
 }
 
 extern "C"
+JNIEXPORT jlong JNICALL
+Java_org_mediasoup_droid_Consumer_getNativeTrack(
+        JNIEnv *env,
+        jclass /* j_type */,
+        jlong j_consumer) {
+    MSC_TRACE();
+
+    auto result = reinterpret_cast<OwnedConsumer *>(j_consumer)->consumer()->GetTrack();
+    return NativeToJavaPointer(result);
+}
+
+extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_mediasoup_droid_Consumer_getNativeRtpParameters(
         JNIEnv *env,

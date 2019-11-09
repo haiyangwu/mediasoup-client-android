@@ -309,6 +309,7 @@ public class MediasoupClientTest extends BaseTest {
           audioConsumerRemoteParameters.getString("producerId"), audioConsumer.getProducerId());
       assertFalse(audioConsumer.isClosed());
       assertEquals("audio", audioConsumer.getKind());
+      assertNotNull(audioConsumer.getTrack());
 
       JSONObject rtpParameters = new JSONObject(audioConsumer.getRtpParameters());
 
@@ -343,6 +344,7 @@ public class MediasoupClientTest extends BaseTest {
           videoConsumerRemoteParameters.getString("producerId"), videoConsumer.getProducerId());
       assertFalse(videoConsumer.isClosed());
       assertEquals("video", videoConsumer.getKind());
+      assertNotNull(videoConsumer.getTrack());
 
       rtpParameters = new JSONObject(videoConsumer.getRtpParameters());
       assertTrue(rtpParameters.has("codecs"));

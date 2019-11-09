@@ -45,4 +45,8 @@ public class RTCUtils {
         scaleResolutionDownBy,
         ssrc);
   }
+
+  public static MediaStreamTrack createMediaStreamTrack(long nativeTrack) {
+    return MediaStreamTrack.createMediaStreamTrack(nativeTrack);
+  }
 }

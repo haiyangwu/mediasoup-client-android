@@ -1,6 +1,10 @@
 package org.mediasoup.droid;
 
+import android.support.annotation.Nullable;
+
 import org.webrtc.CalledByNative;
+import org.webrtc.MediaStreamTrack;
+import org.webrtc.RTCUtils;
 
 public class Consumer {
 
@@ -12,9 +16,13 @@ public class Consumer {
 
   private long mNativeConsumer;
 
+  @Nullable private MediaStreamTrack cachedTrack;
+
   @CalledByNative
   public Consumer(long nativeProducer) {
     mNativeConsumer = nativeProducer;
+    long nativeTrack =  getNativeTrack(mNativeConsumer);
+    cachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
   }
 
   public String getId() {
@@ -35,6 +43,10 @@ public class Consumer {
 
   public String getKind() {
     return getNativeKind(mNativeConsumer);
+  }
+
+  public MediaStreamTrack getTrack() {
+    return cachedTrack;
   }
 
   public String getRtpParameters() {
@@ -70,6 +82,8 @@ public class Consumer {
   private static native boolean isNativePaused(long nativeConsumer);
 
   private static native String getNativeKind(long nativeConsumer);
+
+  private static native long getNativeTrack(long nativeConsumer);
 
   private static native String getNativeRtpParameters(long nativeConsumer);
 
