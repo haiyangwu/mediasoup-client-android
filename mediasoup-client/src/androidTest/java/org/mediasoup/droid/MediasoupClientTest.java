@@ -80,9 +80,9 @@ public class MediasoupClientTest extends BaseTest {
       assertFalse(device.isLoaded());
     }
 
-    // "device->GetRtpCapabilities throws if not loaded.
+    // "device->getRtpCapabilities throws if not loaded.
     {
-      exceptionException(device::GetRtpCapabilities);
+      exceptionException(device::getRtpCapabilities);
     }
 
     // device->CanProduce() throws if not loaded.
@@ -120,9 +120,9 @@ public class MediasoupClientTest extends BaseTest {
       exceptionException(() -> device.load(cap));
     }
 
-    // 'device->GetRtpCapabilities()' succeeds".
+    // 'device->getRtpCapabilities()' succeeds".
     {
-      assertFalse(TextUtils.isEmpty(device.GetRtpCapabilities()));
+      assertFalse(TextUtils.isEmpty(device.getRtpCapabilities()));
     }
 
     // device->CanProduce() with 'audio'/'video' kind returns true.

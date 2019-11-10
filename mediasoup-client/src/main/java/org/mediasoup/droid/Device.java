@@ -24,7 +24,7 @@ public class Device {
     return nativeIsLoaded(mNativeDevice);
   }
 
-  public String GetRtpCapabilities() {
+  public String getRtpCapabilities() {
     checkDeviceExists();
     return nativeGetRtpCapabilities(mNativeDevice);
   }

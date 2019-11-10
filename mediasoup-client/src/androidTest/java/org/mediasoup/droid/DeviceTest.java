@@ -52,9 +52,9 @@ public class DeviceTest extends BaseTest {
       assertFalse(mDevice.isLoaded());
     }
 
-    // 'device->GetRtpCapabilities()' throws if not loaded.
+    // 'device->getRtpCapabilities()' throws if not loaded.
     {
-      exceptionException(mDevice::GetRtpCapabilities, "Not loaded");
+      exceptionException(mDevice::getRtpCapabilities, "Not loaded");
     }
 
     // 'device->CanProduce()' with audio/video throws if not loaded.
@@ -92,7 +92,7 @@ public class DeviceTest extends BaseTest {
     // 'device->Load()' succeeds.
     mDevice.load(routerRtpCapabilities);
     assertTrue(mDevice.isLoaded());
-    assertFalse(TextUtils.isEmpty(mDevice.GetRtpCapabilities()));
+    assertFalse(TextUtils.isEmpty(mDevice.getRtpCapabilities()));
     assertTrue(mDevice.canProduce("audio"));
     assertTrue(mDevice.canProduce("video"));
 
