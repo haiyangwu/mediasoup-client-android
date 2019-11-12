@@ -30,9 +30,12 @@ function get_dep()
 
 	cd ${DEST}
 
-	echo ">>> [INFO] setting '${GIT_TAG}' git tag ..."
-	git checkout --quiet ${GIT_TAG}
-	set -e
+    if [ -z '${GIT_TAG}' ]
+    then
+        echo ">>> [INFO] setting '${GIT_TAG}' git tag ..."
+        git checkout --quiet ${GIT_TAG}
+        set -e
+    fi
 
 	echo ">>> [INFO] adding dep source code to the repository ..."
 	rm -rf .git
@@ -52,15 +55,50 @@ function get_libmediasoupclient()
 	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
 }
 
+function get_webrtc()
+{
+    GIT_REPO="-b m74 --depth=1 https://github.com/haiyangwu/webrtc-mirror.git"
+	DEST="deps/webrtc/src"
+
+	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
+}
+
+function get_abseil-cpp()
+{
+    GIT_REPO="https://github.com/abseil/abseil-cpp.git"
+	GIT_TAG="20181200"
+	DEST="deps/webrtc/src/third_party/abseil-cpp"
+
+	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
+}
+
+function get_webrtc-libs()
+{
+    GIT_REPO="https://github.com/haiyangwu/webrtc-android-build.git"
+	GIT_TAG="m74"
+	DEST="deps/webrtc/lib"
+
+	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
+}
+
 case "${DEP}" in
 	'-h')
 		echo "Usage:"
-		echo "  ./scripts/$(basename $0) [libmediasoupclient]"
+		echo "  ./scripts/$(basename $0) [libmediasoupclient|webrtc|abseil-cpp|webrtc-libs]"
 		echo
 		;;
 	libmediasoupclient)
 		get_libmediasoupclient
 		;;
+    webrtc)
+        get_webrtc
+        ;;
+    abseil-cpp)
+        get_abseil-cpp
+        ;;
+    webrtc-libs)
+        get_webrtc-libs
+        ;;
 	*)
 		echo ">>> [ERROR] unknown dep '${DEP}'" >&2
 		exit 1
