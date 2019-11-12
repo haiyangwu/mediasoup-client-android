@@ -1,7 +1,7 @@
 package org.mediasoup.droid;
 
 import android.content.Context;
-import android.support.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Before;
 
@@ -11,7 +11,7 @@ public abstract class BaseTest {
 
   @Before
   public void setUp() {
-    mContext = InstrumentationRegistry.getContext();
+    mContext = InstrumentationRegistry.getInstrumentation().getContext();
     Logger.setLogLevel(Logger.LogLevel.LOG_TRACE);
     Logger.setDefaultHandler();
     MediasoupClient.initialize(mContext.getApplicationContext());

@@ -1,8 +1,8 @@
 package org.mediasoup.droid;
 
 import android.content.Context;
-import android.support.test.InstrumentationRegistry;
-import android.support.test.runner.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import android.text.TextUtils;
 
 import org.junit.After;
@@ -89,7 +89,7 @@ public class PeerConnectionTest extends BaseTest{
   @Test
   public void setRemoteDescription() throws Exception {
     // 'pc.SetRemoteDescription()' succeeds if correct SDP is provided.
-    Context ctx = InstrumentationRegistry.getTargetContext();
+    Context ctx = InstrumentationRegistry.getInstrumentation().getContext();
     InputStream is = ctx.getResources().getAssets().open("webrtc.sdp");
     String sdp = Utils.readTextStream(is);
     is.close();

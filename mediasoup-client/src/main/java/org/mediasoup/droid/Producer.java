@@ -1,6 +1,6 @@
 package org.mediasoup.droid;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 import org.webrtc.CalledByNative;
 import org.webrtc.MediaStreamTrack;
