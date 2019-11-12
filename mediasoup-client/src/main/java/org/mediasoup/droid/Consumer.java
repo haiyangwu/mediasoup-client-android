@@ -16,13 +16,13 @@ public class Consumer {
 
   private long mNativeConsumer;
 
-  @Nullable private MediaStreamTrack cachedTrack;
+  @Nullable private MediaStreamTrack mCachedTrack;
 
   @CalledByNative
   public Consumer(long nativeProducer) {
     mNativeConsumer = nativeProducer;
     long nativeTrack =  getNativeTrack(mNativeConsumer);
-    cachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
+    mCachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
   }
 
   public String getId() {
@@ -46,7 +46,7 @@ public class Consumer {
   }
 
   public MediaStreamTrack getTrack() {
-    return cachedTrack;
+    return mCachedTrack;
   }
 
   public String getRtpParameters() {

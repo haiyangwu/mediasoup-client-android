@@ -29,7 +29,8 @@ public class Logger {
     if (loggableLevel.ordinal() <= LogLevel.LOG_DEBUG.ordinal()) {
       nativeSetLogLevel(level.ordinal());
     } else {
-      // TODO(haiyangwu): native log level means different.
+      // native log level means different
+      // https://mediasoup.org/documentation/v3/libmediasoupclient/api/#Logger
       nativeSetLogLevel(LogLevel.LOG_DEBUG.ordinal());
     }
   }

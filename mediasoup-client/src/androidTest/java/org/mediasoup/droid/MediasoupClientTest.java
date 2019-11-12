@@ -202,7 +202,9 @@ public class MediasoupClientTest extends BaseTest {
       assertEquals(audioProducer.getId(), sendTransportListener.mAudioProducerId);
       assertFalse(audioProducer.isClosed());
       assertEquals("audio", audioProducer.getKind());
-      assertEquals(RTCUtils.getNativeMediaStreamTrack(audioTrack), audioProducer.getTrack());
+      assertEquals(
+          RTCUtils.getNativeMediaStreamTrack(audioTrack),
+          RTCUtils.getNativeMediaStreamTrack(audioProducer.getTrack()));
       assertTrue(audioProducer.isPaused());
       assertEquals(0, audioProducer.getMaxSpatialLayer());
       assertEquals(appData, audioProducer.getAppData());
@@ -241,7 +243,9 @@ public class MediasoupClientTest extends BaseTest {
       assertEquals(videoProducer.getId(), sendTransportListener.mVideoProducerId);
       assertFalse(videoProducer.isClosed());
       assertEquals("video", videoProducer.getKind());
-      assertEquals(RTCUtils.getNativeMediaStreamTrack(videoTrack), videoProducer.getTrack());
+      assertEquals(
+          RTCUtils.getNativeMediaStreamTrack(videoTrack),
+          RTCUtils.getNativeMediaStreamTrack(videoProducer.getTrack()));
 
       rtpParameters = new JSONObject(videoProducer.getRtpParameters());
       assertTrue(rtpParameters.has("codecs"));
@@ -437,7 +441,9 @@ public class MediasoupClientTest extends BaseTest {
       audioProducer.pause();
       AudioTrack newAudioTrack = PeerConnectionUtils.createAudioTrack(mContext, "audio-track-id-2");
       audioProducer.replaceTrack(newAudioTrack);
-      assertEquals(RTCUtils.getNativeMediaStreamTrack(newAudioTrack), audioProducer.getTrack());
+      assertEquals(
+          RTCUtils.getNativeMediaStreamTrack(newAudioTrack),
+          RTCUtils.getNativeMediaStreamTrack(audioProducer.getTrack()));
 
       // Producer was already paused.
       assertTrue(audioProducer.isPaused());
@@ -447,7 +453,9 @@ public class MediasoupClientTest extends BaseTest {
 
       VideoTrack newVideoTrack = PeerConnectionUtils.createVideoTrack(mContext, "video-track-id-2");
       videoProducer.replaceTrack(newVideoTrack);
-      assertEquals(RTCUtils.getNativeMediaStreamTrack(newVideoTrack), videoProducer.getTrack());
+      assertEquals(
+          RTCUtils.getNativeMediaStreamTrack(newVideoTrack),
+          RTCUtils.getNativeMediaStreamTrack(videoProducer.getTrack()));
       assertFalse(videoProducer.isPaused());
 
       videoTrack.dispose();

@@ -1,5 +1,7 @@
 package org.mediasoup.droid;
 
+import android.support.annotation.Nullable;
+
 import org.webrtc.CalledByNative;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.RTCUtils;
@@ -13,10 +15,14 @@ public class Producer {
   }
 
   private long mNativeProducer;
+  @Nullable
+  private MediaStreamTrack mCachedTrack;
 
   @CalledByNative
   public Producer(long nativeProducer) {
     mNativeProducer = nativeProducer;
+    long nativeTrack =  getNativeTrack(mNativeProducer);
+    mCachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
   }
 
   public String getId() {
@@ -31,9 +37,8 @@ public class Producer {
     return getNativeKind(mNativeProducer);
   }
 
-  // TODO(haiyangwu): return native track pointer for now.
-  public long getTrack() {
-    return getNativeTrack(mNativeProducer);
+  public MediaStreamTrack getTrack() {
+    return mCachedTrack;
   }
 
   public boolean isPaused() {
@@ -67,6 +72,7 @@ public class Producer {
   public void replaceTrack(MediaStreamTrack track) {
     long nativeMediaStreamTrack = RTCUtils.getNativeMediaStreamTrack(track);
     nativeReplaceTrack(mNativeProducer, nativeMediaStreamTrack);
+    mCachedTrack = track;
   }
 
   public String getStats() {
