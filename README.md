@@ -25,7 +25,6 @@ export PATH=$PATH:/path/to/depot_tools
 ```bash
 cd /path/to/depot_tools
 ./build/install-build-deps.sh
-./build/install-build-deps-android.sh
 ```
 
 ### Build Native WebRTC Libraries
@@ -47,10 +46,6 @@ yes | ./third_party/android_tools/sdk/tools/bin/sdkmanager --licenses
 # Apply the path located below
 
 # Build Android WebRTC
-# Recommended to use the below command to generate libs for all supported arch:
-./tools_webrtc/android/build_aar.py
-
-# Use the below to build for only a certain lib(change the target_cpu)
 gn gen out/android-webrtc-m74 --args='target_os = "android" target_cpu = "x86" is_debug = false rtc_include_tests = false rtc_use_h264 = true proprietary_codecs = true ffmpeg_branding = "Chrome" use_openh264 = true is_component_build = false is_clang = true rtc_enable_protobuf = false use_rtti = true use_custom_libcxx = false'
 ninja -C out/android-webrtc-m74
 
