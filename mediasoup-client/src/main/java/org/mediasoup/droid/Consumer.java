@@ -21,7 +21,7 @@ public class Consumer {
   @CalledByNative
   public Consumer(long nativeProducer) {
     mNativeConsumer = nativeProducer;
-    long nativeTrack =  getNativeTrack(mNativeConsumer);
+    long nativeTrack = getNativeTrack(mNativeConsumer);
     mCachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
   }
 
