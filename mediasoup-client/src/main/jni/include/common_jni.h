@@ -7,13 +7,13 @@
 using webrtc::JavaParamRef;
 using webrtc::JavaRef;
 
-using webrtc::NativeToJavaString;
 using webrtc::JavaToNativeString;
-using webrtc::NativeToJavaPointer;
 using webrtc::NativeToJavaList;
-using webrtc::ScopedJavaLocalRef;
+using webrtc::NativeToJavaPointer;
+using webrtc::NativeToJavaString;
 using webrtc::ScopedJavaGlobalRef;
+using webrtc::ScopedJavaLocalRef;
 
 using nlohmann::json;
 
-#endif //MEDIASOUP_CLIENT_ANDROID_COMMON_JNI_H
+#endif // MEDIASOUP_CLIENT_ANDROID_COMMON_JNI_H
