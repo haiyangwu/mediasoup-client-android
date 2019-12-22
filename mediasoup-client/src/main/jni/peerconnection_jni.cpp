@@ -4,7 +4,7 @@
 #include "Logger.hpp"
 #include "PeerConnection.hpp"
 #include "sdk/android/jni/peerconnection_jni.h"
-#include "api/rtc_error.h"
+#include <api/rtc_error.h>
 #include <jni.h>
 #include <sdk/android/src/jni/pc/media_stream_track.h>
 #include <sdk/android/src/jni/pc/peer_connection.h>
@@ -38,7 +38,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_org_mediasoup_droid_PeerConnection_nativ
 {
 	MSC_TRACE();
 
-	auto listener = new PrivateListenerJNI(env, JavaParamRef<jobject>(j_listener));
+	auto listener = new PrivateListenerJni(env, JavaParamRef<jobject>(j_listener));
 
 	PeerConnection::Options options;
 	JavaToNativeOptions(env, JavaParamRef<jobject>(j_options), &options);

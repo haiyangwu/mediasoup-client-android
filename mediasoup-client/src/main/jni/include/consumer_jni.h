@@ -27,12 +27,12 @@ private:
 	std::unique_ptr<Consumer::Listener> listener_;
 };
 
-class ConsumerListenerJNI : public Consumer::Listener
+class ConsumerListenerJni : public Consumer::Listener
 {
 public:
-	ConsumerListenerJNI(JNIEnv* env, const JavaRef<jobject>& j_listener_);
+	ConsumerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
 
-	~ConsumerListenerJNI()
+	~ConsumerListenerJni()
 	{
 		if (j_consumer_ != nullptr)
 		{

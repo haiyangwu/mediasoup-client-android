@@ -27,12 +27,12 @@ private:
 	std::unique_ptr<Producer::Listener> listener_;
 };
 
-class ProducerListenerJNI : public Producer::Listener
+class ProducerListenerJni : public Producer::Listener
 {
 public:
-	ProducerListenerJNI(JNIEnv* env, const JavaRef<jobject>& j_listener_);
+	ProducerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
 
-	~ProducerListenerJNI()
+	~ProducerListenerJni()
 	{
 		if (j_producer_ != nullptr)
 		{

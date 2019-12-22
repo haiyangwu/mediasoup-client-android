@@ -3,8 +3,8 @@
 
 #include "PeerConnection.hpp"
 #include "common_jni.h"
-#include "sdk/android/src/jni/pc/peer_connection.h"
 #include <jni.h>
+#include <sdk/android/src/jni/pc/peer_connection.h>
 
 namespace mediasoupclient
 {
@@ -35,13 +35,13 @@ private:
 	std::unique_ptr<PeerConnection::PrivateListener> observer_;
 };
 
-class PrivateListenerJNI : public PeerConnection::PrivateListener
+class PrivateListenerJni : public PeerConnection::PrivateListener
 {
 private:
 	webrtc::jni::PeerConnectionObserverJni observerJni;
 
 public:
-	PrivateListenerJNI(JNIEnv* env, const webrtc::JavaRef<jobject>& j_observer)
+	PrivateListenerJni(JNIEnv* env, const webrtc::JavaRef<jobject>& j_observer)
 	  : observerJni(env, j_observer)
 	{
 	}

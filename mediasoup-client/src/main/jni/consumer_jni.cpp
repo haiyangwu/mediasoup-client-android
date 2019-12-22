@@ -7,13 +7,13 @@
 
 namespace mediasoupclient
 {
-ConsumerListenerJNI::ConsumerListenerJNI(JNIEnv* env, const JavaRef<jobject>& j_listener_)
+ConsumerListenerJni::ConsumerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_)
   : j_listener_(env, j_listener_)
 {
 	MSC_TRACE();
 }
 
-void ConsumerListenerJNI::OnTransportClose(Consumer* consumer)
+void ConsumerListenerJni::OnTransportClose(Consumer* consumer)
 {
 	MSC_TRACE();
 

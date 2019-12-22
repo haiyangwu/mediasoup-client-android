@@ -1,7 +1,7 @@
 #ifndef MEDIASOUP_CLIENT_ANDROID_COMMON_JNI_H
 #define MEDIASOUP_CLIENT_ANDROID_COMMON_JNI_H
 
-#include "json.hpp"
+#include <json.hpp>
 #include <sdk/android/native_api/jni/java_types.h>
 
 using webrtc::JavaParamRef;

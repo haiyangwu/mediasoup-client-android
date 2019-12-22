@@ -229,7 +229,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_SendTransport_nati
 
 	try
 	{
-		auto listener = new ProducerListenerJNI(env, JavaParamRef<jobject>(j_listener));
+		auto listener = new ProducerListenerJni(env, JavaParamRef<jobject>(j_listener));
 		auto track    = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(j_track);
 		std::vector<webrtc::RtpEncodingParameters> encodings;
 		if (j_encodings != nullptr)
@@ -296,7 +296,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_RecvTransport_nati
 
 	try
 	{
-		auto listener      = new ConsumerListenerJNI(env, JavaParamRef<jobject>(j_listener));
+		auto listener      = new ConsumerListenerJni(env, JavaParamRef<jobject>(j_listener));
 		auto id            = JavaToNativeString(env, JavaParamRef<jstring>(j_id));
 		auto producerId    = JavaToNativeString(env, JavaParamRef<jstring>(j_producerId));
 		auto kind          = JavaToNativeString(env, JavaParamRef<jstring>(j_kind));
