@@ -50,7 +50,7 @@ public class MediasoupClientTest extends BaseTest {
   }
 
   @Test
-  public void mediasoupclient() throws JSONException {
+  public void mediasoupclient() throws JSONException, MediasoupException {
     Device device;
     String routerRtpCapabilities;
 

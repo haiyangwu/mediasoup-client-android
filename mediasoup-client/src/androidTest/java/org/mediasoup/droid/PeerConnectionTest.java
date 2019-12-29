@@ -89,7 +89,7 @@ public class PeerConnectionTest extends BaseTest{
   @Test
   public void setRemoteDescription() throws Exception {
     // 'pc.SetRemoteDescription()' succeeds if correct SDP is provided.
-    Context ctx = InstrumentationRegistry.getInstrumentation().getContext();
+    Context ctx = InstrumentationRegistry.getInstrumentation().getTargetContext();
     InputStream is = ctx.getResources().getAssets().open("webrtc.sdp");
     String sdp = Utils.readTextStream(is);
     is.close();
@@ -100,7 +100,7 @@ public class PeerConnectionTest extends BaseTest{
   }
 
   @Test
-  public void createOffer() {
+  public void createOffer() throws MediasoupException {
     // 'pc.CreateOffer()' succeeds.
     String offer = mPc.createOffer(new MediaConstraints());
     assertFalse("'pc.CreateOffer()' succeeds", TextUtils.isEmpty(offer));

@@ -116,9 +116,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_mediasoup_droid_PeerConnection_nat
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 		return nullptr;
 	}
 }
@@ -138,9 +136,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_PeerConnection_native
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 
@@ -159,9 +155,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_PeerConnection_native
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 

@@ -16,7 +16,7 @@ public abstract class Transport {
     return getNativeAppData();
   }
 
-  public String getStats() {
+  public String getStats() throws MediasoupException {
     return getNativeStats();
   }
 
@@ -24,11 +24,11 @@ public abstract class Transport {
     return isNativeClosed();
   }
 
-  public void restartIce(String iceParameters) {
+  public void restartIce(String iceParameters) throws MediasoupException {
     nativeRestartIce(iceParameters);
   }
 
-  public void updateIceServers(String iceServers) {
+  public void updateIceServers(String iceServers) throws MediasoupException {
     nativeUpdateIceServers(iceServers);
   }
 
@@ -41,10 +41,10 @@ public abstract class Transport {
 
   public interface Listener {
 
-    @CalledByNative
+    @CalledByNative("Listener")
     void onConnect(Transport transport, String dtlsParameters);
 
-    @CalledByNative
+    @CalledByNative("Listener")
     void onConnectionStateChange(Transport transport, String connectionState);
   }
 
@@ -54,13 +54,13 @@ public abstract class Transport {
 
   private native String getNativeAppData();
 
-  private native String getNativeStats();
+  private native String getNativeStats() throws MediasoupException;
 
   private native boolean isNativeClosed();
 
-  private native void nativeRestartIce(String iceParameters);
+  private native void nativeRestartIce(String iceParameters) throws MediasoupException;
 
-  private native void nativeUpdateIceServers(String iceServers);
+  private native void nativeUpdateIceServers(String iceServers) throws MediasoupException;
 
   private native void nativeClose();
 }

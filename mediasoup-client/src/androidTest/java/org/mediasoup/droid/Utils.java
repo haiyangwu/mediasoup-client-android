@@ -17,10 +17,14 @@ public class Utils {
     return result.toString("UTF-8");
   }
 
-  public static boolean exceptionException(Runnable runnable, String errorMessage) {
+  public interface MediaSoupRunnable {
+    void run() throws MediasoupException;
+  }
+
+  public static boolean exceptionException(MediaSoupRunnable runnable, String errorMessage) {
     try {
       runnable.run();
-    } catch (RuntimeException e) {
+    } catch (MediasoupException e) {
       return TextUtils.isEmpty(errorMessage) || e.getMessage().endsWith(errorMessage);
     } catch (Exception e) {
       return false;
@@ -28,7 +32,7 @@ public class Utils {
     return false;
   }
 
-  public static boolean exceptionException(Runnable runnable) {
+  public static boolean exceptionException(MediaSoupRunnable runnable) {
     return exceptionException(runnable, null);
   }
 }

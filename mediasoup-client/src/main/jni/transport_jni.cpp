@@ -137,9 +137,7 @@ Java_org_mediasoup_droid_Transport_getNativeStats(JNIEnv* env, jobject j_transpo
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 		return nullptr;
 	}
 }
@@ -170,9 +168,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeResta
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 
@@ -193,9 +189,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeUpdat
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 
@@ -258,9 +252,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_SendTransport_nati
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 		return nullptr;
 	}
 }
@@ -321,9 +313,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_RecvTransport_nati
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 		return nullptr;
 	}
 }

@@ -60,7 +60,7 @@ public class Producer {
     nativeResume(mNativeProducer);
   }
 
-  public void setMaxSpatialLayer(int layer) {
+  public void setMaxSpatialLayer(int layer) throws MediasoupException {
     setNativeMaxSpatialLayer(mNativeProducer, layer);
   }
 
@@ -68,13 +68,13 @@ public class Producer {
     nativePause(mNativeProducer);
   }
 
-  public void replaceTrack(MediaStreamTrack track) {
+  public void replaceTrack(MediaStreamTrack track) throws MediasoupException {
     long nativeMediaStreamTrack = RTCUtils.getNativeMediaStreamTrack(track);
     nativeReplaceTrack(mNativeProducer, nativeMediaStreamTrack);
     mCachedTrack = track;
   }
 
-  public String getStats() {
+  public String getStats() throws MediasoupException {
     return getNativeStats(mNativeProducer);
   }
 
@@ -98,15 +98,17 @@ public class Producer {
 
   private static native String getNativeRtpParameters(long nativeProducer);
 
-  private static native String getNativeStats(long nativeProducer);
+  private static native String getNativeStats(long nativeProducer) throws MediasoupException;
 
   private static native void nativeResume(long nativeProducer);
 
-  private static native void setNativeMaxSpatialLayer(long nativeProducer, int layer);
+  private static native void setNativeMaxSpatialLayer(long nativeProducer, int layer)
+      throws MediasoupException;
 
   private static native void nativePause(long nativeProducer);
 
-  private static native void nativeReplaceTrack(long nativeProducer, long track);
+  private static native void nativeReplaceTrack(long nativeProducer, long track)
+      throws MediasoupException;
 
   private static native void nativeClose(long nativeProducer);
 }

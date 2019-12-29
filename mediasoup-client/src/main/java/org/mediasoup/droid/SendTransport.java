@@ -12,7 +12,7 @@ public class SendTransport extends Transport {
   public interface Listener extends Transport.Listener {
 
     /** @return producer Id */
-    @CalledByNative
+    @CalledByNative("Listener")
     String onProduce(Transport transport, String kind, String rtpParameters, String appData);
   }
 
@@ -49,7 +49,8 @@ public class SendTransport extends Transport {
       Producer.Listener listener,
       MediaStreamTrack track,
       List<RtpParameters.Encoding> encodings,
-      String codecOptions) {
+      String codecOptions)
+      throws MediasoupException {
     return produce(listener, track, encodings, codecOptions, null);
   }
 
@@ -58,7 +59,8 @@ public class SendTransport extends Transport {
       MediaStreamTrack track,
       List<RtpParameters.Encoding> encodings,
       String codecOptions,
-      String appData) {
+      String appData)
+      throws MediasoupException {
     checkTransportExists();
     long nativeTrack = RTCUtils.getNativeMediaStreamTrack(track);
     RtpParameters.Encoding[] pEncodings = null;
@@ -78,7 +80,8 @@ public class SendTransport extends Transport {
       long track,
       RtpParameters.Encoding[] encodings,
       String codecOptions,
-      String appData);
+      String appData)
+      throws MediasoupException;
 
   private static native void nativeFreeTransport(long nativeTransport);
 }

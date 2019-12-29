@@ -107,9 +107,7 @@ Java_org_mediasoup_droid_Producer_getNativeStats(JNIEnv* env, jclass /* j_type *
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 		return nullptr;
 	}
 }
@@ -136,9 +134,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Producer_setNativeMax
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 
@@ -163,9 +159,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Producer_nativeReplac
 	catch (const std::exception& e)
 	{
 		MSC_ERROR("%s", e.what());
-		jclass clazz = env->FindClass("java/lang/RuntimeException");
-		env->ThrowNew(clazz, e.what());
-		env->DeleteLocalRef(clazz);
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
 	}
 }
 

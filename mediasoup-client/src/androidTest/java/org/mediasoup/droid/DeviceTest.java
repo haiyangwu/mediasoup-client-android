@@ -85,7 +85,7 @@ public class DeviceTest extends BaseTest {
   }
 
   @Test
-  public void testLoad() {
+  public void testLoad() throws MediasoupException {
     String routerRtpCapabilities = Parameters.generateRouterRtpCapabilities();
     assertFalse(TextUtils.isEmpty(routerRtpCapabilities));
 

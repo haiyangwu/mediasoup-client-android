@@ -4,6 +4,16 @@
 #include <json.hpp>
 #include <sdk/android/native_api/jni/java_types.h>
 
+#define MEDIASOUP_CLIENT_EXCEPTION "org/mediasoup/droid/MediasoupException"
+
+#define THROW_JAVA_EXCEPTION(env, e, name)                                                         \
+	jclass clazz = env->FindClass(name);                                                             \
+	env->ThrowNew(clazz, e.what());                                                                  \
+	env->DeleteLocalRef(clazz);
+
+#define THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e)                                                   \
+	THROW_JAVA_EXCEPTION(env, e, MEDIASOUP_CLIENT_EXCEPTION)
+
 namespace mediasoupclient
 {
 using webrtc::JavaParamRef;

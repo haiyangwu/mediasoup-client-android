@@ -65,7 +65,7 @@ public class Consumer {
     nativePause(mNativeConsumer);
   }
 
-  public String getStats() {
+  public String getStats() throws MediasoupException {
     return getNativeStats(mNativeConsumer);
   }
 
@@ -93,7 +93,7 @@ public class Consumer {
 
   private static native void nativePause(long nativeConsumer);
 
-  private static native String getNativeStats(long nativeConsumer);
+  private static native String getNativeStats(long nativeConsumer) throws MediasoupException;
 
   private static native void nativeClose(long nativeConsumer);
 }

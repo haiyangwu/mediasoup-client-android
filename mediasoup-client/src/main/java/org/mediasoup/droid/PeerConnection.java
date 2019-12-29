@@ -138,11 +138,11 @@ public class PeerConnection {
     return nativeCreateOffer(constraints);
   }
 
-  public String createAnswer(MediaConstraints constraints) {
+  public String createAnswer(MediaConstraints constraints) throws MediasoupException {
     return nativeCreateAnswer(constraints);
   }
 
-  public void setLocalDescription(SessionDescription sessionDescription) {
+  public void setLocalDescription(SessionDescription sessionDescription) throws MediasoupException {
     if (sessionDescription == null) {
       throw new IllegalArgumentException("given sessionDescription is null");
     }
@@ -151,7 +151,8 @@ public class PeerConnection {
         sessionDescription.type.canonicalForm(), sessionDescription.description);
   }
 
-  public void setRemoteDescription(SessionDescription sessionDescription) {
+  public void setRemoteDescription(SessionDescription sessionDescription)
+      throws MediasoupException {
     if (sessionDescription == null) {
       throw new IllegalArgumentException("given sessionDescription is null");
     }
@@ -253,11 +254,13 @@ public class PeerConnection {
 
   private native String nativeCreateOffer(MediaConstraints constraints);
 
-  private native String nativeCreateAnswer(MediaConstraints constraints);
+  private native String nativeCreateAnswer(MediaConstraints constraints) throws MediasoupException;
 
-  private native void nativeSetLocalDescription(String type, String description);
+  private native void nativeSetLocalDescription(String type, String description)
+      throws MediasoupException;
 
-  private native void nativeSetRemoteDescription(String type, String description);
+  private native void nativeSetRemoteDescription(String type, String description)
+      throws MediasoupException;
 
   private native String nativeGetLocalDescription();
 

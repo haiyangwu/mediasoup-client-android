@@ -14,7 +14,7 @@ public class Device {
     mNativeDevice = 0;
   }
 
-  public void load(String routerRtpCapabilities) {
+  public void load(String routerRtpCapabilities) throws MediasoupException {
     checkDeviceExists();
     nativeLoad(mNativeDevice, routerRtpCapabilities);
   }
@@ -24,12 +24,12 @@ public class Device {
     return nativeIsLoaded(mNativeDevice);
   }
 
-  public String getRtpCapabilities() {
+  public String getRtpCapabilities() throws MediasoupException {
     checkDeviceExists();
     return nativeGetRtpCapabilities(mNativeDevice);
   }
 
-  public boolean canProduce(String kind) {
+  public boolean canProduce(String kind) throws MediasoupException {
     checkDeviceExists();
     return nativeCanProduce(mNativeDevice, kind);
   }
@@ -39,7 +39,8 @@ public class Device {
       String id,
       String iceParameters,
       String iceCandidates,
-      String dtlsParameters) {
+      String dtlsParameters)
+      throws MediasoupException {
     return createSendTransport(
         listener, id, iceParameters, iceCandidates, dtlsParameters, null, null);
   }
@@ -51,7 +52,8 @@ public class Device {
       String iceCandidates,
       String dtlsParameters,
       PeerConnection.Options options,
-      String appData) {
+      String appData)
+      throws MediasoupException {
     checkDeviceExists();
     return nativeCreateSendTransport(
         mNativeDevice,
@@ -69,7 +71,8 @@ public class Device {
       String id,
       String iceParameters,
       String iceCandidates,
-      String dtlsParameters) {
+      String dtlsParameters)
+      throws MediasoupException {
     return createRecvTransport(
         listener, id, iceParameters, iceCandidates, dtlsParameters, null, null);
   }
@@ -81,7 +84,8 @@ public class Device {
       String iceCandidates,
       String dtlsParameters,
       PeerConnection.Options options,
-      String appData) {
+      String appData)
+      throws MediasoupException {
     checkDeviceExists();
     return nativeCreateRecvTransport(
         mNativeDevice,
@@ -104,13 +108,15 @@ public class Device {
 
   private static native void nativeFreeDevice(long device);
 
-  private static native void nativeLoad(long device, String routerRtpCapabilities);
+  private static native void nativeLoad(long device, String routerRtpCapabilities)
+      throws MediasoupException;
 
   private static native boolean nativeIsLoaded(long device);
 
-  private static native String nativeGetRtpCapabilities(long device);
+  private static native String nativeGetRtpCapabilities(long device) throws MediasoupException;
 
-  private static native boolean nativeCanProduce(long device, String kind);
+  private static native boolean nativeCanProduce(long device, String kind)
+      throws MediasoupException;
 
   private static native SendTransport nativeCreateSendTransport(
       long device,
@@ -120,7 +126,8 @@ public class Device {
       String iceCandidates,
       String dtlsParameters,
       PeerConnection.Options options,
-      String appData);
+      String appData)
+      throws MediasoupException;
 
   private static native RecvTransport nativeCreateRecvTransport(
       long device,
@@ -130,5 +137,6 @@ public class Device {
       String iceCandidates,
       String dtlsParameters,
       PeerConnection.Options options,
-      String appData);
+      String appData)
+      throws MediasoupException;
 }
