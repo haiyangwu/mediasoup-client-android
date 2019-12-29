@@ -27,12 +27,12 @@ android {
                         "-DMEDIASOUPCLIENT_LOG_TRACE=1",
                         "-DMEDIASOUPCLIENT_LOG_DEV=1"
             }
+        }
 
-            ndk {
-                // Specifies the ABI configurations of your native
-                // libraries Gradle should build and package with your APK.
-                abiFilters 'x86' ,'x86_64', 'armeabi-v7a', 'arm64-v8a'
-            }
+        ndk {
+            // Specifies the ABI configurations of your native
+            // libraries Gradle should build and package with your APK.
+            abiFilters 'x86' ,'x86_64', 'armeabi-v7a', 'arm64-v8a'
         }
     }
 
