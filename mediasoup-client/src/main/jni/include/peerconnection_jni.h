@@ -8,34 +8,7 @@
 
 namespace mediasoupclient
 {
-// Just like OwnedPeerConnection in "sdk/android/src/jni/pc/peer_connection.h"
-//
-// PeerConnection doesn't take ownership of the observer. In Java API, we don't
-// want the client to have to manually dispose the observer. To solve this, this
-// wrapper class is used for object ownership.
-//
-// Also stores reference to the deprecated PeerConnection constraints for now.
-class OwnedPeerConnection
-{
-public:
-	OwnedPeerConnection(PeerConnection* peer_connection, PeerConnection::PrivateListener* observer)
-	  : peer_connection_(peer_connection), observer_(observer)
-	{
-	}
-
-	~OwnedPeerConnection() = default;
-
-	PeerConnection* pc() const
-	{
-		return peer_connection_.get();
-	}
-
-private:
-	std::unique_ptr<PeerConnection> peer_connection_;
-	std::unique_ptr<PeerConnection::PrivateListener> observer_;
-};
-
-class PrivateListenerJni : public PeerConnection::PrivateListener
+class PrivateListenerJni final : public PeerConnection::PrivateListener
 {
 private:
 	webrtc::jni::PeerConnectionObserverJni observerJni;
@@ -131,6 +104,37 @@ public:
 		PrivateListener::OnInterestingUsage(usagePattern);
 		observerJni.OnInterestingUsage(usagePattern);
 	}
+};
+
+// Just like OwnedPeerConnection in "sdk/android/src/jni/pc/peer_connection.h"
+//
+// PeerConnection doesn't take ownership of the observer. In Java API, we don't
+// want the client to have to manually dispose the observer. To solve this, this
+// wrapper class is used for object ownership.
+//
+// Also stores reference to the deprecated PeerConnection constraints for now.
+class OwnedPeerConnection
+{
+public:
+	OwnedPeerConnection(PeerConnection* peer_connection, PrivateListenerJni* observer)
+	  : peer_connection_(peer_connection), observer_(observer)
+	{
+	}
+
+	~OwnedPeerConnection()
+	{
+		delete observer_;
+		delete peer_connection_;
+	}
+
+	PeerConnection* pc() const
+	{
+		return peer_connection_;
+	}
+
+private:
+	PeerConnection* peer_connection_;
+	PrivateListenerJni* observer_;
 };
 
 } // namespace mediasoupclient

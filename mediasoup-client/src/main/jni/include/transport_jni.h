@@ -7,27 +7,7 @@
 
 namespace mediasoupclient
 {
-class OwnedSendTransport
-{
-public:
-	OwnedSendTransport(SendTransport* transport, SendTransport::Listener* listener)
-	  : transport_(transport), listener_(listener)
-	{
-	}
-
-	~OwnedSendTransport() = default;
-
-	SendTransport* transport() const
-	{
-		return transport_.get();
-	}
-
-private:
-	std::unique_ptr<SendTransport> transport_;
-	std::unique_ptr<SendTransport::Listener> listener_;
-};
-
-class SendTransportListenerJni : public SendTransport::Listener
+class SendTransportListenerJni final : public SendTransport::Listener
 {
 public:
 	SendTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
@@ -48,7 +28,7 @@ public:
 	  SendTransport* transport, const std::string& kind, json rtpParameters, const json& appData) override;
 
 public:
-	void SetTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
+	void SetJTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
 	{
 		j_transport_ = env->NewGlobalRef(j_transport.obj());
 	}
@@ -58,27 +38,7 @@ private:
 	jobject j_transport_;
 };
 
-class OwnedRecvTransport
-{
-public:
-	OwnedRecvTransport(RecvTransport* transport, RecvTransport::Listener* listener)
-	  : transport_(transport), listener_(listener)
-	{
-	}
-
-	~OwnedRecvTransport() = default;
-
-	RecvTransport* transport() const
-	{
-		return transport_.get();
-	}
-
-private:
-	std::unique_ptr<RecvTransport> transport_;
-	std::unique_ptr<RecvTransport::Listener> listener_;
-};
-
-class RecvTransportListenerJni : public RecvTransport::Listener
+class RecvTransportListenerJni final : public RecvTransport::Listener
 {
 public:
 	RecvTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
@@ -96,7 +56,7 @@ public:
 	void OnConnectionStateChange(Transport* transport, const std::string& connectionState) override;
 
 public:
-	void SetTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
+	void SetJTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
 	{
 		j_transport_ = env->NewGlobalRef(j_transport.obj());
 	}
@@ -104,6 +64,54 @@ public:
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_;
 	jobject j_transport_;
+};
+
+class OwnedSendTransport
+{
+public:
+	OwnedSendTransport(SendTransport* transport, SendTransportListenerJni* listener)
+	  : transport_(transport), listener_(listener)
+	{
+	}
+
+	~OwnedSendTransport()
+	{
+		delete transport_;
+		delete listener_;
+	}
+
+	SendTransport* transport() const
+	{
+		return transport_;
+	}
+
+private:
+	SendTransport* transport_;
+	SendTransportListenerJni* listener_;
+};
+
+class OwnedRecvTransport
+{
+public:
+	OwnedRecvTransport(RecvTransport* transport, RecvTransportListenerJni* listener)
+	  : transport_(transport), listener_(listener)
+	{
+	}
+
+	~OwnedRecvTransport()
+	{
+		delete transport_;
+		delete listener_;
+	}
+
+	RecvTransport* transport() const
+	{
+		return transport_;
+	}
+
+private:
+	RecvTransport* transport_;
+	RecvTransportListenerJni* listener_;
 };
 
 } // namespace mediasoupclient

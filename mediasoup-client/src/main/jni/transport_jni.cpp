@@ -252,7 +252,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_SendTransport_nati
 
 		OwnedProducer* producer = new OwnedProducer(originProducer, listener);
 		auto j_producer = Java_Mediasoup_Producer_Constructor(env, NativeToJavaPointer(producer));
-		listener->SetProducer(env, j_producer);
+		listener->SetJProducer(env, j_producer);
 		return j_producer.Release();
 	}
 	catch (const std::exception& e)
@@ -315,7 +315,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_RecvTransport_nati
 		auto consumer  = transport->Consume(listener, id, producerId, kind, &rtpParameters, appData);
 		auto ownedConsumer = new OwnedConsumer(consumer, listener);
 		auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(ownedConsumer));
-		listener->SetConsumer(env, j_consumer);
+		listener->SetJConsumer(env, j_consumer);
 		return j_consumer.Release();
 	}
 	catch (const std::exception& e)

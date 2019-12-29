@@ -148,7 +148,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_Device_nativeCreat
 		auto ownedSendTransport = new OwnedSendTransport(transport, listener);
 		auto j_transport =
 		  Java_Mediasoup_SendTransport_Constructor(env, NativeToJavaPointer(ownedSendTransport));
-		listener->SetTransport(env, j_transport);
+		listener->SetJTransport(env, j_transport);
 		return j_transport.Release();
 	}
 	catch (const std::exception& e)
@@ -202,7 +202,7 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_Device_nativeCreat
 		auto ownedRecvTransport = new OwnedRecvTransport(transport, listener);
 		auto j_transport =
 		  Java_Mediasoup_RecvTransport_Constructor(env, NativeToJavaPointer(ownedRecvTransport));
-		listener->SetTransport(env, j_transport);
+		listener->SetJTransport(env, j_transport);
 		return j_transport.Release();
 	}
 	catch (const std::exception& e)

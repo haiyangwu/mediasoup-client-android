@@ -7,30 +7,10 @@
 
 namespace mediasoupclient
 {
-class OwnedConsumer
+class ConsumerListenerJni final : public Consumer::Listener
 {
 public:
-	OwnedConsumer(Consumer* consumer, Consumer::Listener* listener)
-	  : consumer_(consumer), listener_(listener)
-	{
-	}
-
-	~OwnedConsumer() = default;
-
-	Consumer* consumer() const
-	{
-		return consumer_.get();
-	}
-
-private:
-	std::unique_ptr<Consumer> consumer_;
-	std::unique_ptr<Consumer::Listener> listener_;
-};
-
-class ConsumerListenerJni : public Consumer::Listener
-{
-public:
-	ConsumerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
+	ConsumerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener);
 
 	~ConsumerListenerJni()
 	{
@@ -40,17 +20,41 @@ public:
 		}
 	}
 
-	void OnTransportClose(Consumer* consumer) override;
+	void OnTransportClose(Consumer* native_consumer) override;
 
 public:
-	void SetConsumer(JNIEnv* env, const JavaRef<jobject>& j_consumer)
+	void SetJConsumer(JNIEnv* env, const JavaRef<jobject>& j_consumer)
 	{
 		j_consumer_ = env->NewGlobalRef(j_consumer.obj());
 	}
 
 private:
-	const ScopedJavaGlobalRef<jobject> j_listener_;
+	const ScopedJavaGlobalRef<jobject> j_listener_global_;
 	jobject j_consumer_;
+};
+
+class OwnedConsumer
+{
+public:
+	OwnedConsumer(Consumer* consumer, ConsumerListenerJni* listener)
+	  : consumer_(consumer), listener_(listener)
+	{
+	}
+
+	~OwnedConsumer()
+	{
+		delete consumer_;
+		delete listener_;
+	}
+
+	Consumer* consumer() const
+	{
+		return consumer_;
+	}
+
+private:
+	Consumer* consumer_;
+	ConsumerListenerJni* listener_;
 };
 
 } // namespace mediasoupclient

@@ -7,27 +7,7 @@
 
 namespace mediasoupclient
 {
-class OwnedProducer
-{
-public:
-	OwnedProducer(Producer* producer, Producer::Listener* listener)
-	  : producer_(producer), listener_(listener)
-	{
-	}
-
-	~OwnedProducer() = default;
-
-	Producer* producer() const
-	{
-		return producer_.get();
-	}
-
-private:
-	std::unique_ptr<Producer> producer_;
-	std::unique_ptr<Producer::Listener> listener_;
-};
-
-class ProducerListenerJni : public Producer::Listener
+class ProducerListenerJni final : public Producer::Listener
 {
 public:
 	ProducerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
@@ -43,7 +23,7 @@ public:
 	void OnTransportClose(Producer* producer) override;
 
 public:
-	void SetProducer(JNIEnv* env, const JavaRef<jobject>& j_producer)
+	void SetJProducer(JNIEnv* env, const JavaRef<jobject>& j_producer)
 	{
 		j_producer_ = env->NewGlobalRef(j_producer.obj());
 	}
@@ -51,6 +31,30 @@ public:
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_;
 	jobject j_producer_;
+};
+
+class OwnedProducer
+{
+public:
+	OwnedProducer(Producer* producer, ProducerListenerJni* listener)
+	  : producer_(producer), listener_(listener)
+	{
+	}
+
+	~OwnedProducer()
+	{
+		delete producer_;
+		delete listener_;
+	}
+
+	Producer* producer() const
+	{
+		return producer_;
+	}
+
+private:
+	Producer* producer_;
+	ProducerListenerJni* listener_;
 };
 
 } // namespace mediasoupclient

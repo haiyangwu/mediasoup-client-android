@@ -4,6 +4,8 @@
 #include <json.hpp>
 #include <sdk/android/native_api/jni/java_types.h>
 
+namespace mediasoupclient
+{
 using webrtc::JavaParamRef;
 using webrtc::JavaRef;
 
@@ -15,5 +17,6 @@ using webrtc::ScopedJavaGlobalRef;
 using webrtc::ScopedJavaLocalRef;
 
 using nlohmann::json;
+} // namespace mediasoupclient
 
 #endif // MEDIASOUP_CLIENT_ANDROID_COMMON_JNI_H
