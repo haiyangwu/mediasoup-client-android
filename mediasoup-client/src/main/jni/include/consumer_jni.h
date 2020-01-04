@@ -43,8 +43,8 @@ public:
 
 	~OwnedConsumer()
 	{
-		delete consumer_;
 		delete listener_;
+		delete consumer_;
 	}
 
 	Consumer* consumer() const

@@ -76,8 +76,8 @@ public:
 
 	~OwnedSendTransport()
 	{
-		delete transport_;
 		delete listener_;
+		delete transport_;
 	}
 
 	SendTransport* transport() const
@@ -100,8 +100,8 @@ public:
 
 	~OwnedRecvTransport()
 	{
-		delete transport_;
 		delete listener_;
+		delete transport_;
 	}
 
 	RecvTransport* transport() const

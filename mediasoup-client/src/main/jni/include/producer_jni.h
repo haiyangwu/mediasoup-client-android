@@ -43,8 +43,8 @@ public:
 
 	~OwnedProducer()
 	{
-		delete producer_;
 		delete listener_;
+		delete producer_;
 	}
 
 	Producer* producer() const
