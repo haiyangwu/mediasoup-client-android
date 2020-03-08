@@ -18,67 +18,67 @@ implementation 'org.mediasoup.droid:mediasoup-client:3.0.4-beta-1'
 * Create `Device` and load `routerRtpCapabilities`
 
 ```Java
-  Device mMediasoupDevice = new Device();
-  // ...
-  // routerRtpCapabilities, the response of request `getRouterRtpCapabilities` from mediasoup-demo server
-  mMediasoupDevice.load(routerRtpCapabilities)
+Device mMediasoupDevice = new Device();
+// ...
+// routerRtpCapabilities, the response of request `getRouterRtpCapabilities` from mediasoup-demo server
+mMediasoupDevice.load(routerRtpCapabilities)
 ```
 
 * Create `SendTransport` and produce `MediaStreamTrack`
 ```Java
-  // ...
-  // res, the response of request `createWebRtcTransport` from mediasoup-demo server
-  JSONObject info = new JSONObject(res);
-  String id = info.optString("id");
-  String iceParameters = info.optString("iceParameters");
-  String iceCandidates = info.optString("iceCandidates");
-  String dtlsParameters = info.optString("dtlsParameters");
-  String sctpParameters = info.optString("sctpParameters");
+// ...
+// res, the response of request `createWebRtcTransport` from mediasoup-demo server
+JSONObject info = new JSONObject(res);
+String id = info.optString("id");
+String iceParameters = info.optString("iceParameters");
+String iceCandidates = info.optString("iceCandidates");
+String dtlsParameters = info.optString("dtlsParameters");
+String sctpParameters = info.optString("sctpParameters");
 
-  SendTransport mSendTransport =
-    mMediasoupDevice.createSendTransport(
-    sendTransportListener, id, iceParameters, iceCandidates, dtlsParameters);
-  // ...
-  // mLocalVideoTrack, created by `org.webrtc.PeerConnectionFactory`
-  Producer mCamProducer =
-    mSendTransport.produce(
-    producer -> {
-      Logger.e(TAG, "onTransportClose(), camProducer");
-    },
-    mLocalVideoTrack, null, null);
+SendTransport mSendTransport =
+  mMediasoupDevice.createSendTransport(
+  sendTransportListener, id, iceParameters, iceCandidates, dtlsParameters);
+// ...
+// mLocalVideoTrack, created by `org.webrtc.PeerConnectionFactory`
+Producer mCamProducer =
+  mSendTransport.produce(
+  producer -> {
+    Logger.e(TAG, "onTransportClose(), camProducer");
+  },
+  mLocalVideoTrack, null, null);
 ```
 
 * Create `RecvTransport` and consume `MediaStreamTrack`
 ```Java
-  // ...
-  // res, the response of request `createWebRtcTransport` from mediasoup-demo server
-  JSONObject info = new JSONObject(res);
-  String id = info.optString("id");
-  String iceParameters = info.optString("iceParameters");
-  String iceCandidates = info.optString("iceCandidates");
-  String dtlsParameters = info.optString("dtlsParameters");
-  String sctpParameters = info.optString("sctpParameters");
+// ...
+// res, the response of request `createWebRtcTransport` from mediasoup-demo server
+JSONObject info = new JSONObject(res);
+String id = info.optString("id");
+String iceParameters = info.optString("iceParameters");
+String iceCandidates = info.optString("iceCandidates");
+String dtlsParameters = info.optString("dtlsParameters");
+String sctpParameters = info.optString("sctpParameters");
 
-  RecvTransport mRecvTransport =
-    mMediasoupDevice.createRecvTransport(
-    recvTransportListener, id, iceParameters, iceCandidates, dtlsParameters);
+RecvTransport mRecvTransport =
+  mMediasoupDevice.createRecvTransport(
+  recvTransportListener, id, iceParameters, iceCandidates, dtlsParameters);
 
-  // ...
-  // request, the request `newConsumer` from mediasoup-demo server
-  JSONObject data = request.getData();
-  String peerId = data.optString("peerId");
-  String producerId = data.optString("producerId");
-  String id = data.optString("id");
-  String kind = data.optString("kind");
-  String rtpParameters = data.optString("rtpParameters");
-  String type = data.optString("type");
-  String appData = data.optString("appData");
-  Consumer consumer =
-    mRecvTransport.consume(
-    c -> {
-      Logger.w(TAG, "onTransportClose for consume");
-    },
-    id, producerId, kind, rtpParameters, appData);
+// ...
+// request, the request `newConsumer` from mediasoup-demo server
+JSONObject data = request.getData();
+String peerId = data.optString("peerId");
+String producerId = data.optString("producerId");
+String id = data.optString("id");
+String kind = data.optString("kind");
+String rtpParameters = data.optString("rtpParameters");
+String type = data.optString("type");
+String appData = data.optString("appData");
+Consumer consumer =
+  mRecvTransport.consume(
+  c -> {
+    Logger.w(TAG, "onTransportClose for consume");
+  },
+  id, producerId, kind, rtpParameters, appData);
 ```
 
 ## Demo Project
