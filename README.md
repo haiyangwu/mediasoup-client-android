@@ -1,6 +1,7 @@
 # mediasoup-client-android
 
 [![Bintray][bintray-shield-mediasoup-client-android]][bintray-mediasoup-client-android]
+[![Codacy Badge][codacy-grade-shield-mediasoup-client-android]][codacy-grade-mediasoup-client-android]
 
 mediasoup android client side library https://mediasoup.org
 
@@ -80,13 +81,26 @@ Consumer consumer =
   },
   id, producerId, kind, rtpParameters, appData);
 ```
+## Dependencies
+
+* [libmediasoupclient][libmediasoupclient] mediasoup client side C++ library which supported by mediasoup team
+* [webrtc-android-build][webrtc-android-build] my personal `webrtc` android prebuilt static library which may be compiled with some patch 
+
 
 ## Demo Project
 
 [mediasoup-demo-android][mediasoup-demo-android]
 
+## TODO
+* [ ] sync to the latest version of [libmediasoupclient][libmediasoupclient] and adapter to `webrtc` m79
+* [ ] support `DataProducer` etc
+* [ ] add convenient `Gradle Tasks` for sync, compile and so on
+* [ ] add script to use `generate-jni` to automatic generate `xxx-jni.h
+* [ ] document
+
 
 ## Bugs and Feedback
+
 For bugs, feature requests, and discussion please use [GitHub Issues][issues].
 
 ## Author
@@ -101,5 +115,12 @@ Haiyang Wu([@haiyangwu](https://github.com/haiyangwu/) at Github)
 
 [bintray-mediasoup-client-android]: https://mvnrepository.com/artifact/org.mediasoup.droid/mediasoup-client
 [bintray-shield-mediasoup-client-android]: https://img.shields.io/bintray/v/haiyangwu/maven/mediasoup-client
+
+[codacy-grade-shield-mediasoup-client-android]: https://api.codacy.com/project/badge/Grade/506c48c5457b462a82afe786762956dc
+[codacy-grade-mediasoup-client-android]: https://app.codacy.com/manual/haiyangwu/mediasoup-client-android?utm_source=github.com&utm_medium=referral&utm_content=haiyangwu/mediasoup-client-android&utm_campaign=Badge_Grade_Dashboard
+
+[libmediasoupclient]: https://github.com/versatica/libmediasoupclient
+[webrtc-android-build]: https://github.com/haiyangwu/webrtc-android-build
+
 [mediasoup-demo-android]: https://github.com/haiyangwu/mediasoup-demo-android
 [issues]: https://github.com/haiyangwu/mediasoup-client-android/issues
