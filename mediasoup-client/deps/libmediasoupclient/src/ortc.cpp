@@ -76,8 +76,10 @@ namespace ortc
 		auto jsonChannelsAIt = aCodec.find("channels");
 		auto jsonChannelsBIt = bCodec.find("channels");
 
-		if (jsonChannelsAIt == aCodec.end() && jsonChannelsBIt != bCodec.end())
-			return false;
+		// TODO(haiyangwu):sync libmediasoupclient to latest version.
+		// just work around. due to https://github.com/versatica/libmediasoupclient/issues/76
+		// if (jsonChannelsAIt == aCodec.end() && jsonChannelsBIt != bCodec.end())
+		//	return false;
 
 		if (jsonChannelsAIt != aCodec.end() && jsonChannelsBIt == bCodec.end())
 			return false;
