@@ -1,5 +1,7 @@
 # mediasoup-client-android
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/506c48c5457b462a82afe786762956dc)](https://app.codacy.com/manual/haiyangwu/mediasoup-client-android?utm_source=github.com&utm_medium=referral&utm_content=haiyangwu/mediasoup-client-android&utm_campaign=Badge_Grade_Dashboard)
+
 [![Bintray][bintray-shield-mediasoup-client-android]][bintray-mediasoup-client-android]
 
 mediasoup android client side library https://mediasoup.org
