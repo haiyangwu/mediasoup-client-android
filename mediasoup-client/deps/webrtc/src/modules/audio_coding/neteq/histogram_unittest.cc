@@ -8,9 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/audio_coding/neteq/histogram.h"
+
 #include <cmath>
 
-#include "modules/audio_coding/neteq/histogram.h"
 #include "test/gtest.h"
 
 namespace webrtc {
@@ -166,6 +167,17 @@ TEST(HistogramTest, OverflowTest) {
                      2147483647, 2147483647, 1262581765};
   scaled_buckets = Histogram::ScaleBuckets(buckets, 20, 60);
   EXPECT_EQ(scaled_buckets, expected_result);
+}
+
+TEST(HistogramTest, ReachSteadyStateForgetFactor) {
+  static constexpr int kSteadyStateForgetFactor = (1 << 15) * 0.9993;
+  Histogram histogram(100, kSteadyStateForgetFactor, 1.0);
+  histogram.Reset();
+  int n = (1 << 15) / ((1 << 15) - kSteadyStateForgetFactor);
+  for (int i = 0; i < n; ++i) {
+    histogram.Add(0);
+  }
+  EXPECT_EQ(histogram.forget_factor_for_testing(), kSteadyStateForgetFactor);
 }
 
 }  // namespace webrtc

@@ -15,6 +15,7 @@
 #include <string>
 
 #include "modules/audio_processing/aec3/adaptive_fir_filter.h"
+#include "modules/audio_processing/aec3/adaptive_fir_filter_erl.h"
 #include "modules/audio_processing/aec3/aec_state.h"
 #include "modules/audio_processing/aec3/render_delay_buffer.h"
 #include "modules/audio_processing/aec3/render_signal_analyzer.h"
@@ -42,17 +43,37 @@ void RunFilterUpdateTest(int num_blocks_to_process,
                          std::array<float, kBlockSize>* y_last_block,
                          FftData* G_last_block) {
   ApmDataDumper data_dumper(42);
+  Aec3Optimization optimization = DetectOptimization();
+  constexpr size_t kNumRenderChannels = 1;
+  constexpr size_t kNumCaptureChannels = 1;
+  constexpr int kSampleRateHz = 48000;
+  constexpr size_t kNumBands = NumBandsForRate(kSampleRateHz);
+
   EchoCanceller3Config config;
   config.filter.main.length_blocks = filter_length_blocks;
   config.filter.shadow.length_blocks = filter_length_blocks;
   AdaptiveFirFilter main_filter(config.filter.main.length_blocks,
                                 config.filter.main.length_blocks,
-                                config.filter.config_change_duration_blocks,
-                                DetectOptimization(), &data_dumper);
+                                config.filter.config_change_duration_blocks, 1,
+                                optimization, &data_dumper);
   AdaptiveFirFilter shadow_filter(config.filter.shadow.length_blocks,
                                   config.filter.shadow.length_blocks,
                                   config.filter.config_change_duration_blocks,
-                                  DetectOptimization(), &data_dumper);
+                                  1, optimization, &data_dumper);
+  std::vector<std::vector<std::array<float, kFftLengthBy2Plus1>>> H2(
+      kNumCaptureChannels, std::vector<std::array<float, kFftLengthBy2Plus1>>(
+                               main_filter.max_filter_size_partitions(),
+                               std::array<float, kFftLengthBy2Plus1>()));
+  for (auto& H2_ch : H2) {
+    for (auto& H2_k : H2_ch) {
+      H2_k.fill(0.f);
+    }
+  }
+  std::vector<std::vector<float>> h(
+      kNumCaptureChannels,
+      std::vector<float>(
+          GetTimeDomainLength(main_filter.max_filter_size_partitions()), 0.f));
+
   Aec3Fft fft;
   std::array<float, kBlockSize> x_old;
   x_old.fill(0.f);
@@ -61,27 +82,34 @@ void RunFilterUpdateTest(int num_blocks_to_process,
   MainFilterUpdateGain main_gain(config.filter.main,
                                  config.filter.config_change_duration_blocks);
   Random random_generator(42U);
-  std::vector<std::vector<float>> x(3, std::vector<float>(kBlockSize, 0.f));
+  std::vector<std::vector<std::vector<float>>> x(
+      kNumBands, std::vector<std::vector<float>>(
+                     kNumRenderChannels, std::vector<float>(kBlockSize, 0.f)));
   std::vector<float> y(kBlockSize, 0.f);
   config.delay.default_delay = 1;
   std::unique_ptr<RenderDelayBuffer> render_delay_buffer(
-      RenderDelayBuffer::Create(config, 3));
-  AecState aec_state(config);
+      RenderDelayBuffer::Create(config, kSampleRateHz, kNumRenderChannels));
+  AecState aec_state(config, kNumCaptureChannels);
   RenderSignalAnalyzer render_signal_analyzer(config);
   absl::optional<DelayEstimate> delay_estimate;
   std::array<float, kFftLength> s_scratch;
   std::array<float, kBlockSize> s;
   FftData S;
   FftData G;
-  SubtractorOutput output;
-  output.Reset();
-  FftData& E_main = output.E_main;
+  std::vector<SubtractorOutput> output(kNumCaptureChannels);
+  for (auto& subtractor_output : output) {
+    subtractor_output.Reset();
+  }
+  FftData& E_main = output[0].E_main;
   FftData E_shadow;
-  std::array<float, kFftLengthBy2Plus1> Y2;
-  std::array<float, kFftLengthBy2Plus1>& E2_main = output.E2_main;
-  std::array<float, kBlockSize>& e_main = output.e_main;
-  std::array<float, kBlockSize>& e_shadow = output.e_shadow;
-  Y2.fill(0.f);
+  std::vector<std::array<float, kFftLengthBy2Plus1>> Y2(kNumCaptureChannels);
+  std::vector<std::array<float, kFftLengthBy2Plus1>> E2_main(
+      kNumCaptureChannels);
+  std::array<float, kBlockSize>& e_main = output[0].e_main;
+  std::array<float, kBlockSize>& e_shadow = output[0].e_shadow;
+  for (auto& Y2_ch : Y2) {
+    Y2_ch.fill(0.f);
+  }
 
   constexpr float kScale = 1.0f / kFftLengthBy2;
 
@@ -101,11 +129,19 @@ void RunFilterUpdateTest(int num_blocks_to_process,
 
     // Create the render signal.
     if (use_silent_render_in_second_half && k > num_blocks_to_process / 2) {
-      std::fill(x[0].begin(), x[0].end(), 0.f);
+      for (size_t band = 0; band < x.size(); ++band) {
+        for (size_t channel = 0; channel < x[band].size(); ++channel) {
+          std::fill(x[band][channel].begin(), x[band][channel].end(), 0.f);
+        }
+      }
     } else {
-      RandomizeSampleVector(&random_generator, x[0]);
+      for (size_t band = 0; band < x.size(); ++band) {
+        for (size_t channel = 0; channel < x[band].size(); ++channel) {
+          RandomizeSampleVector(&random_generator, x[band][channel]);
+        }
+      }
     }
-    delay_buffer.Delay(x[0], y);
+    delay_buffer.Delay(x[0][0], y);
 
     render_delay_buffer->Insert(x);
     if (k == 0) {
@@ -114,7 +150,7 @@ void RunFilterUpdateTest(int num_blocks_to_process,
     render_delay_buffer->PrepareCaptureProcessing();
 
     render_signal_analyzer.Update(*render_delay_buffer->GetRenderBuffer(),
-                                  aec_state.FilterDelayBlocks());
+                                  aec_state.MinDirectPathFilterDelay());
 
     // Apply the main filter.
     main_filter.Filter(*render_delay_buffer->GetRenderBuffer(), &S);
@@ -140,8 +176,8 @@ void RunFilterUpdateTest(int num_blocks_to_process,
     fft.ZeroPaddedFft(e_shadow, Aec3Fft::Window::kRectangular, &E_shadow);
 
     // Compute spectra for future use.
-    E_main.Spectrum(Aec3Optimization::kNone, output.E2_main);
-    E_shadow.Spectrum(Aec3Optimization::kNone, output.E2_shadow);
+    E_main.Spectrum(Aec3Optimization::kNone, output[0].E2_main);
+    E_shadow.Spectrum(Aec3Optimization::kNone, output[0].E2_shadow);
 
     // Adapt the shadow filter.
     std::array<float, kFftLengthBy2Plus1> render_power;
@@ -154,17 +190,22 @@ void RunFilterUpdateTest(int num_blocks_to_process,
     // Adapt the main filter
     render_delay_buffer->GetRenderBuffer()->SpectralSum(
         main_filter.SizePartitions(), &render_power);
-    main_gain.Compute(render_power, render_signal_analyzer, output, main_filter,
-                      saturation, &G);
-    main_filter.Adapt(*render_delay_buffer->GetRenderBuffer(), G);
+
+    std::array<float, kFftLengthBy2Plus1> erl;
+    ComputeErl(optimization, H2[0], erl);
+    main_gain.Compute(render_power, render_signal_analyzer, output[0], erl,
+                      main_filter.SizePartitions(), saturation, &G);
+    main_filter.Adapt(*render_delay_buffer->GetRenderBuffer(), G, &h[0]);
 
     // Update the delay.
     aec_state.HandleEchoPathChange(EchoPathVariability(
         false, EchoPathVariability::DelayAdjustment::kNone, false));
-    aec_state.Update(delay_estimate, main_filter.FilterFrequencyResponse(),
-                     main_filter.FilterImpulseResponse(),
+    main_filter.ComputeFrequencyResponse(&H2[0]);
+    std::copy(output[0].E2_main.begin(), output[0].E2_main.end(),
+              E2_main[0].begin());
+    aec_state.Update(delay_estimate, H2, h,
                      *render_delay_buffer->GetRenderBuffer(), E2_main, Y2,
-                     output, y);
+                     output);
   }
 
   std::copy(e_main.begin(), e_main.end(), e_last_block->begin());
@@ -194,18 +235,17 @@ std::string ProduceDebugText(size_t delay, int filter_length_blocks) {
 TEST(MainFilterUpdateGain, NullDataOutputGain) {
   ApmDataDumper data_dumper(42);
   EchoCanceller3Config config;
-  AdaptiveFirFilter filter(config.filter.main.length_blocks,
-                           config.filter.main.length_blocks,
-                           config.filter.config_change_duration_blocks,
-                           DetectOptimization(), &data_dumper);
-  RenderSignalAnalyzer analyzer(EchoCanceller3Config{});
+  RenderSignalAnalyzer analyzer(config);
   SubtractorOutput output;
   MainFilterUpdateGain gain(config.filter.main,
                             config.filter.config_change_duration_blocks);
   std::array<float, kFftLengthBy2Plus1> render_power;
   render_power.fill(0.f);
-  EXPECT_DEATH(
-      gain.Compute(render_power, analyzer, output, filter, false, nullptr), "");
+  std::array<float, kFftLengthBy2Plus1> erl;
+  erl.fill(0.f);
+  EXPECT_DEATH(gain.Compute(render_power, analyzer, output, erl,
+                            config.filter.main.length_blocks, false, nullptr),
+               "");
 }
 
 #endif

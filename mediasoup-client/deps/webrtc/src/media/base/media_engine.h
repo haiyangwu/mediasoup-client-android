@@ -11,10 +11,6 @@
 #ifndef MEDIA_BASE_MEDIA_ENGINE_H_
 #define MEDIA_BASE_MEDIA_ENGINE_H_
 
-#if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
-#include <CoreAudio/CoreAudio.h>
-#endif
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,11 +19,12 @@
 #include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/crypto/crypto_options.h"
 #include "api/rtp_parameters.h"
+#include "api/video/video_bitrate_allocator_factory.h"
 #include "call/audio_state.h"
 #include "media/base/codec.h"
 #include "media/base/media_channel.h"
 #include "media/base/video_common.h"
-#include "rtc_base/platform_file.h"
+#include "rtc_base/system/file_wrapper.h"
 
 namespace webrtc {
 class AudioDeviceModule;
@@ -79,7 +76,8 @@ class VoiceEngineInterface {
   // Starts AEC dump using existing file, a maximum file size in bytes can be
   // specified. Logging is stopped just before the size limit is exceeded.
   // If max_size_bytes is set to a value <= 0, no limit will be used.
-  virtual bool StartAecDump(rtc::PlatformFile file, int64_t max_size_bytes) = 0;
+  virtual bool StartAecDump(webrtc::FileWrapper file,
+                            int64_t max_size_bytes) = 0;
 
   // Stops recording AEC dump.
   virtual void StopAecDump() = 0;
@@ -97,7 +95,9 @@ class VideoEngineInterface {
       webrtc::Call* call,
       const MediaConfig& config,
       const VideoOptions& options,
-      const webrtc::CryptoOptions& crypto_options) = 0;
+      const webrtc::CryptoOptions& crypto_options,
+      webrtc::VideoBitrateAllocatorFactory*
+          video_bitrate_allocator_factory) = 0;
 
   virtual std::vector<VideoCodec> codecs() const = 0;
   virtual RtpCapabilities GetCapabilities() const = 0;
@@ -143,7 +143,18 @@ enum DataChannelType {
   DCT_NONE = 0,
   DCT_RTP = 1,
   DCT_SCTP = 2,
-  DCT_MEDIA_TRANSPORT = 3
+
+  // Data channel transport over media transport.
+  DCT_MEDIA_TRANSPORT = 3,
+
+  // Data channel transport over datagram transport (with no fallback).  This is
+  // the same behavior as data channel transport over media transport, and is
+  // usable without DTLS.
+  DCT_DATA_CHANNEL_TRANSPORT = 4,
+
+  // Data channel transport over datagram transport (with SCTP negotiation
+  // semantics and a fallback to SCTP).  Only usable with DTLS.
+  DCT_DATA_CHANNEL_TRANSPORT_SCTP = 5,
 };
 
 class DataEngineInterface {

@@ -34,7 +34,8 @@ import subprocess
 # (right after the `third_party/` prefix)
 LIB_TO_LICENSES_DICT = {
     'abseil-cpp': ['third_party/abseil-cpp/LICENSE'],
-    'android_tools': ['third_party/android_tools/LICENSE'],
+    'android_ndk': ['third_party/android_ndk/NOTICE'],
+    'android_sdk': ['third_party/android_sdk/LICENSE'],
     'auto': ['third_party/auto/src/LICENSE.txt'],
     'bazel': ['third_party/bazel/LICENSE'],
     'boringssl': ['third_party/boringssl/src/LICENSE'],
@@ -51,6 +52,7 @@ LIB_TO_LICENSES_DICT = {
     'libvpx': ['third_party/libvpx/source/libvpx/LICENSE'],
     'libyuv': ['third_party/libyuv/LICENSE'],
     'opus': ['third_party/opus/src/COPYING'],
+    'pffft': ['third_party/pffft/LICENSE'],
     'protobuf': ['third_party/protobuf/LICENSE'],
     'rnnoise': ['third_party/rnnoise/COPYING'],
     'usrsctp': ['third_party/usrsctp/LICENSE'],

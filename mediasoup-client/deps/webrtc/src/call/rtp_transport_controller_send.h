@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "api/network_state_predictor.h"
 #include "api/transport/network_control.h"
 #include "call/rtp_bitrate_configurator.h"
 #include "call/rtp_transport_controller_send_interface.h"
@@ -24,6 +25,7 @@
 #include "modules/congestion_controller/rtp/control_handler.h"
 #include "modules/congestion_controller/rtp/transport_feedback_adapter.h"
 #include "modules/pacing/packet_router.h"
+#include "modules/pacing/rtp_packet_pacer.h"
 #include "modules/utility/include/process_thread.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/network_route.h"
@@ -42,11 +44,13 @@ class RtcEventLog;
 class RtpTransportControllerSend final
     : public RtpTransportControllerSendInterface,
       public RtcpBandwidthObserver,
-      public TransportFeedbackObserver {
+      public TransportFeedbackObserver,
+      public NetworkStateEstimateObserver {
  public:
   RtpTransportControllerSend(
       Clock* clock,
       RtcEventLog* event_log,
+      NetworkStatePredictorFactoryInterface* predictor_factory,
       NetworkControllerFactoryInterface* controller_factory,
       const BitrateConstraints& bitrate_config,
       std::unique_ptr<ProcessThread> process_thread,
@@ -60,7 +64,6 @@ class RtpTransportControllerSend final
       const RtpConfig& rtp_config,
       int rtcp_report_interval_ms,
       Transport* send_transport,
-      bool is_svc,
       const RtpSenderObservers& observers,
       RtcEventLog* event_log,
       std::unique_ptr<FecController> fec_controller,
@@ -72,12 +75,11 @@ class RtpTransportControllerSend final
   rtc::TaskQueue* GetWorkerQueue() override;
   PacketRouter* packet_router() override;
 
+  NetworkStateEstimateObserver* network_state_estimate_observer() override;
   TransportFeedbackObserver* transport_feedback_observer() override;
   RtpPacketSender* packet_sender() override;
 
-  void SetAllocatedSendBitrateLimits(int min_send_bitrate_bps,
-                                     int max_padding_bitrate_bps,
-                                     int max_total_bitrate_bps) override;
+  void SetAllocatedSendBitrateLimits(BitrateAllocationLimits limits) override;
 
   void SetPacingFactor(float pacing_factor) override;
   void SetQueueTimeLimit(int limit_ms) override;
@@ -92,15 +94,18 @@ class RtpTransportControllerSend final
   void OnNetworkAvailability(bool network_available) override;
   RtcpBandwidthObserver* GetBandwidthObserver() override;
   int64_t GetPacerQueuingDelayMs() const override;
-  int64_t GetFirstPacketTimeMs() const override;
+  absl::optional<Timestamp> GetFirstPacketTime() const override;
   void EnablePeriodicAlrProbing(bool enable) override;
   void OnSentPacket(const rtc::SentPacket& sent_packet) override;
+  void OnReceivedPacket(const ReceivedPacket& packet_msg) override;
 
   void SetSdpBitrateParameters(const BitrateConstraints& constraints) override;
   void SetClientBitratePreferences(const BitrateSettings& preferences) override;
 
   void OnTransportOverheadChanged(
       size_t transport_overhead_per_packet) override;
+
+  void AccountForAudioPacketsInPacedSender(bool account_for_audio) override;
 
   // Implements RtcpBandwidthObserver interface
   void OnReceivedEstimatedBitrate(uint32_t bitrate) override;
@@ -109,11 +114,11 @@ class RtpTransportControllerSend final
                                     int64_t now_ms) override;
 
   // Implements TransportFeedbackObserver interface
-  void AddPacket(uint32_t ssrc,
-                 uint16_t sequence_number,
-                 size_t length,
-                 const PacedPacketInfo& pacing_info) override;
+  void OnAddPacket(const RtpPacketSendInfo& packet_info) override;
   void OnTransportFeedback(const rtcp::TransportFeedback& feedback) override;
+
+  // Implements NetworkStateEstimateObserver interface
+  void OnRemoteNetworkEstimate(NetworkStateEstimate estimate) override;
 
  private:
   void MaybeCreateControllers() RTC_RUN_ON(task_queue_);
@@ -129,14 +134,18 @@ class RtpTransportControllerSend final
       RTC_RUN_ON(task_queue_);
   void PostUpdates(NetworkControlUpdate update) RTC_RUN_ON(task_queue_);
   void UpdateControlState() RTC_RUN_ON(task_queue_);
+  RtpPacketPacer* pacer();
+  const RtpPacketPacer* pacer() const;
 
   Clock* const clock_;
+  RtcEventLog* const event_log_;
+  const FieldTrialBasedConfig trial_based_config_;
   PacketRouter packet_router_;
   std::vector<std::unique_ptr<RtpVideoSenderInterface>> video_rtp_senders_;
-  PacedSender pacer_;
   RtpBitrateConfigurator bitrate_configurator_;
   std::map<std::string, rtc::NetworkRoute> network_routes_;
   const std::unique_ptr<ProcessThread> process_thread_;
+  PacedSender pacer_;
 
   TargetTransferRateObserver* observer_ RTC_GUARDED_BY(task_queue_);
 

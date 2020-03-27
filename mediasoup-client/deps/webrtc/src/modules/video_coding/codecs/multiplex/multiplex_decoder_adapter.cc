@@ -127,11 +127,9 @@ int32_t MultiplexDecoderAdapter::InitDecode(const VideoCodec* codec_settings,
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-int32_t MultiplexDecoderAdapter::Decode(
-    const EncodedImage& input_image,
-    bool missing_frames,
-    const CodecSpecificInfo* codec_specific_info,
-    int64_t render_time_ms) {
+int32_t MultiplexDecoderAdapter::Decode(const EncodedImage& input_image,
+                                        bool missing_frames,
+                                        int64_t render_time_ms) {
   MultiplexImage image = MultiplexEncodedImagePacker::Unpack(input_image);
 
   if (supports_augmenting_data_) {
@@ -154,7 +152,7 @@ int32_t MultiplexDecoderAdapter::Decode(
   int32_t rv = 0;
   for (size_t i = 0; i < image.image_components.size(); i++) {
     rv = decoders_[image.image_components[i].component_index]->Decode(
-        image.image_components[i].encoded_image, missing_frames, nullptr,
+        image.image_components[i].encoded_image, missing_frames,
         render_time_ms);
     if (rv != WEBRTC_VIDEO_CODEC_OK)
       return rv;
@@ -263,6 +261,7 @@ void MultiplexDecoderAdapter::MergeAlphaImages(
                                 .set_timestamp_us(0)
                                 .set_rotation(decoded_image->rotation())
                                 .set_id(decoded_image->id())
+                                .set_packet_infos(decoded_image->packet_infos())
                                 .build();
   decoded_complete_callback_->Decoded(merged_image, decode_time_ms, qp);
 }

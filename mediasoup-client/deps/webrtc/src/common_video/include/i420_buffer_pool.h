@@ -12,6 +12,7 @@
 #define COMMON_VIDEO_INCLUDE_I420_BUFFER_POOL_H_
 
 #include <stddef.h>
+
 #include <list>
 
 #include "api/scoped_refptr.h"
@@ -39,6 +40,14 @@ class I420BufferPool {
   // and there are less than |max_number_of_buffers| pending, a buffer is
   // created. Returns null otherwise.
   rtc::scoped_refptr<I420Buffer> CreateBuffer(int width, int height);
+
+  // Returns a buffer from the pool with the explicitly specified stride.
+  rtc::scoped_refptr<I420Buffer> CreateBuffer(int width,
+                                              int height,
+                                              int stride_y,
+                                              int stride_u,
+                                              int stride_v);
+
   // Clears buffers_ and detaches the thread checker so that it can be reused
   // later from another thread.
   void Release();

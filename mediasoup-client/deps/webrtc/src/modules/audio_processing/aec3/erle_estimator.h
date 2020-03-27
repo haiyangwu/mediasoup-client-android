@@ -12,6 +12,7 @@
 #define MODULES_AUDIO_PROCESSING_AEC3_ERLE_ESTIMATOR_H_
 
 #include <stddef.h>
+
 #include <array>
 #include <memory>
 
@@ -32,7 +33,8 @@ namespace webrtc {
 class ErleEstimator {
  public:
   ErleEstimator(size_t startup_phase_length_blocks_,
-                const EchoCanceller3Config& config);
+                const EchoCanceller3Config& config,
+                size_t num_capture_channels);
   ~ErleEstimator();
 
   // Resets the fullband ERLE estimator and the subbands ERLE estimators.
@@ -49,10 +51,11 @@ class ErleEstimator {
               bool onset_detection);
 
   // Returns the most recent subband ERLE estimates.
-  const std::array<float, kFftLengthBy2Plus1>& Erle() const {
+  rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> Erle() const {
     return use_signal_dependent_erle_ ? signal_dependent_erle_estimator_.Erle()
                                       : subband_erle_estimator_.Erle();
   }
+
   // Returns the subband ERLE that are estimated during onsets. Used
   // for logging/testing.
   rtc::ArrayView<const float> ErleOnsets() const {
@@ -66,10 +69,12 @@ class ErleEstimator {
 
   // Returns an estimation of the current linear filter quality based on the
   // current and past fullband ERLE estimates. The returned value is a float
-  // between 0 and 1 where 1 indicates that, at this current time instant, the
-  // linear filter is reaching its maximum subtraction performance.
-  absl::optional<float> GetInstLinearQualityEstimate() const {
-    return fullband_erle_estimator_.GetInstLinearQualityEstimate();
+  // vector with content between 0 and 1 where 1 indicates that, at this current
+  // time instant, the linear filter is reaching its maximum subtraction
+  // performance.
+  rtc::ArrayView<const absl::optional<float>> GetInstLinearQualityEstimates()
+      const {
+    return fullband_erle_estimator_.GetInstLinearQualityEstimates();
   }
 
   void Dump(const std::unique_ptr<ApmDataDumper>& data_dumper) const;

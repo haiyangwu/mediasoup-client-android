@@ -12,6 +12,7 @@
 #define MODULES_AUDIO_CODING_AUDIO_NETWORK_ADAPTOR_FRAME_LENGTH_CONTROLLER_H_
 
 #include <stddef.h>
+
 #include <map>
 #include <set>
 
@@ -66,11 +67,9 @@ class FrameLengthController final : public Controller {
   void MakeDecision(AudioEncoderRuntimeConfig* config) override;
 
  private:
-  bool FrameLengthIncreasingDecision(
-      const AudioEncoderRuntimeConfig& config) const;
+  bool FrameLengthIncreasingDecision(const AudioEncoderRuntimeConfig& config);
 
-  bool FrameLengthDecreasingDecision(
-      const AudioEncoderRuntimeConfig& config) const;
+  bool FrameLengthDecreasingDecision(const AudioEncoderRuntimeConfig& config);
 
   const Config config_;
 

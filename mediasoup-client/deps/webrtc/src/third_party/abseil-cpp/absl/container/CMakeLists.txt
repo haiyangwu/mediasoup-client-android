@@ -40,6 +40,7 @@ absl_cc_library(
     absl::compare
     absl::compressed_tuple
     absl::container_memory
+    absl::cord
     absl::core_headers
     absl::layout
     absl::memory
@@ -60,6 +61,7 @@ absl_cc_library(
     ${ABSL_DEFAULT_LINKOPTS}
   DEPS
     absl::btree
+    absl::cord
     absl::flat_hash_set
     absl::strings
     absl::time
@@ -204,6 +206,8 @@ absl_cc_library(
     "internal/counting_allocator.h"
   COPTS
     ${ABSL_DEFAULT_COPTS}
+  DEPS
+    absl::config
 )
 
 absl_cc_test(
@@ -441,6 +445,7 @@ absl_cc_library(
     ${ABSL_DEFAULT_COPTS}
   DEPS
     absl::config
+    absl::cord
     absl::hash
     absl::strings
   PUBLIC
@@ -454,8 +459,11 @@ absl_cc_test(
   COPTS
     ${ABSL_TEST_COPTS}
   DEPS
+    absl::cord
+    absl::cord_test_helpers
     absl::hash_function_defaults
     absl::hash
+    absl::random_random
     absl::strings
     gmock_main
 )
@@ -574,6 +582,8 @@ absl_cc_library(
     "internal/hashtable_debug_hooks.h"
   COPTS
     ${ABSL_DEFAULT_COPTS}
+  DEPS
+    absl::config
   PUBLIC
 )
 
@@ -593,6 +603,8 @@ absl_cc_library(
     "internal/node_hash_policy.h"
   COPTS
     ${ABSL_DEFAULT_COPTS}
+  DEPS
+    absl::config
   PUBLIC
 )
 
@@ -627,7 +639,7 @@ absl_cc_library(
   NAME
     container_common
   HDRS
-    "internal/commom.h"
+    "internal/common.h"
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
@@ -735,6 +747,8 @@ absl_cc_library(
     "internal/tracked.h"
   COPTS
     ${ABSL_TEST_COPTS}
+  DEPS
+    absl::config
   TESTONLY
 )
 

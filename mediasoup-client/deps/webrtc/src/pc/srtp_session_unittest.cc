@@ -11,6 +11,7 @@
 #include "pc/srtp_session.h"
 
 #include <string.h>
+
 #include <string>
 
 #include "media/base/fake_rtp.h"
@@ -29,7 +30,7 @@ namespace rtc {
 
 std::vector<int> kEncryptedHeaderExtensionIds;
 
-class SrtpSessionTest : public testing::Test {
+class SrtpSessionTest : public ::testing::Test {
  public:
   SrtpSessionTest() { webrtc::metrics::Reset(); }
 

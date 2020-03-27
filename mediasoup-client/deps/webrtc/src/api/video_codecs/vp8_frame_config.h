@@ -15,7 +15,16 @@
 
 namespace webrtc {
 
+// Configuration of a VP8 frame - which buffers are to be referenced
+// by it, which buffers should be updated, etc.
 struct Vp8FrameConfig {
+  static Vp8FrameConfig GetIntraFrameConfig() {
+    Vp8FrameConfig frame_config = Vp8FrameConfig(
+        BufferFlags::kUpdate, BufferFlags::kUpdate, BufferFlags::kUpdate);
+    frame_config.packetizer_temporal_idx = 0;
+    return frame_config;
+  }
+
   enum BufferFlags : int {
     kNone = 0,
     kReference = 1,
@@ -46,6 +55,12 @@ struct Vp8FrameConfig {
   bool References(Buffer buffer) const;
 
   bool Updates(Buffer buffer) const;
+
+  bool IntraFrame() const {
+    // Intra frames do not reference any buffers, and update all buffers.
+    return last_buffer_flags == kUpdate && golden_buffer_flags == kUpdate &&
+           arf_buffer_flags == kUpdate;
+  }
 
   bool drop_frame;
   BufferFlags last_buffer_flags;
@@ -79,6 +94,9 @@ struct Vp8FrameConfig {
   // searched last.
   Vp8BufferReference first_reference;
   Vp8BufferReference second_reference;
+
+  // Whether this frame is eligible for retransmission.
+  bool retransmission_allowed;
 
  private:
   Vp8FrameConfig(BufferFlags last,

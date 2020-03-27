@@ -8,21 +8,22 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "media/engine/simulcast_encoder_adapter.h"
+
 #include <array>
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/test/create_simulcast_test_fixture.h"
 #include "api/test/simulcast_test_fixture.h"
 #include "api/test/video/function_video_decoder_factory.h"
 #include "api/test/video/function_video_encoder_factory.h"
 #include "api/video_codecs/sdp_video_format.h"
+#include "api/video_codecs/video_encoder.h"
 #include "api/video_codecs/video_encoder_factory.h"
 #include "common_video/include/video_frame_buffer.h"
 #include "media/base/media_constants.h"
 #include "media/engine/internal_encoder_factory.h"
-#include "media/engine/simulcast_encoder_adapter.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/utility/simulcast_test_fixture_impl.h"
@@ -43,17 +44,20 @@ namespace {
 constexpr int kDefaultWidth = 1280;
 constexpr int kDefaultHeight = 720;
 
+const VideoEncoder::Capabilities kCapabilities(false);
+const VideoEncoder::Settings kSettings(kCapabilities, 1, 1200);
+
 std::unique_ptr<SimulcastTestFixture> CreateSpecificSimulcastTestFixture(
     VideoEncoderFactory* internal_encoder_factory) {
   std::unique_ptr<VideoEncoderFactory> encoder_factory =
-      absl::make_unique<FunctionVideoEncoderFactory>(
+      std::make_unique<FunctionVideoEncoderFactory>(
           [internal_encoder_factory]() {
-            return absl::make_unique<SimulcastEncoderAdapter>(
+            return std::make_unique<SimulcastEncoderAdapter>(
                 internal_encoder_factory,
                 SdpVideoFormat(cricket::kVp8CodecName));
           });
   std::unique_ptr<VideoDecoderFactory> decoder_factory =
-      absl::make_unique<FunctionVideoDecoderFactory>(
+      std::make_unique<FunctionVideoDecoderFactory>(
           []() { return VP8Decoder::Create(); });
   return CreateSimulcastTestFixture(std::move(encoder_factory),
                                     std::move(decoder_factory),
@@ -167,6 +171,9 @@ class MockVideoEncoderFactory : public VideoEncoderFactory {
   const std::vector<MockVideoEncoder*>& encoders() const;
   void SetEncoderNames(const std::vector<const char*>& encoder_names);
   void set_init_encode_return_value(int32_t value);
+  void set_supports_simulcast(bool supports_simulcast) {
+    supports_simulcast_ = supports_simulcast;
+  }
 
   void DestroyVideoEncoder(VideoEncoder* encoder);
 
@@ -174,6 +181,7 @@ class MockVideoEncoderFactory : public VideoEncoderFactory {
   int32_t init_encode_return_value_ = 0;
   std::vector<MockVideoEncoder*> encoders_;
   std::vector<const char*> encoder_names_;
+  bool supports_simulcast_ = false;
 };
 
 class MockVideoEncoder : public VideoEncoder {
@@ -183,35 +191,34 @@ class MockVideoEncoder : public VideoEncoder {
         scaling_settings_(VideoEncoder::ScalingSettings::kOff),
         callback_(nullptr) {}
 
+  MOCK_METHOD1(SetFecControllerOverride,
+               void(FecControllerOverride* fec_controller_override));
+
   // TODO(nisse): Valid overrides commented out, because the gmock
   // methods don't use any override declarations, and we want to avoid
   // warnings from -Winconsistent-missing-override. See
   // http://crbug.com/428099.
   int32_t InitEncode(const VideoCodec* codecSettings,
-                     int32_t numberOfCores,
-                     size_t maxPayloadSize) /* override */ {
+                     const VideoEncoder::Settings& settings) override {
     codec_ = *codecSettings;
     return init_encode_return_value_;
   }
 
-  MOCK_METHOD3(
+  MOCK_METHOD2(
       Encode,
       int32_t(const VideoFrame& inputImage,
-              const CodecSpecificInfo* codecSpecificInfo,
-              const std::vector<FrameType>* frame_types) /* override */);
+              const std::vector<VideoFrameType>* frame_types) /* override */);
 
   int32_t RegisterEncodeCompleteCallback(
-      EncodedImageCallback* callback) /* override */ {
+      EncodedImageCallback* callback) override {
     callback_ = callback;
     return 0;
   }
 
-  MOCK_METHOD0(Release, int32_t());
+  MOCK_METHOD0(Release, int32_t() /* override */);
 
-  int32_t SetRateAllocation(const VideoBitrateAllocation& bitrate_allocation,
-                            uint32_t framerate) {
-    last_set_bitrate_ = bitrate_allocation;
-    return 0;
+  void SetRates(const RateControlParameters& parameters) {
+    last_set_rates_ = parameters;
   }
 
   EncoderInfo GetEncoderInfo() const override {
@@ -223,6 +230,7 @@ class MockVideoEncoder : public VideoEncoder {
     info.is_hardware_accelerated = is_hardware_accelerated_;
     info.has_internal_source = has_internal_source_;
     info.fps_allocation[0] = fps_allocation_;
+    info.supports_simulcast = supports_simulcast_;
     return info;
   }
 
@@ -272,7 +280,13 @@ class MockVideoEncoder : public VideoEncoder {
     fps_allocation_ = fps_allocation;
   }
 
-  VideoBitrateAllocation last_set_bitrate() const { return last_set_bitrate_; }
+  RateControlParameters last_set_rates() const { return last_set_rates_; }
+
+  void set_supports_simulcast(bool supports_simulcast) {
+    supports_simulcast_ = supports_simulcast;
+  }
+
+  bool supports_simulcast() const { return supports_simulcast_; }
 
  private:
   MockVideoEncoderFactory* const factory_;
@@ -283,8 +297,9 @@ class MockVideoEncoder : public VideoEncoder {
   bool is_hardware_accelerated_ = false;
   bool has_internal_source_ = false;
   int32_t init_encode_return_value_ = 0;
-  VideoBitrateAllocation last_set_bitrate_;
+  VideoEncoder::RateControlParameters last_set_rates_;
   FramerateFractions fps_allocation_;
+  bool supports_simulcast_ = false;
 
   VideoCodec codec_;
   EncodedImageCallback* callback_;
@@ -305,6 +320,7 @@ std::unique_ptr<VideoEncoder> MockVideoEncoderFactory::CreateVideoEncoder(
                                  ? "codec_implementation_name"
                                  : encoder_names_[encoders_.size()];
   encoder->set_implementation_name(encoder_name);
+  encoder->set_supports_simulcast(supports_simulcast_);
   encoders_.push_back(encoder.get());
   return encoder;
 }
@@ -337,19 +353,26 @@ void MockVideoEncoderFactory::set_init_encode_return_value(int32_t value) {
 
 class TestSimulcastEncoderAdapterFakeHelper {
  public:
-  TestSimulcastEncoderAdapterFakeHelper()
-      : factory_(new MockVideoEncoderFactory()) {}
+  explicit TestSimulcastEncoderAdapterFakeHelper(bool use_fallback_factory)
+      : primary_factory_(new MockVideoEncoderFactory()),
+        fallback_factory_(use_fallback_factory ? new MockVideoEncoderFactory()
+                                               : nullptr) {}
 
   // Can only be called once as the SimulcastEncoderAdapter will take the
   // ownership of |factory_|.
   VideoEncoder* CreateMockEncoderAdapter() {
-    return new SimulcastEncoderAdapter(factory_.get(), SdpVideoFormat("VP8"));
+    return new SimulcastEncoderAdapter(
+        primary_factory_.get(), fallback_factory_.get(), SdpVideoFormat("VP8"));
   }
 
-  MockVideoEncoderFactory* factory() { return factory_.get(); }
+  MockVideoEncoderFactory* factory() { return primary_factory_.get(); }
+  MockVideoEncoderFactory* fallback_factory() {
+    return fallback_factory_.get();
+  }
 
  private:
-  std::unique_ptr<MockVideoEncoderFactory> factory_;
+  std::unique_ptr<MockVideoEncoderFactory> primary_factory_;
+  std::unique_ptr<MockVideoEncoderFactory> fallback_factory_;
 };
 
 static const int kTestTemporalLayerProfile[3] = {3, 2, 1};
@@ -358,15 +381,24 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
                                         public EncodedImageCallback {
  public:
   TestSimulcastEncoderAdapterFake()
-      : helper_(new TestSimulcastEncoderAdapterFakeHelper()),
-        adapter_(helper_->CreateMockEncoderAdapter()),
-        last_encoded_image_width_(-1),
+      : last_encoded_image_width_(-1),
         last_encoded_image_height_(-1),
-        last_encoded_image_simulcast_index_(-1) {}
+        last_encoded_image_simulcast_index_(-1),
+        use_fallback_factory_(false) {}
+
   virtual ~TestSimulcastEncoderAdapterFake() {
     if (adapter_) {
       adapter_->Release();
     }
+  }
+
+  void SetUp() override {
+    helper_ = std::make_unique<TestSimulcastEncoderAdapterFakeHelper>(
+        use_fallback_factory_);
+    adapter_.reset(helper_->CreateMockEncoderAdapter());
+    last_encoded_image_width_ = -1;
+    last_encoded_image_height_ = -1;
+    last_encoded_image_simulcast_index_ = -1;
   }
 
   Result OnEncodedImage(const EncodedImage& encoded_image,
@@ -397,7 +429,7 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
         &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
         kVideoCodecVP8);
     rate_allocator_.reset(new SimulcastRateAllocator(codec_));
-    EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+    EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
     adapter_->RegisterEncodeCompleteCallback(this);
   }
 
@@ -479,6 +511,7 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
   int last_encoded_image_height_;
   int last_encoded_image_simulcast_index_;
   std::unique_ptr<SimulcastRateAllocator> rate_allocator_;
+  bool use_fallback_factory_;
 };
 
 TEST_F(TestSimulcastEncoderAdapterFake, InitEncode) {
@@ -494,14 +527,16 @@ TEST_F(TestSimulcastEncoderAdapterFake, Reinit) {
   SetupCodec();
   EXPECT_EQ(0, adapter_->Release());
 
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, EncodedCallbackForDifferentEncoders) {
   SetupCodec();
 
   // Set bitrates so that we send all layers.
-  adapter_->SetRateAllocation(rate_allocator_->GetAllocation(1200, 30), 30);
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(VideoBitrateAllocationParameters(1200, 30)),
+      30.0));
 
   // At this point, the simulcast encoder adapter should have 3 streams: HD,
   // quarter HD, and quarter quarter HD. We're going to mostly ignore the exact
@@ -556,25 +591,27 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReusesEncodersInOrder) {
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
-  std::vector<FrameType> frame_types;
+  std::vector<VideoFrameType> frame_types;
 
   // Encode with three streams.
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   VerifyCodecSettings();
-  adapter_->SetRateAllocation(
-      rate_allocator_->GetAllocation(target_bitrate, 30), 30);
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(target_bitrate, 30)),
+      30.0));
 
   std::vector<MockVideoEncoder*> original_encoders =
       helper_->factory()->encoders();
   ASSERT_EQ(3u, original_encoders.size());
-  EXPECT_CALL(*original_encoders[0], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[0], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  EXPECT_CALL(*original_encoders[1], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[1], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  EXPECT_CALL(*original_encoders[2], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[2], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  frame_types.resize(3, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+  frame_types.resize(3, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
   EXPECT_CALL(*original_encoders[0], Release())
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   EXPECT_CALL(*original_encoders[1], Release())
@@ -587,19 +624,21 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReusesEncodersInOrder) {
   codec_.width /= 2;
   codec_.height /= 2;
   codec_.numberOfSimulcastStreams = 2;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
-  adapter_->SetRateAllocation(
-      rate_allocator_->GetAllocation(target_bitrate, 30), 30);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(target_bitrate, 30)),
+      30.0));
   std::vector<MockVideoEncoder*> new_encoders = helper_->factory()->encoders();
   ASSERT_EQ(2u, new_encoders.size());
   ASSERT_EQ(original_encoders[0], new_encoders[0]);
-  EXPECT_CALL(*original_encoders[0], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[0], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   ASSERT_EQ(original_encoders[1], new_encoders[1]);
-  EXPECT_CALL(*original_encoders[1], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[1], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  frame_types.resize(2, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+  frame_types.resize(2, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
   EXPECT_CALL(*original_encoders[0], Release())
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   EXPECT_CALL(*original_encoders[1], Release())
@@ -610,16 +649,18 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReusesEncodersInOrder) {
   codec_.width /= 2;
   codec_.height /= 2;
   codec_.numberOfSimulcastStreams = 1;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
-  adapter_->SetRateAllocation(
-      rate_allocator_->GetAllocation(target_bitrate, 30), 30);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(target_bitrate, 30)),
+      30.0));
   new_encoders = helper_->factory()->encoders();
   ASSERT_EQ(1u, new_encoders.size());
   ASSERT_EQ(original_encoders[0], new_encoders[0]);
-  EXPECT_CALL(*original_encoders[0], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[0], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  frame_types.resize(1, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+  frame_types.resize(1, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
   EXPECT_CALL(*original_encoders[0], Release())
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   EXPECT_EQ(0, adapter_->Release());
@@ -628,22 +669,24 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReusesEncodersInOrder) {
   codec_.width *= 4;
   codec_.height *= 4;
   codec_.numberOfSimulcastStreams = 3;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
-  adapter_->SetRateAllocation(
-      rate_allocator_->GetAllocation(target_bitrate, 30), 30);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(target_bitrate, 30)),
+      30.0));
   new_encoders = helper_->factory()->encoders();
   ASSERT_EQ(3u, new_encoders.size());
   // The first encoder is reused.
   ASSERT_EQ(original_encoders[0], new_encoders[0]);
-  EXPECT_CALL(*original_encoders[0], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[0], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   // The second and third encoders are new.
-  EXPECT_CALL(*new_encoders[1], Encode(_, _, _))
+  EXPECT_CALL(*new_encoders[1], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  EXPECT_CALL(*new_encoders[2], Encode(_, _, _))
+  EXPECT_CALL(*new_encoders[2], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  frame_types.resize(3, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+  frame_types.resize(3, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
   EXPECT_CALL(*original_encoders[0], Release())
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   EXPECT_CALL(*new_encoders[1], Release())
@@ -682,7 +725,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReinitDoesNotReorderEncoderSettings) {
 
   // Reinitialize and verify that the new codec settings are the same.
   EXPECT_EQ(0, adapter_->Release());
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   for (int i = 0; i < 3; ++i) {
     const VideoCodec& codec_before = codecs_before[i];
     const VideoCodec& codec_after = encoders[i]->codec();
@@ -713,7 +756,9 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReinitDoesNotReorderEncoderSettings) {
 // discontinuities.
 TEST_F(TestSimulcastEncoderAdapterFake, ReinitDoesNotReorderFrameSimulcastIdx) {
   SetupCodec();
-  adapter_->SetRateAllocation(rate_allocator_->GetAllocation(1200, 30), 30);
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(VideoBitrateAllocationParameters(1200, 30)),
+      30.0));
   VerifyCodecSettings();
 
   // Send frames on all streams.
@@ -736,8 +781,10 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReinitDoesNotReorderFrameSimulcastIdx) {
 
   // Reinitialize.
   EXPECT_EQ(0, adapter_->Release());
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
-  adapter_->SetRateAllocation(rate_allocator_->GetAllocation(1200, 30), 30);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(VideoBitrateAllocationParameters(1200, 30)),
+      30.0));
 
   // Verify that the same encoder sends out frames on the same simulcast index.
   encoders[0]->SendEncodedImage(1152, 704);
@@ -758,14 +805,14 @@ TEST_F(TestSimulcastEncoderAdapterFake, SupportsNativeHandleForSingleStreams) {
       &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 1;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   adapter_->RegisterEncodeCompleteCallback(this);
   ASSERT_EQ(1u, helper_->factory()->encoders().size());
   helper_->factory()->encoders()[0]->set_supports_native_handle(true);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().supports_native_handle);
   helper_->factory()->encoders()[0]->set_supports_native_handle(false);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().supports_native_handle);
 }
 
@@ -775,27 +822,29 @@ TEST_F(TestSimulcastEncoderAdapterFake, SetRatesUnderMinBitrate) {
       kVideoCodecVP8);
   codec_.minBitrate = 50;
   codec_.numberOfSimulcastStreams = 1;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   rate_allocator_.reset(new SimulcastRateAllocator(codec_));
 
   // Above min should be respected.
-  VideoBitrateAllocation target_bitrate =
-      rate_allocator_->GetAllocation(codec_.minBitrate * 1000, 30);
-  adapter_->SetRateAllocation(target_bitrate, 30);
+  VideoBitrateAllocation target_bitrate = rate_allocator_->Allocate(
+      VideoBitrateAllocationParameters(codec_.minBitrate * 1000, 30));
+  adapter_->SetRates(VideoEncoder::RateControlParameters(target_bitrate, 30.0));
   EXPECT_EQ(target_bitrate,
-            helper_->factory()->encoders()[0]->last_set_bitrate());
+            helper_->factory()->encoders()[0]->last_set_rates().bitrate);
 
   // Below min but non-zero should be replaced with the min bitrate.
-  VideoBitrateAllocation too_low_bitrate =
-      rate_allocator_->GetAllocation((codec_.minBitrate - 1) * 1000, 30);
-  adapter_->SetRateAllocation(too_low_bitrate, 30);
+  VideoBitrateAllocation too_low_bitrate = rate_allocator_->Allocate(
+      VideoBitrateAllocationParameters((codec_.minBitrate - 1) * 1000, 30));
+  adapter_->SetRates(
+      VideoEncoder::RateControlParameters(too_low_bitrate, 30.0));
   EXPECT_EQ(target_bitrate,
-            helper_->factory()->encoders()[0]->last_set_bitrate());
+            helper_->factory()->encoders()[0]->last_set_rates().bitrate);
 
   // Zero should be passed on as is, since it means "pause".
-  adapter_->SetRateAllocation(VideoBitrateAllocation(), 30);
+  adapter_->SetRates(
+      VideoEncoder::RateControlParameters(VideoBitrateAllocation(), 30.0));
   EXPECT_EQ(VideoBitrateAllocation(),
-            helper_->factory()->encoders()[0]->last_set_bitrate());
+            helper_->factory()->encoders()[0]->last_set_rates().bitrate);
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, SupportsImplementationName) {
@@ -809,14 +858,14 @@ TEST_F(TestSimulcastEncoderAdapterFake, SupportsImplementationName) {
   encoder_names.push_back("codec2");
   encoder_names.push_back("codec3");
   helper_->factory()->SetEncoderNames(encoder_names);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_EQ("SimulcastEncoderAdapter (codec1, codec2, codec3)",
             adapter_->GetEncoderInfo().implementation_name);
 
   // Single streams should not expose "SimulcastEncoderAdapter" in name.
   EXPECT_EQ(0, adapter_->Release());
   codec_.numberOfSimulcastStreams = 1;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   adapter_->RegisterEncodeCompleteCallback(this);
   ASSERT_EQ(1u, helper_->factory()->encoders().size());
   EXPECT_EQ("codec1", adapter_->GetEncoderInfo().implementation_name);
@@ -828,7 +877,7 @@ TEST_F(TestSimulcastEncoderAdapterFake,
       &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 3;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   adapter_->RegisterEncodeCompleteCallback(this);
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
   for (MockVideoEncoder* encoder : helper_->factory()->encoders())
@@ -838,7 +887,7 @@ TEST_F(TestSimulcastEncoderAdapterFake,
   EXPECT_FALSE(adapter_->GetEncoderInfo().supports_native_handle);
   // Once all do, then the adapter claims support.
   helper_->factory()->encoders()[0]->set_supports_native_handle(true);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().supports_native_handle);
 }
 
@@ -870,12 +919,12 @@ TEST_F(TestSimulcastEncoderAdapterFake,
   codec_.numberOfSimulcastStreams = 3;
   // High start bitrate, so all streams are enabled.
   codec_.startBitrate = 3000;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   adapter_->RegisterEncodeCompleteCallback(this);
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
   for (MockVideoEncoder* encoder : helper_->factory()->encoders())
     encoder->set_supports_native_handle(true);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().supports_native_handle);
 
   rtc::scoped_refptr<VideoFrameBuffer> buffer(
@@ -889,9 +938,9 @@ TEST_F(TestSimulcastEncoderAdapterFake,
   // Expect calls with the given video frame verbatim, since it's a texture
   // frame and can't otherwise be modified/resized.
   for (MockVideoEncoder* encoder : helper_->factory()->encoders())
-    EXPECT_CALL(*encoder, Encode(::testing::Ref(input_frame), _, _)).Times(1);
-  std::vector<FrameType> frame_types(3, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+    EXPECT_CALL(*encoder, Encode(::testing::Ref(input_frame), _)).Times(1);
+  std::vector<VideoFrameType> frame_types(3, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, TestFailureReturnCodesFromEncodeCalls) {
@@ -899,11 +948,11 @@ TEST_F(TestSimulcastEncoderAdapterFake, TestFailureReturnCodesFromEncodeCalls) {
       &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 3;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   adapter_->RegisterEncodeCompleteCallback(this);
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
   // Tell the 2nd encoder to request software fallback.
-  EXPECT_CALL(*helper_->factory()->encoders()[1], Encode(_, _, _))
+  EXPECT_CALL(*helper_->factory()->encoders()[1], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE));
 
   // Send a fake frame and assert the return is software fallback.
@@ -916,9 +965,9 @@ TEST_F(TestSimulcastEncoderAdapterFake, TestFailureReturnCodesFromEncodeCalls) {
                                .set_timestamp_us(0)
                                .set_rotation(kVideoRotation_0)
                                .build();
-  std::vector<FrameType> frame_types(3, kVideoFrameKey);
+  std::vector<VideoFrameType> frame_types(3, VideoFrameType::kVideoFrameKey);
   EXPECT_EQ(WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE,
-            adapter_->Encode(input_frame, nullptr, &frame_types));
+            adapter_->Encode(input_frame, &frame_types));
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, TestInitFailureCleansUpEncoders) {
@@ -929,7 +978,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, TestInitFailureCleansUpEncoders) {
   helper_->factory()->set_init_encode_return_value(
       WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE);
   EXPECT_EQ(WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE,
-            adapter_->InitEncode(&codec_, 1, 1200));
+            adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(helper_->factory()->encoders().empty());
 }
 
@@ -944,7 +993,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, DoesNotAlterMaxQpForScreenshare) {
   codec_.simulcastStream[0].qpMax = kHighMaxQp;
   codec_.mode = VideoCodecMode::kScreensharing;
 
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_EQ(3u, helper_->factory()->encoders().size());
 
   // Just check the lowest stream, which is the one that where the adapter
@@ -959,7 +1008,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, DoesNotAlterMaxQpForScreenshare) {
 
   // Change the max qp and try again.
   codec_.simulcastStream[0].qpMax = kLowMaxQp;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_EQ(3u, helper_->factory()->encoders().size());
   ref_codec.qpMax = kLowMaxQp;
   VerifyCodec(ref_codec, 0);
@@ -977,7 +1026,7 @@ TEST_F(TestSimulcastEncoderAdapterFake,
   codec_.simulcastStream[2].qpMax = kHighMaxQp;
   codec_.mode = VideoCodecMode::kScreensharing;
 
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_EQ(3u, helper_->factory()->encoders().size());
 
   // Just check the lowest stream, which is the one that where the adapter
@@ -992,7 +1041,7 @@ TEST_F(TestSimulcastEncoderAdapterFake,
 
   // Change the max qp and try again.
   codec_.simulcastStream[2].qpMax = kLowMaxQp;
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_EQ(3u, helper_->factory()->encoders().size());
   ref_codec.qpMax = kLowMaxQp;
   VerifyCodec(ref_codec, 2);
@@ -1021,19 +1070,19 @@ TEST_F(TestSimulcastEncoderAdapterFake, ActivatesCorrectStreamsInInitEncode) {
                                .build();
 
   // Encode with three streams.
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   std::vector<MockVideoEncoder*> original_encoders =
       helper_->factory()->encoders();
   ASSERT_EQ(3u, original_encoders.size());
   // Only first encoder will be active and called.
-  EXPECT_CALL(*original_encoders[0], Encode(_, _, _))
+  EXPECT_CALL(*original_encoders[0], Encode(_, _))
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
-  EXPECT_CALL(*original_encoders[1], Encode(_, _, _)).Times(0);
-  EXPECT_CALL(*original_encoders[2], Encode(_, _, _)).Times(0);
+  EXPECT_CALL(*original_encoders[1], Encode(_, _)).Times(0);
+  EXPECT_CALL(*original_encoders[2], Encode(_, _)).Times(0);
 
-  std::vector<FrameType> frame_types;
-  frame_types.resize(3, kVideoFrameKey);
-  EXPECT_EQ(0, adapter_->Encode(input_frame, nullptr, &frame_types));
+  std::vector<VideoFrameType> frame_types;
+  frame_types.resize(3, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, TrustedRateControl) {
@@ -1059,7 +1108,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, TrustedRateControl) {
                                .build();
 
   // No encoder trusted, so simulcast adapter should not be either.
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().has_trusted_rate_controller);
 
   // Encode with three streams.
@@ -1070,18 +1119,18 @@ TEST_F(TestSimulcastEncoderAdapterFake, TrustedRateControl) {
   original_encoders[0]->set_has_trusted_rate_controller(true);
   original_encoders[1]->set_has_trusted_rate_controller(true);
   original_encoders[2]->set_has_trusted_rate_controller(true);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().has_trusted_rate_controller);
 
   // One encoder not trusted, so simulcast adapter should not be either.
   original_encoders[2]->set_has_trusted_rate_controller(false);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().has_trusted_rate_controller);
 
   // No encoder trusted, so simulcast adapter should not be either.
   original_encoders[0]->set_has_trusted_rate_controller(false);
   original_encoders[1]->set_has_trusted_rate_controller(false);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().has_trusted_rate_controller);
 }
 
@@ -1091,19 +1140,19 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReportsHardwareAccelerated) {
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 3;
   adapter_->RegisterEncodeCompleteCallback(this);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
 
   // None of the encoders uses HW support, so simulcast adapter reports false.
   for (MockVideoEncoder* encoder : helper_->factory()->encoders()) {
     encoder->set_is_hardware_accelerated(false);
   }
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().is_hardware_accelerated);
 
   // One encoder uses HW support, so simulcast adapter reports true.
   helper_->factory()->encoders()[2]->set_is_hardware_accelerated(true);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().is_hardware_accelerated);
 }
 
@@ -1113,19 +1162,19 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReportsInternalSource) {
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 3;
   adapter_->RegisterEncodeCompleteCallback(this);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
 
   // All encoders have internal source, simulcast adapter reports true.
   for (MockVideoEncoder* encoder : helper_->factory()->encoders()) {
     encoder->set_has_internal_source(true);
   }
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_TRUE(adapter_->GetEncoderInfo().has_internal_source);
 
   // One encoder does not have internal source, simulcast adapter reports false.
   helper_->factory()->encoders()[2]->set_has_internal_source(false);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_FALSE(adapter_->GetEncoderInfo().has_internal_source);
 }
 
@@ -1135,7 +1184,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReportsFpsAllocation) {
       kVideoCodecVP8);
   codec_.numberOfSimulcastStreams = 3;
   adapter_->RegisterEncodeCompleteCallback(this);
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   ASSERT_EQ(3u, helper_->factory()->encoders().size());
 
   // Combination of three different supported mode:
@@ -1153,9 +1202,159 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReportsFpsAllocation) {
     MockVideoEncoder* encoder = helper_->factory()->encoders()[i];
     encoder->set_fps_allocation(expected_fps_allocation[i]);
   }
-  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
   EXPECT_THAT(adapter_->GetEncoderInfo().fps_allocation,
               ::testing::ElementsAreArray(expected_fps_allocation));
+}
+
+TEST_F(TestSimulcastEncoderAdapterFake, SetRateDistributesBandwithAllocation) {
+  SimulcastTestFixtureImpl::DefaultSettings(
+      &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
+      kVideoCodecVP8);
+  codec_.numberOfSimulcastStreams = 3;
+  const DataRate target_bitrate =
+      DataRate::kbps(codec_.simulcastStream[0].targetBitrate +
+                     codec_.simulcastStream[1].targetBitrate +
+                     codec_.simulcastStream[2].minBitrate);
+  const DataRate bandwidth_allocation = target_bitrate + DataRate::kbps(600);
+
+  rate_allocator_.reset(new SimulcastRateAllocator(codec_));
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->RegisterEncodeCompleteCallback(this);
+
+  // Set bitrates so that we send all layers.
+  adapter_->SetRates(VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(target_bitrate.bps(), 30)),
+      30.0, bandwidth_allocation));
+
+  std::vector<MockVideoEncoder*> encoders = helper_->factory()->encoders();
+
+  ASSERT_EQ(3u, encoders.size());
+
+  for (size_t i = 0; i < 3; ++i) {
+    const uint32_t layer_bitrate_bps =
+        (i < static_cast<size_t>(codec_.numberOfSimulcastStreams) - 1
+             ? codec_.simulcastStream[i].targetBitrate
+             : codec_.simulcastStream[i].minBitrate) *
+        1000;
+    EXPECT_EQ(layer_bitrate_bps,
+              encoders[i]->last_set_rates().bitrate.get_sum_bps())
+        << i;
+    EXPECT_EQ(
+        (layer_bitrate_bps * bandwidth_allocation.bps()) / target_bitrate.bps(),
+        encoders[i]->last_set_rates().bandwidth_allocation.bps())
+        << i;
+  }
+}
+
+TEST_F(TestSimulcastEncoderAdapterFake, SupportsSimulcast) {
+  SimulcastTestFixtureImpl::DefaultSettings(
+      &codec_, static_cast<const int*>(kTestTemporalLayerProfile),
+      kVideoCodecVP8);
+  codec_.numberOfSimulcastStreams = 3;
+
+  // Indicate that mock encoders internally support simulcast.
+  helper_->factory()->set_supports_simulcast(true);
+  adapter_->RegisterEncodeCompleteCallback(this);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+
+  // Only one encoder should have been produced.
+  ASSERT_EQ(1u, helper_->factory()->encoders().size());
+
+  rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
+  VideoFrame input_frame = VideoFrame::Builder()
+                               .set_video_frame_buffer(buffer)
+                               .set_timestamp_rtp(100)
+                               .set_timestamp_ms(1000)
+                               .set_rotation(kVideoRotation_180)
+                               .build();
+  EXPECT_CALL(*helper_->factory()->encoders()[0], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  std::vector<VideoFrameType> frame_types(3, VideoFrameType::kVideoFrameKey);
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
+}
+
+TEST_F(TestSimulcastEncoderAdapterFake, SupportsFallback) {
+  // Enable support for fallback encoder factory and re-setup.
+  use_fallback_factory_ = true;
+  SetUp();
+
+  SetupCodec();
+
+  // Make sure we have bitrate for all layers.
+  DataRate max_bitrate = DataRate::Zero();
+  for (int i = 0; i < 3; ++i) {
+    max_bitrate += DataRate::kbps(codec_.simulcastStream[i].maxBitrate);
+  }
+  const auto rate_settings = VideoEncoder::RateControlParameters(
+      rate_allocator_->Allocate(
+          VideoBitrateAllocationParameters(max_bitrate.bps(), 30)),
+      30.0, max_bitrate);
+  adapter_->SetRates(rate_settings);
+
+  std::vector<MockVideoEncoder*> primary_encoders =
+      helper_->factory()->encoders();
+  std::vector<MockVideoEncoder*> fallback_encoders =
+      helper_->fallback_factory()->encoders();
+
+  ASSERT_EQ(3u, primary_encoders.size());
+  ASSERT_EQ(3u, fallback_encoders.size());
+
+  // Create frame to test with.
+  rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
+  VideoFrame input_frame = VideoFrame::Builder()
+                               .set_video_frame_buffer(buffer)
+                               .set_timestamp_rtp(100)
+                               .set_timestamp_ms(1000)
+                               .set_rotation(kVideoRotation_180)
+                               .build();
+  std::vector<VideoFrameType> frame_types(3, VideoFrameType::kVideoFrameKey);
+
+  // All primary encoders used.
+  for (auto codec : primary_encoders) {
+    EXPECT_CALL(*codec, Encode).WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  }
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
+
+  // Trigger fallback on first encoder.
+  primary_encoders[0]->set_init_encode_return_value(
+      WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(rate_settings);
+  EXPECT_CALL(*fallback_encoders[0], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_CALL(*primary_encoders[1], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_CALL(*primary_encoders[2], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
+
+  // Trigger fallback on all encoder.
+  primary_encoders[1]->set_init_encode_return_value(
+      WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE);
+  primary_encoders[2]->set_init_encode_return_value(
+      WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE);
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(rate_settings);
+  EXPECT_CALL(*fallback_encoders[0], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_CALL(*fallback_encoders[1], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_CALL(*fallback_encoders[2], Encode)
+      .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
+
+  // Return to primary encoders on all streams.
+  for (int i = 0; i < 3; ++i) {
+    primary_encoders[i]->set_init_encode_return_value(WEBRTC_VIDEO_CODEC_OK);
+  }
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, kSettings));
+  adapter_->SetRates(rate_settings);
+  for (auto codec : primary_encoders) {
+    EXPECT_CALL(*codec, Encode).WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
+  }
+  EXPECT_EQ(0, adapter_->Encode(input_frame, &frame_types));
 }
 
 }  // namespace test

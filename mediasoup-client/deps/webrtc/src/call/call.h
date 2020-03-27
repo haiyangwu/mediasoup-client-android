@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "api/media_types.h"
-#include "api/task_queue/task_queue_factory.h"
 #include "call/audio_receive_stream.h"
 #include "call/audio_send_stream.h"
 #include "call/call_config.h"
@@ -26,7 +25,6 @@
 #include "call/video_receive_stream.h"
 #include "call/video_send_stream.h"
 #include "modules/utility/include/process_thread.h"
-#include "rtc_base/bitrate_allocation_strategy.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/network/sent_packet.h"
 #include "rtc_base/network_route.h"
@@ -54,15 +52,10 @@ class Call {
   static Call* Create(const Call::Config& config,
                       Clock* clock,
                       std::unique_ptr<ProcessThread> call_thread,
-                      std::unique_ptr<ProcessThread> pacer_thread,
-                      TaskQueueFactory* task_queue_factory);
+                      std::unique_ptr<ProcessThread> pacer_thread);
 
   virtual AudioSendStream* CreateAudioSendStream(
       const AudioSendStream::Config& config) = 0;
-
-  // Gets called when media transport is created or removed.
-  virtual void MediaTransportChange(
-      MediaTransportInterface* media_transport_interface) = 0;
 
   virtual void DestroyAudioSendStream(AudioSendStream* send_stream) = 0;
 
@@ -109,10 +102,6 @@ class Call {
   // pacing delay, etc.
   virtual Stats GetStats() const = 0;
 
-  virtual void SetBitrateAllocationStrategy(
-      std::unique_ptr<rtc::BitrateAllocationStrategy>
-          bitrate_allocation_strategy) = 0;
-
   // TODO(skvlad): When the unbundled case with multiple streams for the same
   // media type going over different networks is supported, track the state
   // for each stream separately. Right now it's global per media type.
@@ -123,6 +112,9 @@ class Call {
       int transport_overhead_per_packet) = 0;
 
   virtual void OnSentPacket(const rtc::SentPacket& sent_packet) = 0;
+
+  virtual void SetClientBitratePreferences(
+      const BitrateSettings& preferences) = 0;
 
   virtual ~Call() {}
 };

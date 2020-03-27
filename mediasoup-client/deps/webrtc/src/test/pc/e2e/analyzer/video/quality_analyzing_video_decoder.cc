@@ -12,22 +12,17 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "api/video/i420_buffer.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/logging.h"
+#include "test/pc/e2e/analyzer/video/simulcast_dummy_buffer_helper.h"
 
 namespace webrtc {
-namespace test {
-namespace {
-
-constexpr size_t kIrrelatedSimulcastStreamFrameWidth = 320;
-constexpr size_t kIrrelatedSimulcastStreamFrameHeight = 480;
-
-}  // namespace
+namespace webrtc_pc_e2e {
 
 QualityAnalyzingVideoDecoder::QualityAnalyzingVideoDecoder(
     int id,
@@ -40,7 +35,7 @@ QualityAnalyzingVideoDecoder::QualityAnalyzingVideoDecoder(
       delegate_(std::move(delegate)),
       extractor_(extractor),
       analyzer_(analyzer) {
-  analyzing_callback_ = absl::make_unique<DecoderCallback>(this);
+  analyzing_callback_ = std::make_unique<DecoderCallback>(this);
 }
 QualityAnalyzingVideoDecoder::~QualityAnalyzingVideoDecoder() = default;
 
@@ -50,11 +45,9 @@ int32_t QualityAnalyzingVideoDecoder::InitDecode(
   return delegate_->InitDecode(codec_settings, number_of_cores);
 }
 
-int32_t QualityAnalyzingVideoDecoder::Decode(
-    const EncodedImage& input_image,
-    bool missing_frames,
-    const CodecSpecificInfo* codec_specific_info,
-    int64_t render_time_ms) {
+int32_t QualityAnalyzingVideoDecoder::Decode(const EncodedImage& input_image,
+                                             bool missing_frames,
+                                             int64_t render_time_ms) {
   // Image  extractor extracts id from provided EncodedImage and also returns
   // the image with the original buffer. Buffer can be modified in place, so
   // owner of original buffer will be responsible for deleting it, or extractor
@@ -94,9 +87,9 @@ int32_t QualityAnalyzingVideoDecoder::Decode(
   // We can safely dereference |origin_image|, because it can be removed from
   // the map only after |delegate_| Decode method will be invoked. Image will be
   // removed inside DecodedImageCallback, which can be done on separate thread.
-  analyzer_->OnFrameReceived(out.id, *origin_image);
-  int32_t result = delegate_->Decode(*origin_image, missing_frames,
-                                     codec_specific_info, render_time_ms);
+  analyzer_->OnFramePreDecode(out.id, *origin_image);
+  int32_t result =
+      delegate_->Decode(*origin_image, missing_frames, render_time_ms);
   if (result != WEBRTC_VIDEO_CODEC_OK) {
     // If delegate decoder failed, then cleanup data for this image.
     {
@@ -177,50 +170,28 @@ void QualityAnalyzingVideoDecoder::DecoderCallback::Decoded(
 }
 
 int32_t
-QualityAnalyzingVideoDecoder::DecoderCallback::ReceivedDecodedReferenceFrame(
-    const uint64_t pictureId) {
-  rtc::CritScope crit(&callback_lock_);
-  RTC_DCHECK(delegate_callback_);
-  return delegate_callback_->ReceivedDecodedReferenceFrame(pictureId);
-}
-
-int32_t QualityAnalyzingVideoDecoder::DecoderCallback::ReceivedDecodedFrame(
-    const uint64_t pictureId) {
-  rtc::CritScope crit(&callback_lock_);
-  RTC_DCHECK(delegate_callback_);
-  return delegate_callback_->ReceivedDecodedFrame(pictureId);
-}
-
-int32_t
 QualityAnalyzingVideoDecoder::DecoderCallback::IrrelevantSimulcastStreamDecoded(
     uint16_t frame_id,
-    int64_t timestamp_ms) {
-  webrtc::VideoFrame black_frame =
+    uint32_t timestamp_ms) {
+  webrtc::VideoFrame dummy_frame =
       webrtc::VideoFrame::Builder()
-          .set_video_frame_buffer(
-              GetBlackFrameBuffer(kIrrelatedSimulcastStreamFrameWidth,
-                                  kIrrelatedSimulcastStreamFrameHeight))
-          .set_timestamp_ms(timestamp_ms)
+          .set_video_frame_buffer(GetDummyFrameBuffer())
+          .set_timestamp_rtp(timestamp_ms)
           .set_id(frame_id)
           .build();
   rtc::CritScope crit(&callback_lock_);
   RTC_DCHECK(delegate_callback_);
-  return delegate_callback_->Decoded(black_frame);
+  delegate_callback_->Decoded(dummy_frame, absl::nullopt, absl::nullopt);
+  return WEBRTC_VIDEO_CODEC_OK;
 }
 
 rtc::scoped_refptr<webrtc::VideoFrameBuffer>
-QualityAnalyzingVideoDecoder::DecoderCallback::GetBlackFrameBuffer(int width,
-                                                                   int height) {
-  if (!black_frame_buffer_ || black_frame_buffer_->width() != width ||
-      black_frame_buffer_->height() != height) {
-    // Use i420 buffer here as default one and supported by all codecs.
-    rtc::scoped_refptr<webrtc::I420Buffer> buffer =
-        webrtc::I420Buffer::Create(width, height);
-    webrtc::I420Buffer::SetBlack(buffer.get());
-    black_frame_buffer_ = buffer;
+QualityAnalyzingVideoDecoder::DecoderCallback::GetDummyFrameBuffer() {
+  if (!dummy_frame_buffer_) {
+    dummy_frame_buffer_ = CreateDummyFrameBuffer();
   }
 
-  return black_frame_buffer_;
+  return dummy_frame_buffer_;
 }
 
 void QualityAnalyzingVideoDecoder::OnFrameDecoded(
@@ -271,7 +242,7 @@ std::unique_ptr<VideoDecoder>
 QualityAnalyzingVideoDecoderFactory::CreateVideoDecoder(
     const SdpVideoFormat& format) {
   std::unique_ptr<VideoDecoder> decoder = delegate_->CreateVideoDecoder(format);
-  return absl::make_unique<QualityAnalyzingVideoDecoder>(
+  return std::make_unique<QualityAnalyzingVideoDecoder>(
       id_generator_->GetNextId(), std::move(decoder), extractor_, analyzer_);
 }
 
@@ -281,9 +252,9 @@ QualityAnalyzingVideoDecoderFactory::LegacyCreateVideoDecoder(
     const std::string& receive_stream_id) {
   std::unique_ptr<VideoDecoder> decoder =
       delegate_->LegacyCreateVideoDecoder(format, receive_stream_id);
-  return absl::make_unique<QualityAnalyzingVideoDecoder>(
+  return std::make_unique<QualityAnalyzingVideoDecoder>(
       id_generator_->GetNextId(), std::move(decoder), extractor_, analyzer_);
 }
 
-}  // namespace test
+}  // namespace webrtc_pc_e2e
 }  // namespace webrtc

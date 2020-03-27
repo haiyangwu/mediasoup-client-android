@@ -12,7 +12,9 @@
 
 #include <math.h>
 #include <stddef.h>
+
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 
 #include "rtc_base/checks.h"
@@ -68,7 +70,7 @@ void EchoRemoverMetrics::Update(
   if (++block_counter_ <= kMetricsCollectionBlocks) {
     aec3::UpdateDbMetric(aec_state.Erl(), &erl_);
     erl_time_domain_.UpdateInstant(aec_state.ErlTimeDomain());
-    aec3::UpdateDbMetric(aec_state.Erle(), &erle_);
+    aec3::UpdateDbMetric(aec_state.Erle()[0], &erle_);
     erle_time_domain_.UpdateInstant(aec_state.FullBandErleLog2());
     aec3::UpdateDbMetric(comfort_noise_spectrum, &comfort_noise_);
     aec3::UpdateDbMetric(suppressor_gain, &suppressor_gain_);
@@ -239,7 +241,8 @@ void EchoRemoverMetrics::Update(
             static_cast<int>(
                 active_render_count_ > kMetricsCollectionBlocksBy2 ? 1 : 0));
         RTC_HISTOGRAM_COUNTS_LINEAR("WebRTC.Audio.EchoCanceller.FilterDelay",
-                                    aec_state.FilterDelayBlocks(), 0, 30, 31);
+                                    aec_state.MinDirectPathFilterDelay(), 0, 30,
+                                    31);
         RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.EchoCanceller.CaptureSaturation",
                               static_cast<int>(saturated_capture_ ? 1 : 0));
         break;
@@ -314,7 +317,7 @@ int TransformDbMetricForReporting(bool negate,
                                   float offset,
                                   float scaling,
                                   float value) {
-  float new_value = 10.f * log10(value * scaling + 1e-10f) + offset;
+  float new_value = 10.f * std::log10(value * scaling + 1e-10f) + offset;
   if (negate) {
     new_value = -new_value;
   }

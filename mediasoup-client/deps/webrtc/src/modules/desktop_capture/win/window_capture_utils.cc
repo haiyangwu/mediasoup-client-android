@@ -10,6 +10,9 @@
 
 #include "modules/desktop_capture/win/window_capture_utils.h"
 
+// Just for the DWMWINDOWATTRIBUTE enums (DWMWA_CLOAKED).
+#include <dwmapi.h>
+
 #include "modules/desktop_capture/win/scoped_gdi_object.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -33,6 +36,7 @@ bool GetWindowRect(HWND window, DesktopRect* result) {
 }
 
 bool GetCroppedWindowRect(HWND window,
+                          bool avoid_cropping_border,
                           DesktopRect* cropped_rect,
                           DesktopRect* original_rect) {
   DesktopRect window_rect;
@@ -50,13 +54,30 @@ bool GetCroppedWindowRect(HWND window,
     return false;
   }
 
-  // After Windows8, transparent borders will be added by OS at
-  // left/bottom/right sides of a window. If the cropped window
+  // As of Windows8, transparent resize borders are added by the OS at
+  // left/bottom/right sides of a resizeable window. If the cropped window
   // doesn't remove these borders, the background will be exposed a bit.
   if (rtc::IsWindows8OrLater() || is_maximized) {
-    const int width = GetSystemMetrics(SM_CXSIZEFRAME);
-    const int height = GetSystemMetrics(SM_CYSIZEFRAME);
-    cropped_rect->Extend(-width, 0, -width, -height);
+    // Only apply this cropping to windows with a resize border (otherwise,
+    // it'd clip the edges of captured pop-up windows without this border).
+    LONG style = GetWindowLong(window, GWL_STYLE);
+    if (style & WS_THICKFRAME || style & DS_MODALFRAME) {
+      int width = GetSystemMetrics(SM_CXSIZEFRAME);
+      int bottom_height = GetSystemMetrics(SM_CYSIZEFRAME);
+      const int visible_border_height = GetSystemMetrics(SM_CYBORDER);
+      int top_height = visible_border_height;
+
+      // If requested, avoid cropping the visible window border. This is used
+      // for pop-up windows to include their border, but not for the outermost
+      // window (where a partially-transparent border may expose the
+      // background a bit).
+      if (avoid_cropping_border) {
+        width = std::max(0, width - GetSystemMetrics(SM_CXBORDER));
+        bottom_height = std::max(0, bottom_height - visible_border_height);
+        top_height = 0;
+      }
+      cropped_rect->Extend(-width, -top_height, -width, -bottom_height);
+    }
   }
 
   return true;
@@ -137,15 +158,15 @@ bool IsWindowMaximized(HWND window, bool* result) {
 }
 
 // WindowCaptureHelperWin implementation.
-WindowCaptureHelperWin::WindowCaptureHelperWin()
-    : dwmapi_library_(nullptr),
-      func_(nullptr),
-      virtual_desktop_manager_(nullptr) {
+WindowCaptureHelperWin::WindowCaptureHelperWin() {
   // Try to load dwmapi.dll dynamically since it is not available on XP.
-  dwmapi_library_ = LoadLibrary(L"dwmapi.dll");
+  dwmapi_library_ = LoadLibraryW(L"dwmapi.dll");
   if (dwmapi_library_) {
     func_ = reinterpret_cast<DwmIsCompositionEnabledFunc>(
         GetProcAddress(dwmapi_library_, "DwmIsCompositionEnabled"));
+    dwm_get_window_attribute_func_ =
+        reinterpret_cast<DwmGetWindowAttributeFunc>(
+            GetProcAddress(dwmapi_library_, "DwmGetWindowAttribute"));
   }
 
   if (rtc::IsWindows10OrLater()) {
@@ -178,17 +199,16 @@ bool WindowCaptureHelperWin::IsAeroEnabled() {
 bool WindowCaptureHelperWin::IsWindowChromeNotification(HWND hwnd) {
   const size_t kTitleLength = 32;
   WCHAR window_title[kTitleLength];
-  GetWindowText(hwnd, window_title, kTitleLength);
+  GetWindowTextW(hwnd, window_title, kTitleLength);
   if (wcsnlen_s(window_title, kTitleLength) != 0) {
     return false;
   }
 
   const size_t kClassLength = 256;
   WCHAR class_name[kClassLength];
-  const int class_name_length = GetClassName(hwnd, class_name, kClassLength);
-  RTC_DCHECK(class_name_length)
-      << "Error retrieving the application's class name";
-  if (wcsncmp(class_name, kChromeWindowClassPrefix,
+  const int class_name_length = GetClassNameW(hwnd, class_name, kClassLength);
+  if (class_name_length < 1 ||
+      wcsncmp(class_name, kChromeWindowClassPrefix,
               wcsnlen_s(kChromeWindowClassPrefix, kClassLength)) != 0) {
     return false;
   }
@@ -269,7 +289,25 @@ bool WindowCaptureHelperWin::IsWindowOnCurrentDesktop(HWND hwnd) {
 
 bool WindowCaptureHelperWin::IsWindowVisibleOnCurrentDesktop(HWND hwnd) {
   return !::IsIconic(hwnd) && ::IsWindowVisible(hwnd) &&
-         IsWindowOnCurrentDesktop(hwnd);
+         IsWindowOnCurrentDesktop(hwnd) && !IsWindowCloaked(hwnd);
+}
+
+// A cloaked window is composited but not visible to the user.
+// Example: Cortana or the Action Center when collapsed.
+bool WindowCaptureHelperWin::IsWindowCloaked(HWND hwnd) {
+  if (!dwm_get_window_attribute_func_) {
+    // Does not apply.
+    return false;
+  }
+
+  int res = 0;
+  if (dwm_get_window_attribute_func_(hwnd, DWMWA_CLOAKED, &res, sizeof(res)) !=
+      S_OK) {
+    // Cannot tell so assume not cloacked for backward compatibility.
+    return false;
+  }
+
+  return res != 0;
 }
 
 }  // namespace webrtc

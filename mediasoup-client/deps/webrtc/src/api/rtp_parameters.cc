@@ -100,6 +100,9 @@ const char RtpExtension::kTimestampOffsetUri[] =
 const char RtpExtension::kAbsSendTimeUri[] =
     "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time";
 
+const char RtpExtension::kAbsoluteCaptureTimeUri[] =
+    "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time";
+
 const char RtpExtension::kVideoRotationUri[] = "urn:3gpp:video-orientation";
 
 const char RtpExtension::kTransportSequenceNumberUri[] =
@@ -152,6 +155,9 @@ constexpr int RtpExtension::kOneByteHeaderExtensionMaxValueSize;
 
 bool RtpExtension::IsSupportedForAudio(const std::string& uri) {
   return uri == webrtc::RtpExtension::kAudioLevelUri ||
+         uri == webrtc::RtpExtension::kAbsSendTimeUri ||
+         // TODO(bugs.webrtc.org/10739): Uncomment once the audio impl is ready.
+         // uri == webrtc::RtpExtension::kAbsoluteCaptureTimeUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberV2Uri ||
          uri == webrtc::RtpExtension::kMidUri ||
@@ -162,6 +168,8 @@ bool RtpExtension::IsSupportedForAudio(const std::string& uri) {
 bool RtpExtension::IsSupportedForVideo(const std::string& uri) {
   return uri == webrtc::RtpExtension::kTimestampOffsetUri ||
          uri == webrtc::RtpExtension::kAbsSendTimeUri ||
+         // TODO(bugs.webrtc.org/10739): Uncomment once the video impl is ready.
+         // uri == webrtc::RtpExtension::kAbsoluteCaptureTimeUri ||
          uri == webrtc::RtpExtension::kVideoRotationUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberV2Uri ||
@@ -188,6 +196,7 @@ bool RtpExtension::IsEncryptionSupported(const std::string& uri) {
          // encrypted (which can't be done by Chromium).
          uri == webrtc::RtpExtension::kAbsSendTimeUri ||
 #endif
+         uri == webrtc::RtpExtension::kAbsoluteCaptureTimeUri ||
          uri == webrtc::RtpExtension::kVideoRotationUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberUri ||
          uri == webrtc::RtpExtension::kTransportSequenceNumberV2Uri ||
@@ -221,10 +230,10 @@ std::vector<RtpExtension> RtpExtension::FilterDuplicateNonEncrypted(
 
     // Only add non-encrypted extension if no encrypted with the same URI
     // is also present...
-    if (std::find_if(extension + 1, extensions.end(),
-                     [extension](const RtpExtension& check) {
-                       return extension->uri == check.uri;
-                     }) != extensions.end()) {
+    if (std::any_of(extension + 1, extensions.end(),
+                    [&](const RtpExtension& check) {
+                      return extension->uri == check.uri;
+                    })) {
       continue;
     }
 

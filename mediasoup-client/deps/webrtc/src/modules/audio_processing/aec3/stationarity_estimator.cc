@@ -16,7 +16,7 @@
 
 #include "api/array_view.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
-#include "modules/audio_processing/aec3/vector_buffer.h"
+#include "modules/audio_processing/aec3/spectrum_buffer.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/atomic_ops.h"
 
@@ -45,7 +45,7 @@ void StationarityEstimator::Reset() {
 
 // Update just the noise estimator. Usefull until the delay is known
 void StationarityEstimator::UpdateNoiseEstimator(
-    rtc::ArrayView<const float> spectrum) {
+    rtc::ArrayView<const std::vector<float>> spectrum) {
   noise_.Update(spectrum);
   data_dumper_->DumpRaw("aec3_stationarity_noise_spectrum", noise_.Spectrum());
   data_dumper_->DumpRaw("aec3_stationarity_is_block_stationary",
@@ -53,7 +53,7 @@ void StationarityEstimator::UpdateNoiseEstimator(
 }
 
 void StationarityEstimator::UpdateStationarityFlags(
-    const VectorBuffer& spectrum_buffer,
+    const SpectrumBuffer& spectrum_buffer,
     rtc::ArrayView<const float> render_reverb_contribution_spectrum,
     int idx_current,
     int num_lookahead) {
@@ -98,16 +98,21 @@ bool StationarityEstimator::IsBlockStationary() const {
 }
 
 bool StationarityEstimator::EstimateBandStationarity(
-    const VectorBuffer& spectrum_buffer,
-    rtc::ArrayView<const float> reverb,
+    const SpectrumBuffer& spectrum_buffer,
+    rtc::ArrayView<const float> average_reverb,
     const std::array<int, kWindowLength>& indexes,
     size_t band) const {
   constexpr float kThrStationarity = 10.f;
   float acum_power = 0.f;
+  const int num_render_channels =
+      static_cast<int>(spectrum_buffer.buffer[0].size());
+  const float one_by_num_channels = 1.f / num_render_channels;
   for (auto idx : indexes) {
-    acum_power += spectrum_buffer.buffer[idx][band];
+    for (int ch = 0; ch < num_render_channels; ++ch) {
+      acum_power += spectrum_buffer.buffer[idx][ch][band] * one_by_num_channels;
+    }
   }
-  acum_power += reverb[band];
+  acum_power += average_reverb[band];
   float noise = kWindowLength * GetStationarityPowerBand(band);
   RTC_CHECK_LT(0.f, noise);
   bool stationary = acum_power < kThrStationarity * noise;
@@ -163,16 +168,42 @@ void StationarityEstimator::NoiseSpectrum::Reset() {
 }
 
 void StationarityEstimator::NoiseSpectrum::Update(
-    rtc::ArrayView<const float> spectrum) {
-  RTC_DCHECK_EQ(kFftLengthBy2Plus1, spectrum.size());
+    rtc::ArrayView<const std::vector<float>> spectrum) {
+  RTC_DCHECK_LE(1, spectrum[0].size());
+  const int num_render_channels = static_cast<int>(spectrum.size());
+
+  std::array<float, kFftLengthBy2Plus1> avg_spectrum_data;
+  rtc::ArrayView<const float> avg_spectrum;
+  RTC_DCHECK_EQ(kFftLengthBy2Plus1, spectrum[0].size());
+  if (num_render_channels == 1) {
+    avg_spectrum = spectrum[0];
+  } else {
+    // For multiple channels, average the channel spectra before passing to the
+    // noise spectrum estimator.
+    avg_spectrum = avg_spectrum_data;
+    std::copy(spectrum[0].begin(), spectrum[0].end(),
+              avg_spectrum_data.begin());
+    for (int ch = 1; ch < num_render_channels; ++ch) {
+      RTC_DCHECK_EQ(kFftLengthBy2Plus1, spectrum[ch].size());
+      for (size_t k = 1; k < kFftLengthBy2Plus1; ++k) {
+        avg_spectrum_data[k] += spectrum[ch][k];
+      }
+    }
+
+    const float one_by_num_channels = 1.f / num_render_channels;
+    for (size_t k = 1; k < kFftLengthBy2Plus1; ++k) {
+      avg_spectrum_data[k] *= one_by_num_channels;
+    }
+  }
+
   ++block_counter_;
   float alpha = GetAlpha();
-  for (size_t k = 0; k < spectrum.size(); ++k) {
+  for (size_t k = 0; k < kFftLengthBy2Plus1; ++k) {
     if (block_counter_ <= kNBlocksAverageInitPhase) {
-      noise_spectrum_[k] += (1.f / kNBlocksAverageInitPhase) * spectrum[k];
+      noise_spectrum_[k] += (1.f / kNBlocksAverageInitPhase) * avg_spectrum[k];
     } else {
       noise_spectrum_[k] =
-          UpdateBandBySmoothing(spectrum[k], noise_spectrum_[k], alpha);
+          UpdateBandBySmoothing(avg_spectrum[k], noise_spectrum_[k], alpha);
     }
   }
 }

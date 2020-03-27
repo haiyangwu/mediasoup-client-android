@@ -14,9 +14,9 @@
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "api/array_view.h"
 #include "common_audio/include/audio_util.h"
 #include "modules/audio_mixer/audio_frame_manipulator.h"
@@ -57,6 +57,7 @@ void SetAudioFrameFields(const std::vector<AudioFrame*>& mix_list,
     audio_frame_for_mixing->timestamp_ = mix_list[0]->timestamp_;
     audio_frame_for_mixing->elapsed_time_ms_ = mix_list[0]->elapsed_time_ms_;
     audio_frame_for_mixing->ntp_time_ms_ = mix_list[0]->ntp_time_ms_;
+    audio_frame_for_mixing->packet_infos_ = mix_list[0]->packet_infos_;
   }
 }
 
@@ -128,8 +129,8 @@ constexpr size_t FrameCombiner::kMaximumChannelSize;
 FrameCombiner::FrameCombiner(bool use_limiter)
     : data_dumper_(new ApmDataDumper(0)),
       mixing_buffer_(
-          absl::make_unique<std::array<std::array<float, kMaximumChannelSize>,
-                                       kMaximumNumberOfChannels>>()),
+          std::make_unique<std::array<std::array<float, kMaximumChannelSize>,
+                                      kMaximumNumberOfChannels>>()),
       limiter_(static_cast<size_t>(48000), data_dumper_.get(), "AudioMixer"),
       use_limiter_(use_limiter) {
   static_assert(kMaximumChannelSize * kMaximumNumberOfChannels <=

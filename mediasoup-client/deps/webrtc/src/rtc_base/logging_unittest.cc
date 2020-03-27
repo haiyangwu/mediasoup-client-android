@@ -11,6 +11,7 @@
 #include "rtc_base/logging.h"
 
 #include <string.h>
+
 #include <algorithm>
 
 #include "rtc_base/arraysize.h"
@@ -366,6 +367,20 @@ TEST(LogTest, Perf) {
   EXPECT_EQ(str.size(), (message.size() + logging_overhead) * kRepetitions);
   RTC_LOG(LS_INFO) << "Total log time: " << TimeDiff(finish, start) << " ms "
                    << " total bytes logged: " << str.size();
+}
+
+TEST(LogTest, EnumsAreSupported) {
+  enum class TestEnum { kValue0 = 0, kValue1 = 1 };
+  std::string str;
+  LogSinkImpl<StringStream> stream(&str);
+  LogMessage::AddLogToStream(&stream, LS_INFO);
+  RTC_LOG(LS_INFO) << "[" << TestEnum::kValue0 << "]";
+  EXPECT_NE(std::string::npos, str.find("[0]"));
+  EXPECT_EQ(std::string::npos, str.find("[1]"));
+  RTC_LOG(LS_INFO) << "[" << TestEnum::kValue1 << "]";
+  EXPECT_NE(std::string::npos, str.find("[1]"));
+  LogMessage::RemoveLogToStream(&stream);
+  stream.Close();
 }
 
 }  // namespace rtc

@@ -11,16 +11,25 @@
 #define TEST_SINGLE_THREADED_TASK_QUEUE_H_
 
 #include <functional>
-#include <list>
+#include <map>
 #include <memory>
+#include <utility>
 
+#include "api/task_queue/task_queue_base.h"
 #include "rtc_base/critical_section.h"
+#include "rtc_base/deprecation.h"
 #include "rtc_base/event.h"
 #include "rtc_base/platform_thread.h"
+#include "rtc_base/task_queue_for_test.h"
+#include "rtc_base/task_utils/to_queued_task.h"
 #include "rtc_base/thread_checker.h"
 
 namespace webrtc {
 namespace test {
+
+// DEPRECATED. This class doesn't striclty follow rtc::TaskQueue semantics,
+// which makes it surprising and hard to use correctly.
+// Please use TaskQueueForTest instead.
 
 // This class gives capabilities similar to rtc::TaskQueue, but ensures
 // everything happens on the same thread. This is intended to make the
@@ -28,50 +37,84 @@ namespace test {
 // resemble that of real WebRTC, thereby allowing us to replace some critical
 // sections by thread-checkers.
 // This task is NOT tuned for performance, but rather for simplicity.
-class SingleThreadedTaskQueueForTesting {
+class DEPRECATED_SingleThreadedTaskQueueForTesting : public TaskQueueBase {
  public:
   using Task = std::function<void()>;
   using TaskId = size_t;
+  constexpr static TaskId kInvalidTaskId = static_cast<TaskId>(-1);
 
-  explicit SingleThreadedTaskQueueForTesting(const char* name);
-  ~SingleThreadedTaskQueueForTesting();
+  explicit DEPRECATED_SingleThreadedTaskQueueForTesting(const char* name);
+  ~DEPRECATED_SingleThreadedTaskQueueForTesting() override;
 
   // Sends one task to the task-queue, and returns a handle by which the
   // task can be cancelled.
   // This mimics the behavior of TaskQueue, but only for lambdas, rather than
   // for both lambdas and QueuedTask objects.
-  TaskId PostTask(Task task);
+  TaskId PostTask(Task task) {
+    return PostDelayed(ToQueuedTask(std::move(task)), /*delay_ms=*/0);
+  }
 
   // Same as PostTask(), but ensures that the task will not begin execution
   // less than |delay_ms| milliseconds after being posted; an upper bound
   // is not provided.
-  TaskId PostDelayedTask(Task task, int64_t delay_ms);
+  TaskId PostDelayedTask(Task task, int64_t delay_ms) {
+    return PostDelayed(ToQueuedTask(std::move(task)), delay_ms);
+  }
 
   // Send one task to the queue. The function does not return until the task
   // has finished executing. No support for canceling the task.
-  void SendTask(Task task);
+  // TODO(bugs.webrtc.org/10933): Remove this function in favor of free SendTask
+  // to reduce direct mentioning of the SingleThreadedTaskQueueForTesting class.
+  template <typename Closure>
+  void SendTask(Closure&& task) {
+    ::webrtc::SendTask(this, std::forward<Closure>(task), RTC_FROM_HERE);
+  }
 
   // Given an identifier to the task, attempts to eject it from the queue.
   // Returns true if the task was found and cancelled. Failure possible
   // only for invalid task IDs, or for tasks which have already been executed.
   bool CancelTask(TaskId task_id);
 
+  // Returns true iff called on the thread associated with the task queue.
+  bool IsCurrent();
+
+  // Returns true iff the task queue is actively being serviced.
+  bool IsRunning();
+
+  bool HasPendingTasks() const;
+
+  void Stop();
+
+  // Implements TaskQueueBase.
+  void Delete() override;
+
+  void PostTask(std::unique_ptr<QueuedTask> task) override {
+    PostDelayed(std::move(task), /*delay_ms=*/0);
+  }
+
+  void PostDelayedTask(std::unique_ptr<QueuedTask> task,
+                       uint32_t delay_ms) override {
+    PostDelayed(std::move(task), delay_ms);
+  }
+
  private:
-  struct QueuedTask {
-    QueuedTask(TaskId task_id, int64_t earliest_execution_time, Task task);
-    ~QueuedTask();
+  struct StoredTask {
+    StoredTask(TaskId task_id, std::unique_ptr<QueuedTask> task);
+    ~StoredTask();
 
     TaskId task_id;
-    int64_t earliest_execution_time;
-    Task task;
+    std::unique_ptr<QueuedTask> task;
   };
+
+  TaskId PostDelayed(std::unique_ptr<QueuedTask> task, int64_t delay_ms);
 
   static void Run(void* obj);
 
   void RunLoop();
 
   rtc::CriticalSection cs_;
-  std::list<std::unique_ptr<QueuedTask>> tasks_ RTC_GUARDED_BY(cs_);
+  // Tasks are ordered by earliest execution time.
+  std::multimap<int64_t, StoredTask> tasks_ RTC_GUARDED_BY(cs_);
   rtc::ThreadChecker owner_thread_checker_;
   rtc::PlatformThread thread_;
   bool running_ RTC_GUARDED_BY(cs_);
@@ -90,6 +133,10 @@ class SingleThreadedTaskQueueForTesting {
   //   its execution has come. [Event will time-out.]
   rtc::Event wake_up_;
 };
+
+// Warn if new usage.
+typedef DEPRECATED_SingleThreadedTaskQueueForTesting RTC_DEPRECATED
+    SingleThreadedTaskQueueForTesting;
 
 }  // namespace test
 }  // namespace webrtc

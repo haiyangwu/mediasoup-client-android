@@ -13,12 +13,13 @@
 
 #include <memory>
 
-#include "modules/include/module_common_types.h"
+#include "api/units/time_delta.h"
 #include "modules/video_coding/encoded_frame.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/timestamp_map.h"
 #include "modules/video_coding/timing.h"
 #include "rtc_base/critical_section.h"
+#include "rtc_base/experiments/field_trial_parser.h"
 #include "rtc_base/thread_checker.h"
 
 namespace webrtc {
@@ -34,6 +35,9 @@ struct VCMFrameInformation {
   VideoRotation rotation;
   VideoContentType content_type;
   EncodedImage::Timing timing;
+  int64_t ntp_time_ms;
+  RtpPacketInfos packet_infos;
+  // ColorSpace is not storred here, as it might be modified by decoders.
 };
 
 class VCMDecodedFrameCallback : public DecodedImageCallback {
@@ -48,10 +52,7 @@ class VCMDecodedFrameCallback : public DecodedImageCallback {
   void Decoded(VideoFrame& decodedImage,
                absl::optional<int32_t> decode_time_ms,
                absl::optional<uint8_t> qp) override;
-  int32_t ReceivedDecodedReferenceFrame(const uint64_t pictureId) override;
-  int32_t ReceivedDecodedFrame(const uint64_t pictureId) override;
 
-  uint64_t LastReceivedPictureID() const;
   void OnDecoderImplementationName(const char* implementation_name);
 
   void Map(uint32_t timestamp, VCMFrameInformation* frameInfo);
@@ -70,8 +71,9 @@ class VCMDecodedFrameCallback : public DecodedImageCallback {
   VCMTiming* _timing;
   rtc::CriticalSection lock_;
   VCMTimestampMap _timestampMap RTC_GUARDED_BY(lock_);
-  uint64_t _lastReceivedPictureID;
   int64_t ntp_offset_;
+  // Set by the field trial WebRTC-SlowDownDecoder to simulate a slow decoder.
+  FieldTrialOptional<TimeDelta> _extra_decode_time;
 };
 
 class VCMGenericDecoder {

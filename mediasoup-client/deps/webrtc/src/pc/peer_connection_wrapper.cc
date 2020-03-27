@@ -11,16 +11,17 @@
 #include "pc/peer_connection_wrapper.h"
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "api/function_view.h"
 #include "api/set_remote_description_observer_interface.h"
 #include "pc/sdp_utils.h"
 #include "pc/test/fake_video_track_source.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/function_view.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ref_counted_object.h"
@@ -122,6 +123,11 @@ PeerConnectionWrapper::CreateAnswerAndSetAsLocal(
   }
   EXPECT_TRUE(SetLocalDescription(CloneSessionDescription(answer.get())));
   return answer;
+}
+
+std::unique_ptr<SessionDescriptionInterface>
+PeerConnectionWrapper::CreateRollback() {
+  return CreateSessionDescription(SdpType::kRollback, "");
 }
 
 std::unique_ptr<SessionDescriptionInterface> PeerConnectionWrapper::CreateSdp(

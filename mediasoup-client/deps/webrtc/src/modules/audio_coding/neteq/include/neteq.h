@@ -31,6 +31,7 @@ namespace webrtc {
 // Forward declarations.
 class AudioFrame;
 class AudioDecoderFactory;
+class Clock;
 
 struct NetEqNetworkStatistics {
   uint16_t current_buffer_size_ms;    // Current jitter buffer size in ms.
@@ -50,8 +51,6 @@ struct NetEqNetworkStatistics {
                                       // decoding (in Q14).
   uint16_t secondary_discarded_rate;  // Fraction of discarded FEC/RED data (in
                                       // Q14).
-  int32_t clockdrift_ppm;     // Average clock-drift in parts-per-million
-                              // (positive or negative).
   size_t added_zero_samples;  // Number of zero samples added in "off" mode.
   // Statistics for packet waiting times, i.e., the time between a packet
   // arrives until it is decoded.
@@ -71,8 +70,12 @@ struct NetEqLifetimeStatistics {
   uint64_t concealment_events = 0;
   uint64_t jitter_buffer_delay_ms = 0;
   uint64_t jitter_buffer_emitted_count = 0;
+  uint64_t inserted_samples_for_deceleration = 0;
+  uint64_t removed_samples_for_acceleration = 0;
+  uint64_t silent_concealed_samples = 0;
+  uint64_t fec_packets_received = 0;
+  uint64_t fec_packets_discarded = 0;
   // Below stats are not part of the spec.
-  uint64_t voice_concealed_samples = 0;
   uint64_t delayed_packet_outage_samples = 0;
   // This is sum of relative packet arrival delays of received packets so far.
   // Since end-to-end delay of a packet is difficult to measure and is not
@@ -83,6 +86,11 @@ struct NetEqLifetimeStatistics {
   // packet can be made dynamic.
   uint64_t relative_packet_arrival_delay_ms = 0;
   uint64_t jitter_buffer_packets_received = 0;
+  // An interruption is a loss-concealment event lasting at least 150 ms. The
+  // two stats below count the number os such events and the total duration of
+  // these events.
+  int32_t interruption_count = 0;
+  int32_t total_interruption_duration_ms = 0;
 };
 
 // Metrics that describe the operations performed in NetEq, and the internal
@@ -135,22 +143,34 @@ class NetEq {
 
   enum ReturnCodes { kOK = 0, kFail = -1 };
 
+  // Return type for GetDecoderFormat.
+  struct DecoderFormat {
+    int sample_rate_hz;
+    int num_channels;
+    SdpAudioFormat sdp_format;
+  };
+
   // Creates a new NetEq object, with parameters set in |config|. The |config|
   // object will only have to be valid for the duration of the call to this
   // method.
   static NetEq* Create(
       const NetEq::Config& config,
+      Clock* clock,
       const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory);
 
   virtual ~NetEq() {}
 
-  // Inserts a new packet into NetEq. The |receive_timestamp| is an indication
-  // of the time when the packet was received, and should be measured with
-  // the same tick rate as the RTP timestamp of the current payload.
+  // Inserts a new packet into NetEq.
   // Returns 0 on success, -1 on failure.
   virtual int InsertPacket(const RTPHeader& rtp_header,
-                           rtc::ArrayView<const uint8_t> payload,
-                           uint32_t receive_timestamp) = 0;
+                           rtc::ArrayView<const uint8_t> payload) = 0;
+
+  // Deprecated. Use the version without the `receive_timestamp` argument.
+  int InsertPacket(const RTPHeader& rtp_header,
+                   rtc::ArrayView<const uint8_t> payload,
+                   uint32_t /*receive_timestamp*/) {
+    return InsertPacket(rtp_header, payload);
+  }
 
   // Lets NetEq know that a packet arrived with an empty payload. This typically
   // happens when empty packets are used for probing the network channel, and
@@ -252,7 +272,7 @@ class NetEq {
 
   // Returns the decoder info for the given payload type. Returns empty if no
   // such payload type was registered.
-  virtual absl::optional<SdpAudioFormat> GetDecoderFormat(
+  virtual absl::optional<DecoderFormat> GetDecoderFormat(
       int payload_type) const = 0;
 
   // Flushes both the packet buffer and the sync buffer.

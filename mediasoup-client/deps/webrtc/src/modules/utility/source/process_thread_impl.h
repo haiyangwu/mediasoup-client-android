@@ -12,6 +12,7 @@
 #define MODULES_UTILITY_SOURCE_PROCESS_THREAD_IMPL_H_
 
 #include <stdint.h>
+
 #include <list>
 #include <memory>
 #include <queue>
@@ -42,7 +43,7 @@ class ProcessThreadImpl : public ProcessThread {
   void DeRegisterModule(Module* module) override;
 
  protected:
-  static bool Run(void* obj);
+  static void Run(void* obj);
   bool Process();
 
  private:

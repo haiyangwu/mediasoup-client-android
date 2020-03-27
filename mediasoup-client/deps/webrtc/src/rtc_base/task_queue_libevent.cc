@@ -17,12 +17,12 @@
 #include <stdint.h>
 #include <time.h>
 #include <unistd.h>
+
 #include <list>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "api/task_queue/queued_task.h"
 #include "api/task_queue/task_queue_base.h"
@@ -121,7 +121,6 @@ class TaskQueueLibevent final : public TaskQueueBase {
 
   static void ThreadMain(void* context);
   static void OnWakeup(int socket, short flags, void* context);  // NOLINT
-  static void RunTask(int fd, short flags, void* context);       // NOLINT
   static void RunTimer(int fd, short flags, void* context);      // NOLINT
 
   bool is_active_ = true;
@@ -214,30 +213,18 @@ void TaskQueueLibevent::Delete() {
 }
 
 void TaskQueueLibevent::PostTask(std::unique_ptr<QueuedTask> task) {
-  RTC_DCHECK(task.get());
-  // libevent isn't thread safe.  This means that we can't use methods such
-  // as event_base_once to post tasks to the worker thread from a different
-  // thread.  However, we can use it when posting from the worker thread itself.
-  if (IsCurrent()) {
-    if (event_base_once(event_base_, -1, EV_TIMEOUT,
-                        &TaskQueueLibevent::RunTask, task.get(),
-                        nullptr) == 0) {
-      task.release();
-    }
-  } else {
-    QueuedTask* task_id = task.get();  // Only used for comparison.
-    {
-      rtc::CritScope lock(&pending_lock_);
-      pending_.push_back(std::move(task));
-    }
-    char message = kRunTask;
-    if (write(wakeup_pipe_in_, &message, sizeof(message)) != sizeof(message)) {
-      RTC_LOG(WARNING) << "Failed to queue task.";
-      rtc::CritScope lock(&pending_lock_);
-      pending_.remove_if([task_id](std::unique_ptr<QueuedTask>& t) {
-        return t.get() == task_id;
-      });
-    }
+  QueuedTask* task_id = task.get();  // Only used for comparison.
+  {
+    rtc::CritScope lock(&pending_lock_);
+    pending_.push_back(std::move(task));
+  }
+  char message = kRunTask;
+  if (write(wakeup_pipe_in_, &message, sizeof(message)) != sizeof(message)) {
+    RTC_LOG(WARNING) << "Failed to queue task.";
+    rtc::CritScope lock(&pending_lock_);
+    pending_.remove_if([task_id](std::unique_ptr<QueuedTask>& t) {
+      return t.get() == task_id;
+    });
   }
 }
 
@@ -252,7 +239,7 @@ void TaskQueueLibevent::PostDelayedTask(std::unique_ptr<QueuedTask> task,
                   rtc::dchecked_cast<int>(milliseconds % 1000) * 1000};
     event_add(&timer->ev, &tv);
   } else {
-    PostTask(absl::make_unique<SetTimerTask>(std::move(task), milliseconds));
+    PostTask(std::make_unique<SetTimerTask>(std::move(task), milliseconds));
   }
 }
 
@@ -303,13 +290,6 @@ void TaskQueueLibevent::OnWakeup(int socket,
 }
 
 // static
-void TaskQueueLibevent::RunTask(int fd, short flags, void* context) {  // NOLINT
-  auto* task = static_cast<QueuedTask*>(context);
-  if (task->Run())
-    delete task;
-}
-
-// static
 void TaskQueueLibevent::RunTimer(int fd,
                                  short flags,  // NOLINT
                                  void* context) {
@@ -334,7 +314,7 @@ class TaskQueueLibeventFactory final : public TaskQueueFactory {
 }  // namespace
 
 std::unique_ptr<TaskQueueFactory> CreateTaskQueueLibeventFactory() {
-  return absl::make_unique<TaskQueueLibeventFactory>();
+  return std::make_unique<TaskQueueLibeventFactory>();
 }
 
 }  // namespace webrtc

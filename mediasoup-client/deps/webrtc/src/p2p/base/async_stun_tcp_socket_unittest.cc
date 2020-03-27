@@ -8,13 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/base/async_stun_tcp_socket.h"
+
 #include <stdint.h>
 #include <string.h>
+
 #include <list>
 #include <memory>
 #include <string>
 
-#include "p2p/base/async_stun_tcp_socket.h"
 #include "rtc_base/async_socket.h"
 #include "rtc_base/network/sent_packet.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
@@ -56,7 +58,7 @@ static unsigned char kTurnChannelDataMessageWithOddLength[] = {
 static const rtc::SocketAddress kClientAddr("11.11.11.11", 0);
 static const rtc::SocketAddress kServerAddr("22.22.22.22", 0);
 
-class AsyncStunTCPSocketTest : public testing::Test,
+class AsyncStunTCPSocketTest : public ::testing::Test,
                                public sigslot::has_slots<> {
  protected:
   AsyncStunTCPSocketTest()

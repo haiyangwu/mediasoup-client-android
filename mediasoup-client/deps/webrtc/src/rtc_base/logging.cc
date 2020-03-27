@@ -30,10 +30,12 @@ static const int kMaxLogLineSize = 1024 - 60;
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
 #include <algorithm>
 #include <cstdarg>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/critical_section.h"
 #include "rtc_base/logging.h"
@@ -66,7 +68,7 @@ const char* FilenameFromPath(const char* file) {
 }
 
 // Global lock for log subsystem, only needed to serialize access to streams_.
-CriticalSection g_log_crit;
+ABSL_CONST_INIT GlobalLock g_log_crit;
 }  // namespace
 
 // Inefficient default implementation, override is recommended.
@@ -156,13 +158,6 @@ LogMessage::LogMessage(const char* file,
         break;
       }
 #endif  // WEBRTC_WIN
-#if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
-      case ERRCTX_OSSTATUS: {
-        std::string desc(DescriptionFromOSStatus(err));
-        tmp << " " << (desc.empty() ? "Unknown error" : desc.c_str());
-        break;
-      }
-#endif  // WEBRTC_MAC && !defined(WEBRTC_IOS)
       default:
         break;
     }
@@ -205,7 +200,7 @@ LogMessage::~LogMessage() {
 #endif
   }
 
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   for (auto& kv : streams_) {
     if (severity_ >= kv.second) {
 #if defined(WEBRTC_ANDROID)
@@ -254,7 +249,7 @@ void LogMessage::LogTimestamps(bool on) {
 
 void LogMessage::LogToDebug(LoggingSeverity min_sev) {
   g_dbg_sev = min_sev;
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   UpdateMinLogSeverity();
 }
 
@@ -263,7 +258,7 @@ void LogMessage::SetLogToStderr(bool log_to_stderr) {
 }
 
 int LogMessage::GetLogToStream(LogSink* stream) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   LoggingSeverity sev = LS_NONE;
   for (auto& kv : streams_) {
     if (!stream || stream == kv.first) {
@@ -274,13 +269,13 @@ int LogMessage::GetLogToStream(LogSink* stream) {
 }
 
 void LogMessage::AddLogToStream(LogSink* stream, LoggingSeverity min_sev) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   streams_.push_back(std::make_pair(stream, min_sev));
   UpdateMinLogSeverity();
 }
 
 void LogMessage::RemoveLogToStream(LogSink* stream) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   for (StreamList::iterator it = streams_.begin(); it != streams_.end(); ++it) {
     if (stream == it->first) {
       streams_.erase(it);
@@ -449,7 +444,7 @@ bool LogMessage::IsNoop(LoggingSeverity severity) {
   // TODO(tommi): We're grabbing this lock for every LogMessage instance that
   // is going to be logged. This introduces unnecessary synchronization for
   // a feature that's mostly used for testing.
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   if (streams_.size() > 0)
     return false;
 

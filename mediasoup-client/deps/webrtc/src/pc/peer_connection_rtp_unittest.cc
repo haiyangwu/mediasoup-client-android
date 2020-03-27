@@ -9,12 +9,12 @@
  */
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "api/audio/audio_mixer.h"
 #include "api/audio_codecs/audio_decoder_factory.h"
@@ -87,7 +87,7 @@ class OnSuccessObserver : public rtc::RefCountedObject<
   MethodFunctor on_success_;
 };
 
-class PeerConnectionRtpBaseTest : public testing::Test {
+class PeerConnectionRtpBaseTest : public ::testing::Test {
  public:
   explicit PeerConnectionRtpBaseTest(SdpSemantics sdp_semantics)
       : sdp_semantics_(sdp_semantics),
@@ -137,13 +137,13 @@ class PeerConnectionRtpBaseTest : public testing::Test {
   // adjustment.
   std::unique_ptr<PeerConnectionWrapper> CreatePeerConnectionInternal(
       const RTCConfiguration& config) {
-    auto observer = absl::make_unique<MockPeerConnectionObserver>();
+    auto observer = std::make_unique<MockPeerConnectionObserver>();
     auto pc = pc_factory_->CreatePeerConnection(config, nullptr, nullptr,
                                                 observer.get());
     EXPECT_TRUE(pc.get());
     observer->SetPeerConnectionInterface(pc.get());
-    return absl::make_unique<PeerConnectionWrapper>(pc_factory_, pc,
-                                                    std::move(observer));
+    return std::make_unique<PeerConnectionWrapper>(pc_factory_, pc,
+                                                   std::move(observer));
   }
 };
 
@@ -491,15 +491,8 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan, ChangeMsidWhileReceiving) {
   ASSERT_TRUE(callee->CreateAnswerAndSetAsLocal());
 
   // Change the stream ID in the offer.
-  // TODO(https://crbug.com/webrtc/10129): When RtpSenderInterface::SetStreams
-  // is supported, this can use that instead of munging the SDP.
-  auto offer = caller->CreateOffer();
-  auto contents = offer->description()->contents();
-  ASSERT_EQ(1u, contents.size());
-  auto& stream_params = contents[0].media_description()->mutable_streams();
-  ASSERT_EQ(1u, stream_params.size());
-  stream_params[0].set_stream_ids({"stream2"});
-  ASSERT_TRUE(callee->SetRemoteDescription(std::move(offer)));
+  caller->pc()->GetSenders()[0]->SetStreams({"stream2"});
+  ASSERT_TRUE(callee->SetRemoteDescription(caller->CreateOfferAndSetAsLocal()));
   ASSERT_EQ(1u, transceiver->receiver()->streams().size());
   EXPECT_EQ("stream2", transceiver->receiver()->streams()[0]->id());
 }
@@ -1135,11 +1128,14 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan,
 TEST_F(PeerConnectionRtpTestUnifiedPlan,
        AddTrackChangesDirectionFromInactiveToSendOnly) {
   auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
 
   RtpTransceiverInit init;
   init.direction = RtpTransceiverDirection::kInactive;
   auto transceiver = caller->AddTransceiver(cricket::MEDIA_TYPE_AUDIO, init);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
 
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
   caller->observer()->clear_negotiation_needed();
   ASSERT_TRUE(caller->AddAudioTrack("a"));
   EXPECT_TRUE(caller->observer()->negotiation_needed());
@@ -1152,11 +1148,14 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan,
 TEST_F(PeerConnectionRtpTestUnifiedPlan,
        AddTrackChangesDirectionFromRecvOnlyToSendRecv) {
   auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
 
   RtpTransceiverInit init;
   init.direction = RtpTransceiverDirection::kRecvOnly;
   auto transceiver = caller->AddTransceiver(cricket::MEDIA_TYPE_AUDIO, init);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
 
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
   caller->observer()->clear_negotiation_needed();
   ASSERT_TRUE(caller->AddAudioTrack("a"));
   EXPECT_TRUE(caller->observer()->negotiation_needed());
@@ -1219,18 +1218,21 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan, RemoveTrackClearsSenderTrack) {
 TEST_F(PeerConnectionRtpTestUnifiedPlan,
        RemoveTrackChangesDirectionFromSendRecvToRecvOnly) {
   auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
 
   RtpTransceiverInit init;
   init.direction = RtpTransceiverDirection::kSendRecv;
   auto transceiver =
       caller->AddTransceiver(caller->CreateAudioTrack("a"), init);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
 
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
   caller->observer()->clear_negotiation_needed();
+
   ASSERT_TRUE(caller->pc()->RemoveTrack(transceiver->sender()));
   EXPECT_TRUE(caller->observer()->negotiation_needed());
 
   EXPECT_EQ(RtpTransceiverDirection::kRecvOnly, transceiver->direction());
-  EXPECT_TRUE(caller->observer()->renegotiation_needed_);
 }
 
 // Test that calling RemoveTrack on a sender where the transceiver is configured
@@ -1238,13 +1240,17 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan,
 TEST_F(PeerConnectionRtpTestUnifiedPlan,
        RemoveTrackChangesDirectionFromSendOnlyToInactive) {
   auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
 
   RtpTransceiverInit init;
   init.direction = RtpTransceiverDirection::kSendOnly;
   auto transceiver =
       caller->AddTransceiver(caller->CreateAudioTrack("a"), init);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
 
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
   caller->observer()->clear_negotiation_needed();
+
   ASSERT_TRUE(caller->pc()->RemoveTrack(transceiver->sender()));
   EXPECT_TRUE(caller->observer()->negotiation_needed());
 
@@ -1394,10 +1400,15 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan,
 TEST_F(PeerConnectionRtpTestUnifiedPlan,
        RenegotiationNeededAfterTransceiverSetDirection) {
   auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
+  EXPECT_FALSE(caller->observer()->negotiation_needed());
 
   auto transceiver = caller->AddTransceiver(cricket::MEDIA_TYPE_AUDIO);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
 
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
   caller->observer()->clear_negotiation_needed();
+
   transceiver->SetDirection(RtpTransceiverDirection::kInactive);
   EXPECT_TRUE(caller->observer()->negotiation_needed());
 }
@@ -1775,6 +1786,34 @@ TEST_P(PeerConnectionRtpTest, CreateTwoSendersWithSameTrack) {
   } else {
     EXPECT_TRUE(caller->CreateOfferAndSetAsLocal());
   }
+}
+
+// This test exercises the code path that fires a NegotiationNeeded
+// notification when the stream IDs of the local description differ from
+// the ones in the transceiver.
+TEST_F(PeerConnectionRtpTestUnifiedPlan,
+       ChangeAssociatedStreamsTriggersRenegotiation) {
+  auto caller = CreatePeerConnection();
+  auto callee = CreatePeerConnection();
+
+  RtpTransceiverInit init;
+  init.direction = RtpTransceiverDirection::kSendRecv;
+  auto transceiver =
+      caller->AddTransceiver(caller->CreateAudioTrack("a"), init);
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
+
+  ASSERT_TRUE(caller->ExchangeOfferAnswerWith(callee.get()));
+  caller->observer()->clear_negotiation_needed();
+
+  transceiver->sender()->SetStreams({"stream3", "stream4", "stream5"});
+  EXPECT_TRUE(caller->observer()->negotiation_needed());
+
+  ASSERT_TRUE(callee->SetRemoteDescription(caller->CreateOfferAndSetAsLocal()));
+  auto callee_streams = callee->pc()->GetReceivers()[0]->streams();
+  ASSERT_EQ(3u, callee_streams.size());
+  EXPECT_EQ("stream3", callee_streams[0]->id());
+  EXPECT_EQ("stream4", callee_streams[1]->id());
+  EXPECT_EQ("stream5", callee_streams[2]->id());
 }
 
 INSTANTIATE_TEST_SUITE_P(PeerConnectionRtpTest,

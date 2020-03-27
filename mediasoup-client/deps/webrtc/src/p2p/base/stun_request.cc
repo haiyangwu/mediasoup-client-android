@@ -14,7 +14,6 @@
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/helpers.h"
 #include "rtc_base/logging.h"
@@ -34,7 +33,7 @@ const int STUN_INITIAL_RTO = 250;  // milliseconds
 // The timeout doubles each retransmission, up to this many times
 // RFC 5389 says SHOULD retransmit 7 times.
 // This has been 8 for years (not sure why).
-const int STUN_MAX_RETRANSMISSIONS = 8;  // Total sends: 9
+const int STUN_MAX_RETRANSMISSIONS = 8;           // Total sends: 9
 const int STUN_MAX_RETRANSMISSIONS_RFC_5389 = 6;  // Total sends: 7
 
 // We also cap the doubling, even though the standard doesn't say to.
@@ -204,8 +203,8 @@ StunRequest::~StunRequest() {
 void StunRequest::Construct() {
   if (msg_->type() == 0) {
     if (!origin_.empty()) {
-      msg_->AddAttribute(absl::make_unique<StunByteStringAttribute>(
-          STUN_ATTR_ORIGIN, origin_));
+      msg_->AddAttribute(
+          std::make_unique<StunByteStringAttribute>(STUN_ATTR_ORIGIN, origin_));
     }
     Prepare(msg_);
     RTC_DCHECK(msg_->type() != 0);

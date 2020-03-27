@@ -20,8 +20,8 @@
 
 #include "api/call/audio_sink.h"
 #include "api/jsep.h"
-#include "api/media_transport_interface.h"
 #include "api/rtp_receiver_interface.h"
+#include "api/transport/media/media_transport_config.h"
 #include "api/video/video_sink_interface.h"
 #include "api/video/video_source_interface.h"
 #include "call/rtp_packet_sink_interface.h"
@@ -92,8 +92,9 @@ class BaseChannel : public ChannelInterface,
               webrtc::CryptoOptions crypto_options,
               rtc::UniqueRandomIdGenerator* ssrc_generator);
   virtual ~BaseChannel();
-  virtual void Init_w(webrtc::RtpTransportInternal* rtp_transport,
-                      webrtc::MediaTransportInterface* media_transport);
+  virtual void Init_w(
+      webrtc::RtpTransportInternal* rtp_transport,
+      const webrtc::MediaTransportConfig& media_transport_config);
 
   // Deinit may be called multiple times and is simply ignored if it's already
   // done.
@@ -118,6 +119,8 @@ class BaseChannel : public ChannelInterface,
   // This can be called from any thread and it hops to the network thread
   // internally. It would replace the |SetTransports| and its variants.
   bool SetRtpTransport(webrtc::RtpTransportInternal* rtp_transport) override;
+
+  webrtc::RtpTransportInternal* rtp_transport() const { return rtp_transport_; }
 
   // Channel control
   bool SetLocalContent(const MediaContentDescription* content,
@@ -153,23 +156,9 @@ class BaseChannel : public ChannelInterface,
   // Fired on the network thread.
   sigslot::signal1<const std::string&> SignalRtcpMuxFullyActive;
 
-  rtc::PacketTransportInternal* rtp_packet_transport() {
-    if (rtp_transport_) {
-      return rtp_transport_->rtp_packet_transport();
-    }
-    return nullptr;
-  }
-
-  rtc::PacketTransportInternal* rtcp_packet_transport() {
-    if (rtp_transport_) {
-      return rtp_transport_->rtcp_packet_transport();
-    }
-    return nullptr;
-  }
-
   // Returns media transport, can be null if media transport is not available.
   webrtc::MediaTransportInterface* media_transport() {
-    return media_transport_;
+    return media_transport_config_.media_transport;
   }
 
   // From RtpTransport - public for testing only
@@ -232,16 +221,6 @@ class BaseChannel : public ChannelInterface,
                   rtc::CopyOnWriteBuffer* packet,
                   const rtc::PacketOptions& options);
 
-  void OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
-                            int64_t packet_time_us);
-
-  void OnPacketReceived(bool rtcp,
-                        const rtc::CopyOnWriteBuffer& packet,
-                        int64_t packet_time_us);
-  void ProcessPacket(bool rtcp,
-                     const rtc::CopyOnWriteBuffer& packet,
-                     int64_t packet_time_us);
-
   void EnableMedia_w();
   void DisableMedia_w();
 
@@ -254,6 +233,7 @@ class BaseChannel : public ChannelInterface,
 
   bool AddRecvStream_w(const StreamParams& sp);
   bool RemoveRecvStream_w(uint32_t ssrc);
+  void ResetUnsignaledRecvStream_w();
   bool AddSendStream_w(const StreamParams& sp);
   bool RemoveSendStream_w(uint32_t ssrc);
 
@@ -292,6 +272,8 @@ class BaseChannel : public ChannelInterface,
 
   void AddHandledPayloadType(int payload_type);
 
+  void ClearHandledPayloadTypes();
+
   void UpdateRtpHeaderExtensionMap(
       const RtpHeaderExtensions& header_extensions);
 
@@ -303,7 +285,6 @@ class BaseChannel : public ChannelInterface,
   bool ConnectToRtpTransport();
   void DisconnectFromRtpTransport();
   void SignalSentPacket_n(const rtc::SentPacket& sent_packet);
-  void SignalSentPacket_w(const rtc::SentPacket& sent_packet);
   bool IsReadyToSendMedia_n() const;
 
   // MediaTransportNetworkChangeCallback override.
@@ -322,10 +303,8 @@ class BaseChannel : public ChannelInterface,
 
   webrtc::RtpTransportInternal* rtp_transport_ = nullptr;
 
-  // Optional media transport (experimental).
-  // If provided, audio and video will be sent through media_transport instead
-  // of RTP/RTCP. Currently media_transport can co-exist with rtp_transport.
-  webrtc::MediaTransportInterface* media_transport_ = nullptr;
+  // Optional media transport configuration (experimental).
+  webrtc::MediaTransportConfig media_transport_config_;
 
   std::vector<std::pair<rtc::Socket::Option, int> > socket_options_;
   std::vector<std::pair<rtc::Socket::Option, int> > rtcp_socket_options_;
@@ -379,8 +358,9 @@ class VoiceChannel : public BaseChannel,
   cricket::MediaType media_type() const override {
     return cricket::MEDIA_TYPE_AUDIO;
   }
-  void Init_w(webrtc::RtpTransportInternal* rtp_transport,
-              webrtc::MediaTransportInterface* media_transport) override;
+  void Init_w(
+      webrtc::RtpTransportInternal* rtp_transport,
+      const webrtc::MediaTransportConfig& media_transport_config) override;
 
  private:
   // overrides from BaseChannel
@@ -464,7 +444,7 @@ class RtpDataChannel : public BaseChannel {
               rtc::PacketTransportInternal* rtcp_packet_transport);
   void Init_w(
       webrtc::RtpTransportInternal* rtp_transport,
-      webrtc::MediaTransportInterface* media_transport = nullptr) override;
+      const webrtc::MediaTransportConfig& media_transport_config) override;
 
   virtual bool SendData(const SendDataParams& params,
                         const rtc::CopyOnWriteBuffer& payload,
@@ -518,7 +498,7 @@ class RtpDataChannel : public BaseChannel {
 
   // overrides from BaseChannel
   // Checks that data channel type is RTP.
-  bool CheckDataChannelTypeFromContent(const DataContentDescription* content,
+  bool CheckDataChannelTypeFromContent(const RtpDataContentDescription* content,
                                        std::string* error_desc);
   bool SetLocalContent_w(const MediaContentDescription* content,
                          webrtc::SdpType type,

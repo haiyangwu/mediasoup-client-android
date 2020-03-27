@@ -57,14 +57,7 @@ struct InternalDataChannelInit : public DataChannelInit {
   enum OpenHandshakeRole { kOpener, kAcker, kNone };
   // The default role is kOpener because the default |negotiated| is false.
   InternalDataChannelInit() : open_handshake_role(kOpener) {}
-  explicit InternalDataChannelInit(const DataChannelInit& base)
-      : DataChannelInit(base), open_handshake_role(kOpener) {
-    // If the channel is externally negotiated, do not send the OPEN message.
-    if (base.negotiated) {
-      open_handshake_role = kNone;
-    }
-  }
-
+  explicit InternalDataChannelInit(const DataChannelInit& base);
   OpenHandshakeRole open_handshake_role;
 };
 
@@ -131,13 +124,25 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   virtual std::string label() const { return label_; }
   virtual bool reliable() const;
   virtual bool ordered() const { return config_.ordered; }
+  // Backwards compatible accessors
   virtual uint16_t maxRetransmitTime() const {
+    return config_.maxRetransmitTime ? *config_.maxRetransmitTime
+                                     : static_cast<uint16_t>(-1);
+  }
+  virtual uint16_t maxRetransmits() const {
+    return config_.maxRetransmits ? *config_.maxRetransmits
+                                  : static_cast<uint16_t>(-1);
+  }
+  virtual absl::optional<int> maxPacketLifeTime() const {
     return config_.maxRetransmitTime;
   }
-  virtual uint16_t maxRetransmits() const { return config_.maxRetransmits; }
+  virtual absl::optional<int> maxRetransmitsOpt() const {
+    return config_.maxRetransmits;
+  }
   virtual std::string protocol() const { return config_.protocol; }
   virtual bool negotiated() const { return config_.negotiated; }
   virtual int id() const { return config_.id; }
+  virtual int internal_id() const { return internal_id_; }
   virtual uint64_t buffered_amount() const;
   virtual void Close();
   virtual DataState state() const { return state_; }
@@ -146,6 +151,13 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   virtual uint32_t messages_received() const { return messages_received_; }
   virtual uint64_t bytes_received() const { return bytes_received_; }
   virtual bool Send(const DataBuffer& buffer);
+
+  // Close immediately, ignoring any queued data or closing procedure.
+  // This is called for RTP data channels when SDP indicates a channel should
+  // be removed, or SCTP data channels when the underlying SctpTransport is
+  // being destroyed.
+  // It is also called by the PeerConnection if SCTP ID assignment fails.
+  void CloseAbruptly();
 
   // Called when the channel's ready to use.  That can happen when the
   // underlying DataMediaChannel becomes ready, or when this channel is a new
@@ -203,6 +215,10 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   // channel's sid is free.
   sigslot::signal1<DataChannel*> SignalClosed;
 
+  // Reset the allocator for internal ID values for testing, so that
+  // the internal IDs generated are predictable. Test only.
+  static void ResetInternalIdAllocatorForTesting(int new_value);
+
  protected:
   DataChannel(DataChannelProviderInterface* client,
               cricket::DataChannelType dct,
@@ -242,11 +258,6 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   };
 
   bool Init(const InternalDataChannelInit& config);
-  // Close immediately, ignoring any queued data or closing procedure.
-  // This is called for RTP data channels when SDP indicates a channel should
-  // be removed, or SCTP data channels when the underlying SctpTransport is
-  // being destroyed.
-  void CloseAbruptly();
   void UpdateState();
   void SetState(DataState state);
   void DisconnectFromProvider();
@@ -261,6 +272,7 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   void QueueControlMessage(const rtc::CopyOnWriteBuffer& buffer);
   bool SendControlMessage(const rtc::CopyOnWriteBuffer& buffer);
 
+  const int internal_id_;
   std::string label_;
   InternalDataChannelInit config_;
   DataChannelObserver* observer_;
@@ -269,6 +281,9 @@ class DataChannel : public DataChannelInterface, public sigslot::has_slots<> {
   uint64_t bytes_sent_;
   uint32_t messages_received_;
   uint64_t bytes_received_;
+  // Number of bytes of data that have been queued using Send(). Increased
+  // before each transport send and decreased after each successful send.
+  uint64_t buffered_amount_;
   cricket::DataChannelType data_channel_type_;
   DataChannelProviderInterface* provider_;
   HandshakeState handshake_state_;
@@ -298,6 +313,8 @@ PROXY_CONSTMETHOD0(bool, reliable)
 PROXY_CONSTMETHOD0(bool, ordered)
 PROXY_CONSTMETHOD0(uint16_t, maxRetransmitTime)
 PROXY_CONSTMETHOD0(uint16_t, maxRetransmits)
+PROXY_CONSTMETHOD0(absl::optional<int>, maxRetransmitsOpt)
+PROXY_CONSTMETHOD0(absl::optional<int>, maxPacketLifeTime)
 PROXY_CONSTMETHOD0(std::string, protocol)
 PROXY_CONSTMETHOD0(bool, negotiated)
 PROXY_CONSTMETHOD0(int, id)

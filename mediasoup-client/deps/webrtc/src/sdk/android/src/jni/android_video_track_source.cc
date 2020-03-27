@@ -10,10 +10,11 @@
 
 #include "sdk/android/src/jni/android_video_track_source.h"
 
-#include "sdk/android/generated_video_jni/jni/NativeAndroidVideoTrackSource_jni.h"
+#include "sdk/android/generated_video_jni/NativeAndroidVideoTrackSource_jni.h"
 
 #include <utility>
 
+#include "rtc_base/bind.h"
 #include "rtc_base/logging.h"
 
 namespace webrtc {
@@ -59,27 +60,26 @@ absl::optional<bool> AndroidVideoTrackSource::needs_denoising() const {
 }
 
 void AndroidVideoTrackSource::SetState(JNIEnv* env,
-                                       const JavaRef<jobject>& j_caller,
                                        jboolean j_is_live) {
-  InternalSetState(j_is_live ? kLive : kEnded);
-}
-
-void AndroidVideoTrackSource::InternalSetState(SourceState state) {
-  if (rtc::Thread::Current() != signaling_thread_) {
-    invoker_.AsyncInvoke<void>(
-        RTC_FROM_HERE, signaling_thread_,
-        rtc::Bind(&AndroidVideoTrackSource::InternalSetState, this, state));
-    return;
-  }
-
-  if (state_ != state) {
-    state_ = state;
-    FireOnChanged();
+  const SourceState state = j_is_live ? kLive : kEnded;
+  if (state_.exchange(state) != state) {
+    if (rtc::Thread::Current() == signaling_thread_) {
+      FireOnChanged();
+    } else {
+      // TODO(sakal): Is this even necessary, does FireOnChanged have to be
+      // called from signaling thread?
+      signaling_thread_->PostTask(
+          RTC_FROM_HERE,
+          rtc::Bind(
+              &AndroidVideoTrackSource::FireOnChanged,
+              static_cast<webrtc::Notifier<webrtc::VideoTrackSourceInterface>*>(
+                  this)));
+    }
   }
 }
 
 AndroidVideoTrackSource::SourceState AndroidVideoTrackSource::state() const {
-  return state_;
+  return state_.load();
 }
 
 bool AndroidVideoTrackSource::remote() const {
@@ -88,7 +88,6 @@ bool AndroidVideoTrackSource::remote() const {
 
 ScopedJavaLocalRef<jobject> AndroidVideoTrackSource::AdaptFrame(
     JNIEnv* env,
-    const JavaRef<jobject>& j_caller,
     jint j_width,
     jint j_height,
     jint j_rotation,
@@ -102,38 +101,34 @@ ScopedJavaLocalRef<jobject> AndroidVideoTrackSource::AdaptFrame(
                                   camera_time_us, rtc::TimeMicros())
                         : j_timestamp_ns;
 
-  int adapted_width;
-  int adapted_height;
-  int crop_width;
-  int crop_height;
-  int crop_x;
-  int crop_y;
+  int adapted_width = 0;
+  int adapted_height = 0;
+  int crop_width = 0;
+  int crop_height = 0;
+  int crop_x = 0;
+  int crop_y = 0;
+  bool drop;
 
   // TODO(magjed): Move this logic to users of NativeAndroidVideoTrackSource
   // instead, in order to keep this native wrapping layer as thin as possible.
   if (rotation % 180 == 0) {
-    if (!rtc::AdaptedVideoTrackSource::AdaptFrame(
-            j_width, j_height, camera_time_us, &adapted_width, &adapted_height,
-            &crop_width, &crop_height, &crop_x, &crop_y)) {
-      return nullptr;
-    }
+    drop = !rtc::AdaptedVideoTrackSource::AdaptFrame(
+        j_width, j_height, camera_time_us, &adapted_width, &adapted_height,
+        &crop_width, &crop_height, &crop_x, &crop_y);
   } else {
     // Swap all width/height and x/y.
-    if (!rtc::AdaptedVideoTrackSource::AdaptFrame(
-            j_height, j_width, camera_time_us, &adapted_height, &adapted_width,
-            &crop_height, &crop_width, &crop_y, &crop_x)) {
-      return nullptr;
-    }
+    drop = !rtc::AdaptedVideoTrackSource::AdaptFrame(
+        j_height, j_width, camera_time_us, &adapted_height, &adapted_width,
+        &crop_height, &crop_width, &crop_y, &crop_x);
   }
 
-  return Java_FrameAdaptationParameters_Constructor(
+  return Java_NativeAndroidVideoTrackSource_createFrameAdaptationParameters(
       env, crop_x, crop_y, crop_width, crop_height, adapted_width,
-      adapted_height, aligned_timestamp_ns);
+      adapted_height, aligned_timestamp_ns, drop);
 }
 
 void AndroidVideoTrackSource::OnFrameCaptured(
     JNIEnv* env,
-    const JavaRef<jobject>& j_caller,
     jint j_rotation,
     jlong j_timestamp_ns,
     const JavaRef<jobject>& j_video_frame_buffer) {
@@ -154,7 +149,6 @@ void AndroidVideoTrackSource::OnFrameCaptured(
 
 void AndroidVideoTrackSource::AdaptOutputFormat(
     JNIEnv* env,
-    const JavaRef<jobject>& j_caller,
     jint j_landscape_width,
     jint j_landscape_height,
     const JavaRef<jobject>& j_max_landscape_pixel_count,

@@ -18,17 +18,19 @@ enum PreservedErrno {
 };
 }  // namespace
 
-#include "media/sctp/sctp_transport.h"
-
 #include <stdarg.h>
 #include <stdio.h>
 
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/types/optional.h"
 #include "media/base/codec.h"
+#include "media/base/media_channel.h"
 #include "media/base/media_constants.h"
 #include "media/base/stream_params.h"
+#include "media/sctp/sctp_transport.h"
 #include "p2p/base/dtls_transport_internal.h"  // For PF_NORMAL
 #include "rtc_base/arraysize.h"
 #include "rtc_base/copy_on_write_buffer.h"
@@ -36,6 +38,7 @@ enum PreservedErrno {
 #include "rtc_base/helpers.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
+#include "rtc_base/string_utils.h"
 #include "rtc_base/thread_checker.h"
 #include "rtc_base/trace_event.h"
 #include "usrsctplib/usrsctp.h"
@@ -46,12 +49,9 @@ namespace {
 // take off 80 bytes for DTLS/TURN/TCP/IP overhead.
 static constexpr size_t kSctpMtu = 1200;
 
-// The size of the SCTP association send buffer. 256kB, the usrsctp default.
-static constexpr int kSendBufferSize = 256 * 1024;
-
 // Set the initial value of the static SCTP Data Engines reference count.
-int g_usrsctp_usage_count = 0;
-rtc::GlobalLockPod g_usrsctp_lock_;
+ABSL_CONST_INIT int g_usrsctp_usage_count = 0;
+ABSL_CONST_INIT rtc::GlobalLock g_usrsctp_lock_;
 
 // DataMessageType is used for the SCTP "Payload Protocol Identifier", as
 // defined in http://tools.ietf.org/html/rfc4960#section-14.4
@@ -138,11 +138,14 @@ bool GetDataMediaType(PayloadProtocolIdentifier ppid,
 //
 // Then run through text2pcap:
 //
-//   text2pcap -t "%H:%M:%S." -D -u 1024,1024 filtered.log filtered.pcap
+//   text2pcap -n -l 248 -D -t '%H:%M:%S.' filtered.log filtered.pcapng
 //
-// The value "1024" isn't important, we just need a port for the dummy UDP
-// headers generated. Lastly, you should be able to open filtered.pcap in
-// Wireshark, then right click a packet and "Decode As..." SCTP.
+// Command flag information:
+// -n: Outputs to a pcapng file, can specify inbound/outbound packets.
+// -l: Specifies the link layer header type. 248 means SCTP. See:
+//     http://www.tcpdump.org/linktypes.html
+// -D: Text before packet specifies if it is inbound or outbound.
+// -t: Time format.
 //
 // Why do all this? Because SCTP goes over DTLS, which is encrypted. So just
 // getting a normal packet capture won't help you, unless you have the DTLS
@@ -161,6 +164,35 @@ void VerboseLogPacket(const void* data, size_t length, int direction) {
   }
 }
 
+// Creates the sctp_sendv_spa struct used for setting flags in the
+// sctp_sendv() call.
+sctp_sendv_spa CreateSctpSendParams(const cricket::SendDataParams& params) {
+  struct sctp_sendv_spa spa = {0};
+  spa.sendv_flags |= SCTP_SEND_SNDINFO_VALID;
+  spa.sendv_sndinfo.snd_sid = params.sid;
+  spa.sendv_sndinfo.snd_ppid = rtc::HostToNetwork32(GetPpid(params.type));
+  // Explicitly marking the EOR flag turns the usrsctp_sendv call below into a
+  // non atomic operation. This means that the sctp lib might only accept the
+  // message partially. This is done in order to improve throughput, so that we
+  // don't have to wait for an empty buffer to send the max message length, for
+  // example.
+  spa.sendv_sndinfo.snd_flags |= SCTP_EOR;
+
+  // Ordered implies reliable.
+  if (!params.ordered) {
+    spa.sendv_sndinfo.snd_flags |= SCTP_UNORDERED;
+    if (params.max_rtx_count >= 0 || params.max_rtx_ms == 0) {
+      spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
+      spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
+      spa.sendv_prinfo.pr_value = params.max_rtx_count;
+    } else {
+      spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
+      spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_TTL;
+      spa.sendv_prinfo.pr_value = params.max_rtx_ms;
+    }
+  }
+  return spa;
+}
 }  // namespace
 
 namespace cricket {
@@ -176,7 +208,7 @@ class SctpTransport::UsrSctpWrapper {
     usrsctp_init(0, &UsrSctpWrapper::OnSctpOutboundPacket, &DebugSctpPrintf);
 
     // To turn on/off detailed SCTP debugging. You will also need to have the
-    // SCTP_DEBUG cpp defines flag.
+    // SCTP_DEBUG cpp defines flag, which can be turned on in media/BUILD.gn.
     // usrsctp_sysctl_set_sctp_debug_on(SCTP_DEBUG_ALL);
 
     // TODO(ldixon): Consider turning this on/off.
@@ -185,7 +217,7 @@ class SctpTransport::UsrSctpWrapper {
     // This is harmless, but we should find out when the library default
     // changes.
     int send_size = usrsctp_sysctl_get_sctp_sendspace();
-    if (send_size != kSendBufferSize) {
+    if (send_size != kSctpSendBufferSize) {
       RTC_LOG(LS_ERROR) << "Got different send size than expected: "
                         << send_size;
     }
@@ -301,7 +333,7 @@ class SctpTransport::UsrSctpWrapper {
 
       // Expect only continuation messages belonging to the same sid, the sctp
       // stack should ensure this.
-      if ((transport->partial_message_.size() != 0) &&
+      if ((transport->partial_incoming_message_.size() != 0) &&
           (rcv.rcv_sid != transport->partial_params_.sid)) {
         // A message with a new sid, but haven't seen the EOR for the
         // previous message. Deliver the previous partial message to avoid
@@ -309,14 +341,14 @@ class SctpTransport::UsrSctpWrapper {
         transport->invoker_.AsyncInvoke<void>(
             RTC_FROM_HERE, transport->network_thread_,
             rtc::Bind(&SctpTransport::OnInboundPacketFromSctpToTransport,
-                      transport, transport->partial_message_,
+                      transport, transport->partial_incoming_message_,
                       transport->partial_params_, transport->partial_flags_));
 
-        transport->partial_message_.Clear();
+        transport->partial_incoming_message_.Clear();
       }
 
-      transport->partial_message_.AppendData(reinterpret_cast<uint8_t*>(data),
-                                             length);
+      transport->partial_incoming_message_.AppendData(
+          reinterpret_cast<uint8_t*>(data), length);
       transport->partial_params_ = params;
       transport->partial_flags_ = flags;
 
@@ -327,8 +359,16 @@ class SctpTransport::UsrSctpWrapper {
       // callback. Larger messages (originating from other implementations) will
       // still be delivered in chunks.
       if (!(flags & MSG_EOR) &&
-          (transport->partial_message_.size() < kSendBufferSize)) {
+          (transport->partial_incoming_message_.size() < kSctpSendBufferSize)) {
         return 1;
+      }
+
+      if (!(flags & MSG_EOR)) {
+        // TODO(bugs.webrtc.org/7774): We currently chunk messages if they are
+        // >= kSctpSendBufferSize. The better thing to do here is buffer up to
+        // the size negotiated in the SDP, and if a larger message is received
+        // close the channel and report the error. See discussion in the bug.
+        RTC_LOG(LS_WARNING) << "Chunking SCTP message without the EOR bit set.";
       }
 
       // The ownership of the packet transfers to |invoker_|. Using
@@ -336,9 +376,10 @@ class SctpTransport::UsrSctpWrapper {
       transport->invoker_.AsyncInvoke<void>(
           RTC_FROM_HERE, transport->network_thread_,
           rtc::Bind(&SctpTransport::OnInboundPacketFromSctpToTransport,
-                    transport, transport->partial_message_, params, flags));
+                    transport, transport->partial_incoming_message_, params,
+                    flags));
 
-      transport->partial_message_.Clear();
+      transport->partial_incoming_message_.Clear();
     }
     return 1;
   }
@@ -410,7 +451,9 @@ void SctpTransport::SetDtlsTransport(rtc::PacketTransportInternal* transport) {
   }
 }
 
-bool SctpTransport::Start(int local_sctp_port, int remote_sctp_port) {
+bool SctpTransport::Start(int local_sctp_port,
+                          int remote_sctp_port,
+                          int max_message_size) {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (local_sctp_port == -1) {
     local_sctp_port = kSctpDefaultPort;
@@ -418,6 +461,20 @@ bool SctpTransport::Start(int local_sctp_port, int remote_sctp_port) {
   if (remote_sctp_port == -1) {
     remote_sctp_port = kSctpDefaultPort;
   }
+  if (max_message_size > kSctpSendBufferSize) {
+    RTC_LOG(LS_ERROR) << "Max message size of " << max_message_size
+                      << " is larger than send bufffer size "
+                      << kSctpSendBufferSize;
+    return false;
+  }
+  if (max_message_size < 1) {
+    RTC_LOG(LS_ERROR) << "Max message size of " << max_message_size
+                      << " is too small";
+    return false;
+  }
+  // We allow changing max_message_size with a second Start() call,
+  // but not changing the port numbers.
+  max_message_size_ = max_message_size;
   if (started_) {
     if (local_sctp_port != local_port_ || remote_sctp_port != remote_port_) {
       RTC_LOG(LS_ERROR)
@@ -491,75 +548,92 @@ bool SctpTransport::SendData(const SendDataParams& params,
                              const rtc::CopyOnWriteBuffer& payload,
                              SendDataResult* result) {
   RTC_DCHECK_RUN_ON(network_thread_);
-  if (result) {
-    // Preset |result| to assume an error.  If SendData succeeds, we'll
-    // overwrite |*result| once more at the end.
-    *result = SDR_ERROR;
-  }
 
-  if (!sock_) {
-    RTC_LOG(LS_WARNING) << debug_name_ << "->SendData(...): "
-                        << "Not sending packet with sid=" << params.sid
-                        << " len=" << payload.size() << " before Start().";
+  if (partial_outgoing_message_.has_value()) {
+    if (result) {
+      *result = SDR_BLOCK;
+    }
+    // Ready to send should get set only when SendData() call gets blocked.
+    ready_to_send_data_ = false;
     return false;
   }
+  size_t payload_size = payload.size();
+  OutgoingMessage message(payload, params);
+  SendDataResult send_message_result = SendMessageInternal(&message);
+  if (result) {
+    *result = send_message_result;
+  }
+  if (payload_size == message.size()) {
+    // Nothing was sent.
+    return false;
+  }
+  // If any data is sent, we accept the message. In the case that data was
+  // partially accepted by the sctp library, the remaining is buffered. This
+  // ensures the client does not resend the message.
+  RTC_DCHECK_LT(message.size(), payload_size);
+  if (message.size() > 0) {
+    RTC_DCHECK(!partial_outgoing_message_.has_value());
+    RTC_DLOG(LS_VERBOSE) << "Partially sent message. Buffering the remaining"
+                         << message.size() << "/" << payload_size << " bytes.";
 
-  if (params.type != DMT_CONTROL) {
-    auto it = stream_status_by_sid_.find(params.sid);
+    partial_outgoing_message_.emplace(message);
+  }
+  return true;
+}
+
+SendDataResult SctpTransport::SendMessageInternal(OutgoingMessage* message) {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  if (!sock_) {
+    RTC_LOG(LS_WARNING) << debug_name_ << "->SendMessageInternal(...): "
+                        << "Not sending packet with sid="
+                        << message->send_params().sid
+                        << " len=" << message->size() << " before Start().";
+    return SDR_ERROR;
+  }
+  if (message->send_params().type != DMT_CONTROL) {
+    auto it = stream_status_by_sid_.find(message->send_params().sid);
     if (it == stream_status_by_sid_.end() || !it->second.is_open()) {
       RTC_LOG(LS_WARNING)
-          << debug_name_ << "->SendData(...): "
+          << debug_name_ << "->SendMessageInternal(...): "
           << "Not sending data because sid is unknown or closing: "
-          << params.sid;
-      return false;
+          << message->send_params().sid;
+      return SDR_ERROR;
     }
+  }
+  if (message->size() > static_cast<size_t>(max_message_size_)) {
+    RTC_LOG(LS_ERROR) << "Attempting to send message of size "
+                      << message->size() << " which is larger than limit "
+                      << max_message_size_;
+    return SDR_ERROR;
   }
 
   // Send data using SCTP.
-  ssize_t send_res = 0;  // result from usrsctp_sendv.
-  struct sctp_sendv_spa spa = {0};
-  spa.sendv_flags |= SCTP_SEND_SNDINFO_VALID;
-  spa.sendv_sndinfo.snd_sid = params.sid;
-  spa.sendv_sndinfo.snd_ppid = rtc::HostToNetwork32(GetPpid(params.type));
-  spa.sendv_sndinfo.snd_flags |= SCTP_EOR;
-
-  // Ordered implies reliable.
-  if (!params.ordered) {
-    spa.sendv_sndinfo.snd_flags |= SCTP_UNORDERED;
-    if (params.max_rtx_count >= 0 || params.max_rtx_ms == 0) {
-      spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
-      spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_RTX;
-      spa.sendv_prinfo.pr_value = params.max_rtx_count;
-    } else {
-      spa.sendv_flags |= SCTP_SEND_PRINFO_VALID;
-      spa.sendv_prinfo.pr_policy = SCTP_PR_SCTP_TTL;
-      spa.sendv_prinfo.pr_value = params.max_rtx_ms;
-    }
-  }
-
-  // We don't fragment.
-  send_res = usrsctp_sendv(
-      sock_, payload.data(), static_cast<size_t>(payload.size()), NULL, 0, &spa,
+  sctp_sendv_spa spa = CreateSctpSendParams(message->send_params());
+  // Note: this send call is not atomic because the EOR bit is set. This means
+  // that usrsctp can partially accept this message and it is our duty to buffer
+  // the rest.
+  ssize_t send_res = usrsctp_sendv(
+      sock_, message->data(), message->size(), NULL, 0, &spa,
       rtc::checked_cast<socklen_t>(sizeof(spa)), SCTP_SENDV_SPA, 0);
   if (send_res < 0) {
     if (errno == SCTP_EWOULDBLOCK) {
-      if (result) {
-        *result = SDR_BLOCK;
-      }
       ready_to_send_data_ = false;
       RTC_LOG(LS_INFO) << debug_name_
-                       << "->SendData(...): EWOULDBLOCK returned";
-    } else {
-      RTC_LOG_ERRNO(LS_ERROR) << "ERROR:" << debug_name_ << "->SendData(...): "
-                              << " usrsctp_sendv: ";
+                       << "->SendMessageInternal(...): EWOULDBLOCK returned";
+      return SDR_BLOCK;
     }
-    return false;
+
+    RTC_LOG_ERRNO(LS_ERROR)
+        << "ERROR:" << debug_name_ << "->SendMessageInternal(...): "
+        << " usrsctp_sendv: ";
+    return SDR_ERROR;
   }
-  if (result) {
-    // Only way out now is success.
-    *result = SDR_SUCCESS;
-  }
-  return true;
+
+  size_t amount_sent = static_cast<size_t>(send_res);
+  RTC_DCHECK_LE(amount_sent, message->size());
+  message->Advance(amount_sent);
+  // Only way out now is success.
+  return SDR_SUCCESS;
 }
 
 bool SctpTransport::ReadyToSendData() {
@@ -657,9 +731,9 @@ bool SctpTransport::OpenSctpSocket() {
 
   UsrSctpWrapper::IncrementUsrSctpUsageCount();
 
-  // If kSendBufferSize isn't reflective of reality, we log an error, but we
-  // still have to do something reasonable here.  Look up what the buffer's
-  // real size is and set our threshold to something reasonable.
+  // If kSctpSendBufferSize isn't reflective of reality, we log an error, but we
+  // still have to do something reasonable here.  Look up what the buffer's real
+  // size is and set our threshold to something reasonable.
   static const int kSendThreshold = usrsctp_sysctl_get_sctp_sendspace() / 2;
 
   sock_ = usrsctp_socket(
@@ -843,6 +917,22 @@ void SctpTransport::SetReadyToSendData() {
   }
 }
 
+bool SctpTransport::SendBufferedMessage() {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(partial_outgoing_message_.has_value());
+  RTC_DLOG(LS_VERBOSE) << "Sending partially buffered message of size "
+                       << partial_outgoing_message_->size() << ".";
+
+  SendMessageInternal(&partial_outgoing_message_.value());
+  if (partial_outgoing_message_->size() > 0) {
+    // Still need to finish sending the message.
+    return false;
+  }
+  RTC_DCHECK_EQ(0u, partial_outgoing_message_->size());
+  partial_outgoing_message_.reset();
+  return true;
+}
+
 void SctpTransport::OnWritableState(rtc::PacketTransportInternal* transport) {
   RTC_DCHECK_RUN_ON(network_thread_);
   RTC_DCHECK_EQ(transport_, transport);
@@ -889,6 +979,12 @@ void SctpTransport::OnPacketRead(rtc::PacketTransportInternal* transport,
 
 void SctpTransport::OnSendThresholdCallback() {
   RTC_DCHECK_RUN_ON(network_thread_);
+  if (partial_outgoing_message_.has_value()) {
+    if (!SendBufferedMessage()) {
+      // Did not finish sending the buffered message.
+      return;
+    }
+  }
   SetReadyToSendData();
 }
 
@@ -1028,7 +1124,12 @@ void SctpTransport::OnNotificationAssocChange(const sctp_assoc_change& change) {
   RTC_DCHECK_RUN_ON(network_thread_);
   switch (change.sac_state) {
     case SCTP_COMM_UP:
-      RTC_LOG(LS_VERBOSE) << "Association change SCTP_COMM_UP";
+      RTC_LOG(LS_VERBOSE) << "Association change SCTP_COMM_UP, stream # is "
+                          << change.sac_outbound_streams << " outbound, "
+                          << change.sac_inbound_streams << " inbound.";
+      max_outbound_streams_ = change.sac_outbound_streams;
+      max_inbound_streams_ = change.sac_inbound_streams;
+      SignalAssociationChangeCommunicationUp();
       break;
     case SCTP_COMM_LOST:
       RTC_LOG(LS_INFO) << "Association change SCTP_COMM_LOST";

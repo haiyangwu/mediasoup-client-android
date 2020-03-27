@@ -8,7 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "absl/memory/memory.h"
+#include <memory>
+
+#include "absl/algorithm/container.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/test/simulated_network.h"
 #include "api/test/video/function_video_encoder_factory.h"
 #include "call/fake_network_pipe.h"
@@ -135,15 +138,15 @@ TEST_F(RetransmissionEndToEndTest, ReceivesNackAndRetransmitsAudio) {
     size_t GetNumVideoStreams() const override { return 0; }
     size_t GetNumAudioStreams() const override { return 1; }
 
-    test::PacketTransport* CreateReceiveTransport(
-        test::SingleThreadedTaskQueueForTesting* task_queue) override {
-      test::PacketTransport* receive_transport = new test::PacketTransport(
+    std::unique_ptr<test::PacketTransport> CreateReceiveTransport(
+        TaskQueueBase* task_queue) override {
+      auto receive_transport = std::make_unique<test::PacketTransport>(
           task_queue, nullptr, this, test::PacketTransport::kReceiver,
           payload_type_map_,
-          absl::make_unique<FakeNetworkPipe>(
-              Clock::GetRealTimeClock(), absl::make_unique<SimulatedNetwork>(
+          std::make_unique<FakeNetworkPipe>(
+              Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
                                              BuiltInNetworkBehaviorConfig())));
-      receive_transport_ = receive_transport;
+      receive_transport_ = receive_transport.get();
       return receive_transport;
     }
 
@@ -200,7 +203,7 @@ TEST_F(RetransmissionEndToEndTest,
   class KeyframeRequestObserver : public test::EndToEndTest {
    public:
     explicit KeyframeRequestObserver(
-        test::SingleThreadedTaskQueueForTesting* task_queue)
+        test::DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue)
         : clock_(Clock::GetRealTimeClock()), task_queue_(task_queue) {}
 
     void OnVideoStreamsCreated(
@@ -232,7 +235,7 @@ TEST_F(RetransmissionEndToEndTest,
     Clock* clock_;
     VideoSendStream* send_stream_;
     VideoReceiveStream* receive_stream_;
-    test::SingleThreadedTaskQueueForTesting* const task_queue_;
+    test::DEPRECATED_SingleThreadedTaskQueueForTesting* const task_queue_;
   } test(&task_queue_);
 
   RunBaseTest(&test);
@@ -370,8 +373,8 @@ void RetransmissionEndToEndTest::DecodesRetransmittedFrame(bool enable_rtx,
         // This should be the only dropped packet.
         EXPECT_EQ(0u, retransmitted_timestamp_);
         retransmitted_timestamp_ = header.timestamp;
-        if (std::find(rendered_timestamps_.begin(), rendered_timestamps_.end(),
-                      retransmitted_timestamp_) != rendered_timestamps_.end()) {
+        if (absl::c_linear_search(rendered_timestamps_,
+                                  retransmitted_timestamp_)) {
           // Frame was rendered before last packet was scheduled for sending.
           // This is extremly rare but possible scenario because prober able to
           // resend packet before it was send.

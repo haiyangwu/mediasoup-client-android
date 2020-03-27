@@ -10,10 +10,10 @@
 
 #include "media/base/fake_media_engine.h"
 
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "rtc_base/checks.h"
 
@@ -228,7 +228,7 @@ bool FakeVoiceMediaChannel::SetLocalSource(uint32_t ssrc, AudioSource* source) {
       RTC_CHECK(it->second->source() == source);
     } else {
       local_sinks_.insert(std::make_pair(
-          ssrc, absl::make_unique<VoiceChannelAudioSink>(source)));
+          ssrc, std::make_unique<VoiceChannelAudioSink>(source)));
     }
   } else {
     if (it != local_sinks_.end()) {
@@ -495,7 +495,7 @@ bool FakeDataMediaChannel::SetMaxSendBandwidth(int bps) {
 FakeVoiceEngine::FakeVoiceEngine() : fail_create_channel_(false) {
   // Add a fake audio codec. Note that the name must not be "" as there are
   // sanity checks against that.
-  codecs_.push_back(AudioCodec(101, "fake_audio_codec", 0, 0, 1));
+  SetCodecs({AudioCodec(101, "fake_audio_codec", 0, 0, 1)});
 }
 RtpCapabilities FakeVoiceEngine::GetCapabilities() const {
   return RtpCapabilities();
@@ -524,27 +524,29 @@ void FakeVoiceEngine::UnregisterChannel(VoiceMediaChannel* channel) {
   channels_.erase(absl::c_find(channels_, channel));
 }
 const std::vector<AudioCodec>& FakeVoiceEngine::send_codecs() const {
-  return codecs_;
+  return send_codecs_;
 }
 const std::vector<AudioCodec>& FakeVoiceEngine::recv_codecs() const {
-  return codecs_;
+  return recv_codecs_;
 }
 void FakeVoiceEngine::SetCodecs(const std::vector<AudioCodec>& codecs) {
-  codecs_ = codecs;
+  send_codecs_ = codecs;
+  recv_codecs_ = codecs;
+}
+void FakeVoiceEngine::SetRecvCodecs(const std::vector<AudioCodec>& codecs) {
+  recv_codecs_ = codecs;
+}
+void FakeVoiceEngine::SetSendCodecs(const std::vector<AudioCodec>& codecs) {
+  send_codecs_ = codecs;
 }
 int FakeVoiceEngine::GetInputLevel() {
   return 0;
 }
-bool FakeVoiceEngine::StartAecDump(rtc::PlatformFile file,
+bool FakeVoiceEngine::StartAecDump(webrtc::FileWrapper file,
                                    int64_t max_size_bytes) {
   return false;
 }
 void FakeVoiceEngine::StopAecDump() {}
-bool FakeVoiceEngine::StartRtcEventLog(rtc::PlatformFile file,
-                                       int64_t max_size_bytes) {
-  return false;
-}
-void FakeVoiceEngine::StopRtcEventLog() {}
 
 FakeVideoEngine::FakeVideoEngine()
     : capture_(false), fail_create_channel_(false) {
@@ -563,7 +565,8 @@ VideoMediaChannel* FakeVideoEngine::CreateMediaChannel(
     webrtc::Call* call,
     const MediaConfig& config,
     const VideoOptions& options,
-    const webrtc::CryptoOptions& crypto_options) {
+    const webrtc::CryptoOptions& crypto_options,
+    webrtc::VideoBitrateAllocatorFactory* video_bitrate_allocator_factory) {
   if (fail_create_channel_) {
     return nullptr;
   }
@@ -592,13 +595,21 @@ bool FakeVideoEngine::SetCapture(bool capture) {
 }
 
 FakeMediaEngine::FakeMediaEngine()
-    : CompositeMediaEngine(absl::make_unique<FakeVoiceEngine>(),
-                           absl::make_unique<FakeVideoEngine>()),
+    : CompositeMediaEngine(std::make_unique<FakeVoiceEngine>(),
+                           std::make_unique<FakeVideoEngine>()),
       voice_(static_cast<FakeVoiceEngine*>(&voice())),
       video_(static_cast<FakeVideoEngine*>(&video())) {}
 FakeMediaEngine::~FakeMediaEngine() {}
 void FakeMediaEngine::SetAudioCodecs(const std::vector<AudioCodec>& codecs) {
   voice_->SetCodecs(codecs);
+}
+void FakeMediaEngine::SetAudioRecvCodecs(
+    const std::vector<AudioCodec>& codecs) {
+  voice_->SetRecvCodecs(codecs);
+}
+void FakeMediaEngine::SetAudioSendCodecs(
+    const std::vector<AudioCodec>& codecs) {
+  voice_->SetSendCodecs(codecs);
 }
 void FakeMediaEngine::SetVideoCodecs(const std::vector<VideoCodec>& codecs) {
   video_->SetCodecs(codecs);

@@ -8,6 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/base/regathering_controller.h"
+
 #include <map>
 #include <memory>
 #include <string>
@@ -18,7 +20,6 @@
 #include "p2p/base/mock_ice_transport.h"
 #include "p2p/base/p2p_constants.h"
 #include "p2p/base/port.h"
-#include "p2p/base/regathering_controller.h"
 #include "p2p/base/stun_server.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/ref_counted_object.h"
@@ -44,7 +45,7 @@ const char kIcePwd[] = "TESTICEPWD00000000000000";
 
 namespace webrtc {
 
-class RegatheringControllerTest : public testing::Test,
+class RegatheringControllerTest : public ::testing::Test,
                                   public sigslot::has_slots<> {
  public:
   RegatheringControllerTest()
@@ -69,7 +70,7 @@ class RegatheringControllerTest : public testing::Test,
     std::vector<cricket::RelayServerConfig> turn_servers(1, turn_server);
     allocator_->set_flags(kOnlyLocalPorts);
     allocator_->SetConfiguration(stun_servers, turn_servers, 0 /* pool size */,
-                                 false /* prune turn ports */);
+                                 webrtc::NO_PRUNE);
     allocator_session_ = allocator_->CreateSession(
         "test", cricket::ICE_CANDIDATE_COMPONENT_RTP, kIceUfrag, kIcePwd);
     // The gathering will take place on the current thread and the following

@@ -8,17 +8,18 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "rtc_base/async_udp_socket.h"
+
 #include <memory>
 #include <string>
 
-#include "rtc_base/async_udp_socket.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/physical_socket_server.h"
 #include "rtc_base/virtual_socket_server.h"
 
 namespace rtc {
 
-class AsyncUdpSocketTest : public testing::Test, public sigslot::has_slots<> {
+class AsyncUdpSocketTest : public ::testing::Test, public sigslot::has_slots<> {
  public:
   AsyncUdpSocketTest()
       : pss_(new rtc::PhysicalSocketServer),

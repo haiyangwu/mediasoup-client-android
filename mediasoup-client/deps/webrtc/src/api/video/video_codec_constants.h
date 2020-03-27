@@ -13,7 +13,8 @@
 
 namespace webrtc {
 
-enum : int { kMaxSimulcastStreams = 4 };
+enum : int { kMaxEncoderBuffers = 8 };
+enum : int { kMaxSimulcastStreams = 3 };
 enum : int { kMaxSpatialLayers = 5 };
 enum : int { kMaxTemporalStreams = 4 };
 

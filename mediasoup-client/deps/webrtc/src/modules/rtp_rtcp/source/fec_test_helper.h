@@ -13,7 +13,6 @@
 
 #include <memory>
 
-#include "modules/include/module_common_types.h"
 #include "modules/rtp_rtcp/source/forward_error_correction.h"
 #include "rtc_base/random.h"
 
@@ -22,7 +21,7 @@ namespace test {
 namespace fec {
 
 struct AugmentedPacket : public ForwardErrorCorrection::Packet {
-  WebRtcRTPHeader header;
+  RTPHeader header;
 };
 
 // TODO(brandtr): Consider merging MediaPacketGenerator and
@@ -106,21 +105,14 @@ class UlpfecPacketGenerator : public AugmentedPacketGenerator {
  public:
   explicit UlpfecPacketGenerator(uint32_t ssrc);
 
-  // Creates a new AugmentedPacket with the RED header added to the packet.
-  static std::unique_ptr<AugmentedPacket> BuildMediaRedPacket(
-      const AugmentedPacket& packet);
+  // Creates a new RtpPacket with the RED header added to the packet.
+  static RtpPacket BuildMediaRedPacket(const AugmentedPacket& packet);
 
-  // Creates a new AugmentedPacket with FEC payload and RED header. Does this by
+  // Creates a new RtpPacket with FEC payload and RED header. Does this by
   // creating a new fake media AugmentedPacket, clears the marker bit and adds a
   // RED header. Finally replaces the payload with the content of
   // |packet->data|.
-  std::unique_ptr<AugmentedPacket> BuildUlpfecRedPacket(
-      const ForwardErrorCorrection::Packet& packet);
-
- private:
-  static void SetRedHeader(uint8_t payload_type,
-                           size_t header_length,
-                           AugmentedPacket* red_packet);
+  RtpPacket BuildUlpfecRedPacket(const ForwardErrorCorrection::Packet& packet);
 };
 
 }  // namespace fec

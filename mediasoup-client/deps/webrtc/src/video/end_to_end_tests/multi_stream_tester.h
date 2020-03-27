@@ -12,7 +12,9 @@
 #define VIDEO_END_TO_END_TESTS_MULTI_STREAM_TESTER_H_
 
 #include <map>
+#include <memory>
 
+#include "api/task_queue/task_queue_base.h"
 #include "call/call.h"
 #include "test/direct_transport.h"
 #include "test/frame_generator_capturer.h"
@@ -34,7 +36,7 @@ class MultiStreamTester {
   } codec_settings[kNumStreams];
 
   explicit MultiStreamTester(
-      test::SingleThreadedTaskQueueForTesting* task_queue);
+      test::DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue);
 
   virtual ~MultiStreamTester();
 
@@ -51,14 +53,14 @@ class MultiStreamTester {
                                 test::FrameGeneratorCapturer** frame_generator);
   virtual void UpdateReceiveConfig(size_t stream_index,
                                    VideoReceiveStream::Config* receive_config);
-  virtual test::DirectTransport* CreateSendTransport(
-      test::SingleThreadedTaskQueueForTesting* task_queue,
+  virtual std::unique_ptr<test::DirectTransport> CreateSendTransport(
+      TaskQueueBase* task_queue,
       Call* sender_call);
-  virtual test::DirectTransport* CreateReceiveTransport(
-      test::SingleThreadedTaskQueueForTesting* task_queue,
+  virtual std::unique_ptr<test::DirectTransport> CreateReceiveTransport(
+      TaskQueueBase* task_queue,
       Call* receiver_call);
 
-  test::SingleThreadedTaskQueueForTesting* const task_queue_;
+  test::DEPRECATED_SingleThreadedTaskQueueForTesting* const task_queue_;
 };
 }  // namespace webrtc
 #endif  // VIDEO_END_TO_END_TESTS_MULTI_STREAM_TESTER_H_

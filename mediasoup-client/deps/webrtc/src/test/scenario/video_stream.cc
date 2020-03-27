@@ -10,9 +10,9 @@
 #include "test/scenario/video_stream.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "api/test/video/function_video_encoder_factory.h"
 #include "api/video/builtin_video_bitrate_allocator_factory.h"
 #include "media/base/media_constants.h"
@@ -29,6 +29,7 @@ namespace test {
 namespace {
 enum : int {  // The first valid value is 1.
   kTransportSequenceNumberExtensionId = 1,
+  kAbsSendTimeExtensionId,
   kVideoContentTypeExtensionId,
   kVideoRotationRtpExtensionId,
 };
@@ -88,12 +89,20 @@ InterLayerPredMode ToInterLayerPredMode(
 }
 std::vector<RtpExtension> GetVideoRtpExtensions(
     const VideoStreamConfig config) {
-  return {RtpExtension(RtpExtension::kTransportSequenceNumberUri,
-                       kTransportSequenceNumberExtensionId),
-          RtpExtension(RtpExtension::kVideoContentTypeUri,
-                       kVideoContentTypeExtensionId),
-          RtpExtension(RtpExtension::kVideoRotationUri,
-                       kVideoRotationRtpExtensionId)};
+  std::vector<RtpExtension> res = {
+      RtpExtension(RtpExtension::kVideoContentTypeUri,
+                   kVideoContentTypeExtensionId),
+      RtpExtension(RtpExtension::kVideoRotationUri,
+                   kVideoRotationRtpExtensionId)};
+  if (config.stream.packet_feedback) {
+    res.push_back(RtpExtension(RtpExtension::kTransportSequenceNumberUri,
+                               kTransportSequenceNumberExtensionId));
+  }
+  if (config.stream.abs_send_time) {
+    res.push_back(
+        RtpExtension(RtpExtension::kAbsSendTimeUri, kAbsSendTimeExtensionId));
+  }
+  return res;
 }
 
 std::string TransformFilePath(std::string path) {
@@ -115,6 +124,8 @@ VideoSendStream::Config CreateVideoSendStreamConfig(VideoStreamConfig config,
   VideoSendStream::Config send_config(send_transport);
   send_config.rtp.payload_name = CodecTypeToPayloadString(config.encoder.codec);
   send_config.rtp.payload_type = CodecTypeToPayloadType(config.encoder.codec);
+  send_config.rtp.nack.rtp_history_ms =
+      config.stream.nack_history_time.ms<int>();
 
   send_config.rtp.ssrcs = ssrcs;
   send_config.rtp.extensions = GetVideoRtpExtensions(config);
@@ -214,11 +225,12 @@ VideoEncoderConfig CreateVideoEncoderConfig(VideoStreamConfig config) {
   encoder_config.video_format =
       SdpVideoFormat(CodecTypeToPayloadString(config.encoder.codec), {});
 
-  size_t num_streams = 1;
+  encoder_config.number_of_streams = 1;
   if (config.encoder.codec == VideoStreamConfig::Encoder::Codec::kVideoCodecVP8)
-    num_streams = static_cast<size_t>(config.encoder.layers.spatial);
-  encoder_config.number_of_streams = num_streams;
-  encoder_config.simulcast_layers = std::vector<VideoStream>(num_streams);
+    encoder_config.number_of_streams =
+        static_cast<size_t>(config.encoder.layers.spatial);
+  encoder_config.simulcast_layers =
+      std::vector<VideoStream>(config.encoder.layers.spatial);
   encoder_config.min_transmit_bitrate_bps = config.stream.pad_to_rate.bps();
 
   std::string cricket_codec = CodecTypeToCodecName(config.encoder.codec);
@@ -258,7 +270,7 @@ std::unique_ptr<FrameGenerator> CreateImageSlideGenerator(
   if (slides.images.crop.width || slides.images.crop.height) {
     TimeDelta pause_duration =
         slides.change_interval - slides.images.crop.scroll_duration;
-    RTC_CHECK(pause_duration >= TimeDelta::Zero());
+    RTC_CHECK_GE(pause_duration, TimeDelta::Zero());
     int crop_width = slides.images.crop.width.value_or(slides.images.width);
     int crop_height = slides.images.crop.height.value_or(slides.images.height);
     RTC_CHECK_LE(crop_width, slides.images.width);
@@ -306,10 +318,10 @@ VideoReceiveStream::Config CreateVideoReceiveStreamConfig(
     uint32_t ssrc,
     uint32_t rtx_ssrc) {
   VideoReceiveStream::Config recv(feedback_transport);
-  recv.rtp.remb = !config.stream.packet_feedback;
   recv.rtp.transport_cc = config.stream.packet_feedback;
   recv.rtp.local_ssrc = local_ssrc;
   recv.rtp.extensions = GetVideoRtpExtensions(config);
+
   RTC_DCHECK(!config.stream.use_rtx ||
              config.stream.nack_history_time > TimeDelta::Zero());
   recv.rtp.nack.rtp_history_ms = config.stream.nack_history_time.ms();
@@ -328,6 +340,7 @@ VideoReceiveStream::Config CreateVideoReceiveStreamConfig(
     recv.rtp.rtx_associated_payload_types[CallTest::kRtxRedPayloadType] =
         CallTest::kRedPayloadType;
   }
+  recv.sync_group = config.render.sync_group;
   return recv;
 }
 }  // namespace
@@ -335,31 +348,34 @@ VideoReceiveStream::Config CreateVideoReceiveStreamConfig(
 SendVideoStream::SendVideoStream(CallClient* sender,
                                  VideoStreamConfig config,
                                  Transport* send_transport,
-                                 VideoQualityAnalyzer* analyzer)
+                                 VideoFrameMatcher* matcher)
     : sender_(sender), config_(config) {
-  video_capturer_ = absl::make_unique<FrameGeneratorCapturer>(
+  video_capturer_ = std::make_unique<FrameGeneratorCapturer>(
       sender_->clock_, CreateFrameGenerator(sender_->clock_, config.source),
-      config.source.framerate);
+      config.source.framerate,
+      *sender->time_controller_->GetTaskQueueFactory());
   video_capturer_->Init();
 
   using Encoder = VideoStreamConfig::Encoder;
   using Codec = VideoStreamConfig::Encoder::Codec;
   switch (config.encoder.implementation) {
     case Encoder::Implementation::kFake:
-      if (config.encoder.codec == Codec::kVideoCodecGeneric) {
-        encoder_factory_ =
-            absl::make_unique<FunctionVideoEncoderFactory>([this]() {
-              rtc::CritScope cs(&crit_);
-              auto encoder =
-                  absl::make_unique<test::FakeEncoder>(sender_->clock_);
-              fake_encoders_.push_back(encoder.get());
-              if (config_.encoder.fake.max_rate.IsFinite())
-                encoder->SetMaxBitrate(config_.encoder.fake.max_rate.kbps());
-              return encoder;
-            });
-      } else {
-        RTC_NOTREACHED();
-      }
+      encoder_factory_ =
+          std::make_unique<FunctionVideoEncoderFactory>([this]() {
+            rtc::CritScope cs(&crit_);
+            std::unique_ptr<FakeEncoder> encoder;
+            if (config_.encoder.codec == Codec::kVideoCodecVP8) {
+              encoder = std::make_unique<test::FakeVP8Encoder>(sender_->clock_);
+            } else if (config_.encoder.codec == Codec::kVideoCodecGeneric) {
+              encoder = std::make_unique<test::FakeEncoder>(sender_->clock_);
+            } else {
+              RTC_NOTREACHED();
+            }
+            fake_encoders_.push_back(encoder.get());
+            if (config_.encoder.fake.max_rate.IsFinite())
+              encoder->SetMaxBitrate(config_.encoder.fake.max_rate.kbps());
+            return encoder;
+          });
       break;
     case VideoStreamConfig::Encoder::Implementation::kSoftware:
       encoder_factory_.reset(new InternalEncoderFactory());
@@ -384,59 +400,85 @@ SendVideoStream::SendVideoStream(CallClient* sender,
   send_config.encoder_settings.bitrate_allocator_factory =
       bitrate_allocator_factory_.get();
 
-  send_stream_ = sender_->call_->CreateVideoSendStream(
-      std::move(send_config), std::move(encoder_config));
-  std::vector<std::function<void(const VideoFrameQualityInfo&)> >
-      frame_info_handlers;
-  if (config.analyzer.frame_quality_handler)
-    frame_info_handlers.push_back(config.analyzer.frame_quality_handler);
+  sender_->SendTask([&] {
+    if (config.stream.fec_controller_factory) {
+      send_stream_ = sender_->call_->CreateVideoSendStream(
+          std::move(send_config), std::move(encoder_config),
+          config.stream.fec_controller_factory->CreateFecController());
+    } else {
+      send_stream_ = sender_->call_->CreateVideoSendStream(
+          std::move(send_config), std::move(encoder_config));
+    }
 
-  if (analyzer->Active()) {
-    frame_tap_.reset(new ForwardingCapturedFrameTap(sender_->clock_, analyzer,
-                                                    video_capturer_.get()));
-    send_stream_->SetSource(frame_tap_.get(),
-                            config.encoder.degradation_preference);
-  } else {
-    send_stream_->SetSource(video_capturer_.get(),
-                            config.encoder.degradation_preference);
-  }
+    if (matcher->Active()) {
+      frame_tap_ = std::make_unique<ForwardingCapturedFrameTap>(
+          sender_->clock_, matcher, video_capturer_.get());
+      send_stream_->SetSource(frame_tap_.get(),
+                              config.encoder.degradation_preference);
+    } else {
+      send_stream_->SetSource(video_capturer_.get(),
+                              config.encoder.degradation_preference);
+    }
+  });
 }
 
 SendVideoStream::~SendVideoStream() {
-  sender_->call_->DestroyVideoSendStream(send_stream_);
+  sender_->SendTask(
+      [this] { sender_->call_->DestroyVideoSendStream(send_stream_); });
 }
 
 void SendVideoStream::Start() {
-  send_stream_->Start();
-  sender_->call_->SignalChannelNetworkState(MediaType::VIDEO, kNetworkUp);
+  sender_->SendTask([this] {
+    send_stream_->Start();
+    sender_->call_->SignalChannelNetworkState(MediaType::VIDEO, kNetworkUp);
+  });
 }
 
 void SendVideoStream::Stop() {
-  send_stream_->Stop();
+  sender_->SendTask([this] { send_stream_->Stop(); });
 }
 
 void SendVideoStream::UpdateConfig(
     std::function<void(VideoStreamConfig*)> modifier) {
-  rtc::CritScope cs(&crit_);
-  VideoStreamConfig prior_config = config_;
-  modifier(&config_);
-  if (prior_config.encoder.fake.max_rate != config_.encoder.fake.max_rate) {
-    for (auto* encoder : fake_encoders_) {
-      encoder->SetMaxBitrate(config_.encoder.fake.max_rate.kbps());
+  sender_->SendTask([&] {
+    rtc::CritScope cs(&crit_);
+    VideoStreamConfig prior_config = config_;
+    modifier(&config_);
+    if (prior_config.encoder.fake.max_rate != config_.encoder.fake.max_rate) {
+      for (auto* encoder : fake_encoders_) {
+        encoder->SetMaxBitrate(config_.encoder.fake.max_rate.kbps());
+      }
     }
-  }
-  // TODO(srte): Add more conditions that should cause reconfiguration.
-  if (prior_config.encoder.max_framerate != config_.encoder.max_framerate) {
-    VideoEncoderConfig encoder_config = CreateVideoEncoderConfig(config_);
-    send_stream_->ReconfigureVideoEncoder(std::move(encoder_config));
-  }
-  if (prior_config.source.framerate != config_.source.framerate) {
-    SetCaptureFramerate(config_.source.framerate);
-  }
+    // TODO(srte): Add more conditions that should cause reconfiguration.
+    if (prior_config.encoder.max_framerate != config_.encoder.max_framerate) {
+      VideoEncoderConfig encoder_config = CreateVideoEncoderConfig(config_);
+      send_stream_->ReconfigureVideoEncoder(std::move(encoder_config));
+    }
+    if (prior_config.source.framerate != config_.source.framerate) {
+      SetCaptureFramerate(config_.source.framerate);
+    }
+  });
+}
+
+void SendVideoStream::UpdateActiveLayers(std::vector<bool> active_layers) {
+  sender_->task_queue_.PostTask([=] {
+    rtc::CritScope cs(&crit_);
+    if (config_.encoder.codec ==
+        VideoStreamConfig::Encoder::Codec::kVideoCodecVP8) {
+      send_stream_->UpdateActiveSimulcastLayers(active_layers);
+    } else {
+      VideoEncoderConfig encoder_config = CreateVideoEncoderConfig(config_);
+      RTC_CHECK_EQ(encoder_config.simulcast_layers.size(),
+                   active_layers.size());
+      for (size_t i = 0; i < encoder_config.simulcast_layers.size(); ++i)
+        encoder_config.simulcast_layers[i].active = active_layers[i];
+      send_stream_->ReconfigureVideoEncoder(std::move(encoder_config));
+    }
+  });
 }
 
 void SendVideoStream::SetCaptureFramerate(int framerate) {
-  video_capturer_->ChangeFramerate(framerate);
+  sender_->SendTask([&] { video_capturer_->ChangeFramerate(framerate); });
 }
 
 VideoSendStream::Stats SendVideoStream::GetStats() const {
@@ -466,15 +508,14 @@ ReceiveVideoStream::ReceiveVideoStream(CallClient* receiver,
                                        SendVideoStream* send_stream,
                                        size_t chosen_stream,
                                        Transport* feedback_transport,
-                                       VideoQualityAnalyzer* analyzer)
+                                       VideoFrameMatcher* matcher)
     : receiver_(receiver), config_(config) {
-
   if (config.encoder.codec ==
       VideoStreamConfig::Encoder::Codec::kVideoCodecGeneric) {
-    decoder_factory_ = absl::make_unique<FunctionVideoDecoderFactory>(
-        []() { return absl::make_unique<FakeDecoder>(); });
+    decoder_factory_ = std::make_unique<FunctionVideoDecoderFactory>(
+        []() { return std::make_unique<FakeDecoder>(); });
   } else {
-    decoder_factory_ = absl::make_unique<InternalDecoderFactory>();
+    decoder_factory_ = std::make_unique<InternalDecoderFactory>();
   }
 
   VideoReceiveStream::Decoder decoder =
@@ -486,9 +527,10 @@ ReceiveVideoStream::ReceiveVideoStream(CallClient* receiver,
     num_streams = config.encoder.layers.spatial;
   for (size_t i = 0; i < num_streams; ++i) {
     rtc::VideoSinkInterface<VideoFrame>* renderer = &fake_renderer_;
-    if (analyzer->Active() && i == chosen_stream) {
-      analyzer_ = absl::make_unique<DecodedFrameTap>(analyzer);
-      renderer = analyzer_.get();
+    if (matcher->Active()) {
+      render_taps_.emplace_back(
+          std::make_unique<DecodedFrameTap>(receiver_->clock_, matcher, i));
+      renderer = render_taps_.back().get();
     }
     auto recv_config = CreateVideoReceiveStreamConfig(
         config, feedback_transport, decoder, renderer,
@@ -502,52 +544,67 @@ ReceiveVideoStream::ReceiveVideoStream(CallClient* receiver,
       flexfec.protected_media_ssrcs = send_stream->rtx_ssrcs_;
       flexfec.local_ssrc = recv_config.rtp.local_ssrc;
       receiver_->ssrc_media_types_[flexfec.remote_ssrc] = MediaType::VIDEO;
-      flecfec_stream_ = receiver_->call_->CreateFlexfecReceiveStream(flexfec);
+
+      receiver_->SendTask([this, &flexfec] {
+        flecfec_stream_ = receiver_->call_->CreateFlexfecReceiveStream(flexfec);
+      });
     }
     receiver_->ssrc_media_types_[recv_config.rtp.remote_ssrc] =
         MediaType::VIDEO;
     if (config.stream.use_rtx)
       receiver_->ssrc_media_types_[recv_config.rtp.rtx_ssrc] = MediaType::VIDEO;
-    receive_streams_.push_back(
-        receiver_->call_->CreateVideoReceiveStream(std::move(recv_config)));
+    receiver_->SendTask([this, &recv_config] {
+      receive_streams_.push_back(
+          receiver_->call_->CreateVideoReceiveStream(std::move(recv_config)));
+    });
   }
 }
 
 ReceiveVideoStream::~ReceiveVideoStream() {
-  for (auto* recv_stream : receive_streams_)
-    receiver_->call_->DestroyVideoReceiveStream(recv_stream);
-  if (flecfec_stream_)
-    receiver_->call_->DestroyFlexfecReceiveStream(flecfec_stream_);
+  receiver_->SendTask([this] {
+    for (auto* recv_stream : receive_streams_)
+      receiver_->call_->DestroyVideoReceiveStream(recv_stream);
+    if (flecfec_stream_)
+      receiver_->call_->DestroyFlexfecReceiveStream(flecfec_stream_);
+  });
 }
 
 void ReceiveVideoStream::Start() {
-  for (auto* recv_stream : receive_streams_)
-    recv_stream->Start();
-  receiver_->call_->SignalChannelNetworkState(MediaType::VIDEO, kNetworkUp);
+  receiver_->SendTask([this] {
+    for (auto* recv_stream : receive_streams_)
+      recv_stream->Start();
+    receiver_->call_->SignalChannelNetworkState(MediaType::VIDEO, kNetworkUp);
+  });
 }
 
 void ReceiveVideoStream::Stop() {
-  for (auto* recv_stream : receive_streams_)
-    recv_stream->Stop();
+  receiver_->SendTask([this] {
+    for (auto* recv_stream : receive_streams_)
+      recv_stream->Stop();
+  });
+}
+
+VideoReceiveStream::Stats ReceiveVideoStream::GetStats() const {
+  if (receive_streams_.empty())
+    return VideoReceiveStream::Stats();
+  // TODO(srte): Handle multiple receive streams.
+  return receive_streams_.front()->GetStats();
 }
 
 VideoStreamPair::~VideoStreamPair() = default;
 
-VideoStreamPair::VideoStreamPair(
-    CallClient* sender,
-    CallClient* receiver,
-    VideoStreamConfig config,
-    std::unique_ptr<RtcEventLogOutput> quality_writer)
+VideoStreamPair::VideoStreamPair(CallClient* sender,
+                                 CallClient* receiver,
+                                 VideoStreamConfig config)
     : config_(config),
-      analyzer_(std::move(quality_writer),
-                config.analyzer.frame_quality_handler),
-      send_stream_(sender, config, &sender->transport_, &analyzer_),
+      matcher_(config.hooks.frame_pair_handlers),
+      send_stream_(sender, config, sender->transport_.get(), &matcher_),
       receive_stream_(receiver,
                       config,
                       &send_stream_,
                       /*chosen_stream=*/0,
-                      &receiver->transport_,
-                      &analyzer_) {}
+                      receiver->transport_.get(),
+                      &matcher_) {}
 
 }  // namespace test
 }  // namespace webrtc

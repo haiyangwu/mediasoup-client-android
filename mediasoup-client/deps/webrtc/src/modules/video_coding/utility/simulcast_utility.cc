@@ -8,13 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <algorithm>
+#include "modules/video_coding/utility/simulcast_utility.h"
 
+#include <algorithm>
 #include <cmath>
 
-#include "common_types.h"  // NOLINT(build/include)
-#include "modules/video_coding/utility/simulcast_utility.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/experiments/experimental_screenshare_settings.h"
 
 namespace webrtc {
 
@@ -89,6 +89,15 @@ bool SimulcastUtility::IsConferenceModeScreenshare(const VideoCodec& codec) {
       NumberOfTemporalLayers(codec, 0) != 2) {
     return false;
   }
+
+  if (codec.numberOfSimulcastStreams > 0 &&
+      ExperimentalScreenshareSettings::ParseFromFieldTrials()
+          .DefaultTlInBaseLayer()
+          .value_or(false)) {
+    // Don't use ScreenshareLayers for base layer, regardless of flags.
+    return false;
+  }
+
   // Fixed default bitrates for legacy screenshare layers mode.
   return (codec.numberOfSimulcastStreams == 0 && codec.maxBitrate == 1000) ||
          (codec.numberOfSimulcastStreams >= 1 &&

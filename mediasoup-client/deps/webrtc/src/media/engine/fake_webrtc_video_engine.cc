@@ -11,8 +11,8 @@
 #include "media/engine/fake_webrtc_video_engine.h"
 
 #include <algorithm>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "media/base/codec.h"
 #include "media/base/media_constants.h"
@@ -57,7 +57,6 @@ int32_t FakeWebRtcVideoDecoder::InitDecode(const webrtc::VideoCodec*, int32_t) {
 
 int32_t FakeWebRtcVideoDecoder::Decode(const webrtc::EncodedImage&,
                                        bool,
-                                       const webrtc::CodecSpecificInfo*,
                                        int64_t) {
   num_frames_received_++;
   return WEBRTC_VIDEO_CODEC_OK;
@@ -99,7 +98,7 @@ FakeWebRtcVideoDecoderFactory::CreateVideoDecoder(
   if (IsFormatSupported(supported_codec_formats_, format)) {
     num_created_decoders_++;
     std::unique_ptr<FakeWebRtcVideoDecoder> decoder =
-        absl::make_unique<FakeWebRtcVideoDecoder>(this);
+        std::make_unique<FakeWebRtcVideoDecoder>(this);
     decoders_.push_back(decoder.get());
     return decoder;
   }
@@ -138,10 +137,14 @@ FakeWebRtcVideoEncoder::~FakeWebRtcVideoEncoder() {
   }
 }
 
+void FakeWebRtcVideoEncoder::SetFecControllerOverride(
+    webrtc::FecControllerOverride* fec_controller_override) {
+  // Ignored.
+}
+
 int32_t FakeWebRtcVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codecSettings,
-    int32_t numberOfCores,
-    size_t maxPayloadSize) {
+    const VideoEncoder::Settings& settings) {
   rtc::CritScope lock(&crit_);
   codec_settings_ = *codecSettings;
   init_encode_event_.Set();
@@ -150,8 +153,7 @@ int32_t FakeWebRtcVideoEncoder::InitEncode(
 
 int32_t FakeWebRtcVideoEncoder::Encode(
     const webrtc::VideoFrame& inputImage,
-    const webrtc::CodecSpecificInfo* codecSpecificInfo,
-    const std::vector<webrtc::FrameType>* frame_types) {
+    const std::vector<webrtc::VideoFrameType>* frame_types) {
   rtc::CritScope lock(&crit_);
   ++num_frames_encoded_;
   init_encode_event_.Set();
@@ -167,10 +169,7 @@ int32_t FakeWebRtcVideoEncoder::Release() {
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-int32_t FakeWebRtcVideoEncoder::SetRateAllocation(
-    const webrtc::VideoBitrateAllocation& allocation,
-    uint32_t framerate) {
-  return WEBRTC_VIDEO_CODEC_OK;
+void FakeWebRtcVideoEncoder::SetRates(const RateControlParameters& parameters) {
 }
 
 webrtc::VideoEncoder::EncoderInfo FakeWebRtcVideoEncoder::GetEncoderInfo()
@@ -226,12 +225,11 @@ FakeWebRtcVideoEncoderFactory::CreateVideoEncoder(
       // encoders. Enter vp8_factory_mode so that we now create these encoders
       // instead of more adapters.
       vp8_factory_mode_ = true;
-      encoder =
-          absl::make_unique<webrtc::SimulcastEncoderAdapter>(this, format);
+      encoder = std::make_unique<webrtc::SimulcastEncoderAdapter>(this, format);
     } else {
       num_created_encoders_++;
       created_video_encoder_event_.Set();
-      encoder = absl::make_unique<FakeWebRtcVideoEncoder>(this);
+      encoder = std::make_unique<FakeWebRtcVideoEncoder>(this);
       encoders_.push_back(static_cast<FakeWebRtcVideoEncoder*>(encoder.get()));
     }
   }

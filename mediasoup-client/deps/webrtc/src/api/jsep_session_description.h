@@ -23,6 +23,7 @@
 #include "api/jsep.h"
 #include "api/jsep_ice_candidate.h"
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/deprecation.h"
 
 namespace cricket {
 class SessionDescription;
@@ -44,9 +45,7 @@ class JsepSessionDescription : public SessionDescriptionInterface {
   virtual ~JsepSessionDescription();
 
   // Takes ownership of |description|.
-  // TODO(deadbeef): Make this use an std::unique_ptr<>, so ownership logic is
-  // more clear.
-  bool Initialize(cricket::SessionDescription* description,
+  bool Initialize(std::unique_ptr<cricket::SessionDescription> description,
                   const std::string& session_id,
                   const std::string& session_version);
 

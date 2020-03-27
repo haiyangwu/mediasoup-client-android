@@ -8,13 +8,12 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/test/create_videocodec_test_fixture.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "media/base/media_constants.h"
 #include "modules/video_coding/codecs/test/android_codec_factory_helper.h"
 #include "modules/video_coding/codecs/test/videocodec_test_fixture_impl.h"
@@ -70,7 +69,7 @@ TEST(VideoCodecTestMediaCodec, ForemanCif500kbpsVp8) {
 TEST(VideoCodecTestMediaCodec, ForemanCif500kbpsH264CBP) {
   auto config = CreateConfig();
   const auto frame_checker =
-      absl::make_unique<VideoCodecTestFixtureImpl::H264KeyframeChecker>();
+      std::make_unique<VideoCodecTestFixtureImpl::H264KeyframeChecker>();
   config.encoded_frame_checker = frame_checker.get();
   config.SetCodecSettings(cricket::kH264CodecName, 1, 1, 1, false, false, false,
                           352, 288);
@@ -94,7 +93,7 @@ TEST(VideoCodecTestMediaCodec, ForemanCif500kbpsH264CBP) {
 TEST(VideoCodecTestMediaCodec, DISABLED_ForemanCif500kbpsH264CHP) {
   auto config = CreateConfig();
   const auto frame_checker =
-      absl::make_unique<VideoCodecTestFixtureImpl::H264KeyframeChecker>();
+      std::make_unique<VideoCodecTestFixtureImpl::H264KeyframeChecker>();
 
   config.h264_codec_settings.profile = H264::kProfileConstrainedHigh;
   config.encoded_frame_checker = frame_checker.get();

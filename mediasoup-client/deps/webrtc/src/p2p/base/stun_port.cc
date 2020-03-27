@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "p2p/base/connection.h"
 #include "p2p/base/p2p_constants.h"
 #include "p2p/base/port_allocator.h"
 #include "p2p/base/stun.h"
@@ -78,7 +79,10 @@ class StunBindingRequest : public StunRequest {
                         << " reason=" << attr->reason();
     }
 
-    port_->OnStunBindingOrResolveRequestFailed(server_addr_);
+    port_->OnStunBindingOrResolveRequestFailed(
+        server_addr_, attr ? attr->number() : STUN_ERROR_GLOBAL_FAILURE,
+        attr ? attr->reason()
+             : "STUN binding response with no error code attribute.");
 
     int64_t now = rtc::TimeMillis();
     if (WithinLifetime(now) &&
@@ -92,8 +96,9 @@ class StunBindingRequest : public StunRequest {
     RTC_LOG(LS_ERROR) << "Binding request timed out from "
                       << port_->GetLocalAddress().ToSensitiveString() << " ("
                       << port_->Network()->name() << ")";
-
-    port_->OnStunBindingOrResolveRequestFailed(server_addr_);
+    port_->OnStunBindingOrResolveRequestFailed(
+        server_addr_, SERVER_NOT_REACHABLE_ERROR,
+        "STUN allocate request timed out.");
   }
 
  private:
@@ -103,6 +108,7 @@ class StunBindingRequest : public StunRequest {
     int lifetime = port_->stun_keepalive_lifetime();
     return lifetime < 0 || rtc::TimeDiff(now, start_time_) <= lifetime;
   }
+
   UDPPort* port_;
   const rtc::SocketAddress server_addr_;
 
@@ -196,7 +202,7 @@ UDPPort::UDPPort(rtc::Thread* thread,
            username,
            password),
       requests_(thread),
-      socket_(NULL),
+      socket_(nullptr),
       error_(0),
       ready_(false),
       stun_keepalive_delay_(STUN_KEEPALIVE_INTERVAL),
@@ -208,7 +214,7 @@ UDPPort::UDPPort(rtc::Thread* thread,
 bool UDPPort::Init() {
   stun_keepalive_lifetime_ = GetStunKeepaliveLifetime();
   if (!SharedSocket()) {
-    RTC_DCHECK(socket_ == NULL);
+    RTC_DCHECK(socket_ == nullptr);
     socket_ = socket_factory()->CreateUdpSocket(
         rtc::SocketAddress(Network()->GetBestIP(), 0), min_port(), max_port());
     if (!socket_) {
@@ -250,17 +256,35 @@ void UDPPort::MaybePrepareStunCandidate() {
 Connection* UDPPort::CreateConnection(const Candidate& address,
                                       CandidateOrigin origin) {
   if (!SupportsProtocol(address.protocol())) {
-    return NULL;
+    return nullptr;
   }
 
   if (!IsCompatibleAddress(address.address())) {
-    return NULL;
+    return nullptr;
   }
 
-  if (SharedSocket() && Candidates()[0].type() != LOCAL_PORT_TYPE) {
+  // In addition to DCHECK-ing the non-emptiness of local candidates, we also
+  // skip this Port with null if there are latent bugs to violate it; otherwise
+  // it would lead to a crash when accessing the local candidate of the
+  // connection that would be created below.
+  if (Candidates().empty()) {
     RTC_NOTREACHED();
-    return NULL;
+    return nullptr;
   }
+  // When the socket is shared, the srflx candidate is gathered by the UDPPort.
+  // The assumption here is that
+  //  1) if the IP concealment with mDNS is not enabled, the gathering of the
+  //     host candidate of this port (which is synchronous),
+  //  2) or otherwise if enabled, the start of name registration of the host
+  //     candidate (as the start of asynchronous gathering)
+  // is always before the gathering of a srflx candidate (and any prflx
+  // candidate).
+  //
+  // See also the definition of MdnsNameRegistrationStatus::kNotStarted in
+  // port.h.
+  RTC_DCHECK(!SharedSocket() || Candidates()[0].type() == LOCAL_PORT_TYPE ||
+             mdns_name_registration_status() !=
+                 MdnsNameRegistrationStatus::kNotStarted);
 
   Connection* conn = new ProxyConnection(this, 0, address);
   AddOrReplaceConnection(conn);
@@ -418,7 +442,7 @@ void UDPPort::ResolveStunAddress(const rtc::SocketAddress& stun_addr) {
 }
 
 void UDPPort::OnResolveResult(const rtc::SocketAddress& input, int error) {
-  RTC_DCHECK(resolver_.get() != NULL);
+  RTC_DCHECK(resolver_.get() != nullptr);
 
   rtc::SocketAddress resolved;
   if (error != 0 || !resolver_->GetResolvedAddress(
@@ -426,7 +450,8 @@ void UDPPort::OnResolveResult(const rtc::SocketAddress& input, int error) {
     RTC_LOG(LS_WARNING) << ToString()
                         << ": StunPort: stun host lookup received error "
                         << error;
-    OnStunBindingOrResolveRequestFailed(input);
+    OnStunBindingOrResolveRequestFailed(input, SERVER_NOT_REACHABLE_ERROR,
+                                        "STUN host lookup received error.");
     return;
   }
 
@@ -450,8 +475,10 @@ void UDPPort::SendStunBindingRequest(const rtc::SocketAddress& stun_addr) {
     } else {
       // Since we can't send stun messages to the server, we should mark this
       // port ready.
-      RTC_LOG(LS_WARNING) << "STUN server address is incompatible.";
-      OnStunBindingOrResolveRequestFailed(stun_addr);
+      const char* reason = "STUN server address is incompatible.";
+      RTC_LOG(LS_WARNING) << reason;
+      OnStunBindingOrResolveRequestFailed(stun_addr, SERVER_NOT_REACHABLE_ERROR,
+                                          reason);
     }
   }
 }
@@ -511,7 +538,14 @@ void UDPPort::OnStunBindingRequestSucceeded(
 }
 
 void UDPPort::OnStunBindingOrResolveRequestFailed(
-    const rtc::SocketAddress& stun_server_addr) {
+    const rtc::SocketAddress& stun_server_addr,
+    int error_code,
+    const std::string& reason) {
+  rtc::StringBuilder url;
+  url << "stun:" << stun_server_addr.ToString();
+  SignalCandidateError(
+      this, IceCandidateErrorEvent(GetLocalAddress().ToSensitiveString(),
+                                   url.str(), error_code, reason));
   if (bind_request_failed_servers_.find(stun_server_addr) !=
       bind_request_failed_servers_.end()) {
     return;

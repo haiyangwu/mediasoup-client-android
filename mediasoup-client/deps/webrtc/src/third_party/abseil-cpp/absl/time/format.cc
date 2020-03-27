@@ -22,12 +22,16 @@
 namespace cctz = absl::time_internal::cctz;
 
 namespace absl {
+ABSL_NAMESPACE_BEGIN
 
-extern const char RFC3339_full[] = "%Y-%m-%dT%H:%M:%E*S%Ez";
-extern const char RFC3339_sec[] =  "%Y-%m-%dT%H:%M:%S%Ez";
+ABSL_DLL extern const char RFC3339_full[] =
+    "%Y-%m-%dT%H:%M:%E*S%Ez";
+ABSL_DLL extern const char RFC3339_sec[] = "%Y-%m-%dT%H:%M:%S%Ez";
 
-extern const char RFC1123_full[] = "%a, %d %b %E4Y %H:%M:%S %z";
-extern const char RFC1123_no_wday[] =  "%d %b %E4Y %H:%M:%S %z";
+ABSL_DLL extern const char RFC1123_full[] =
+    "%a, %d %b %E4Y %H:%M:%S %z";
+ABSL_DLL extern const char RFC1123_no_wday[] =
+    "%d %b %E4Y %H:%M:%S %z";
 
 namespace {
 
@@ -145,4 +149,5 @@ std::string UnparseFlag(absl::Time t) {
   return absl::FormatTime(RFC3339_full, t, absl::UTCTimeZone());
 }
 
+ABSL_NAMESPACE_END
 }  // namespace absl

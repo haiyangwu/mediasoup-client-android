@@ -10,6 +10,8 @@
 
 // Borrowed from Chromium's src/base/threading/thread_checker_unittest.cc.
 
+#include "rtc_base/thread_checker.h"
+
 #include <memory>
 #include <utility>
 
@@ -19,7 +21,6 @@
 #include "rtc_base/socket_server.h"
 #include "rtc_base/task_queue.h"
 #include "rtc_base/thread.h"
-#include "rtc_base/thread_checker.h"
 #include "test/gtest.h"
 
 // Duplicated from base/threading/thread_checker.h so that we can be
@@ -38,9 +39,9 @@ class ThreadCheckerClass : public ThreadChecker {
   ThreadCheckerClass() {}
 
   // Verifies that it was called on the same thread as the constructor.
-  void DoStuff() { RTC_DCHECK(CalledOnValidThread()); }
+  void DoStuff() { RTC_DCHECK(IsCurrent()); }
 
-  void DetachFromThread() { ThreadChecker::DetachFromThread(); }
+  void Detach() { ThreadChecker::Detach(); }
 
   static void MethodOnDifferentThreadImpl();
   static void DetachThenCallFromDifferentThreadImpl();
@@ -124,13 +125,13 @@ TEST(ThreadCheckerTest, DestructorAllowedOnDifferentThread) {
   EXPECT_TRUE(delete_on_thread.has_been_deleted());
 }
 
-TEST(ThreadCheckerTest, DetachFromThread) {
+TEST(ThreadCheckerTest, Detach) {
   std::unique_ptr<ThreadCheckerClass> thread_checker_class(
       new ThreadCheckerClass);
 
   // Verify that DoStuff doesn't assert when called on a different thread after
-  // a call to DetachFromThread.
-  thread_checker_class->DetachFromThread();
+  // a call to Detach.
+  thread_checker_class->Detach();
   CallDoStuffOnThread call_on_thread(thread_checker_class.get());
 
   call_on_thread.Start();
@@ -166,8 +167,8 @@ void ThreadCheckerClass::DetachThenCallFromDifferentThreadImpl() {
       new ThreadCheckerClass);
 
   // DoStuff doesn't assert when called on a different thread
-  // after a call to DetachFromThread.
-  thread_checker_class->DetachFromThread();
+  // after a call to Detach.
+  thread_checker_class->Detach();
   CallDoStuffOnThread call_on_thread(thread_checker_class.get());
 
   call_on_thread.Start();

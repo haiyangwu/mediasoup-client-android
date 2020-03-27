@@ -8,12 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/test/peer_connection_test_wrapper.h"
+
 #include <stddef.h>
+
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "api/audio/audio_mixer.h"
 #include "api/create_peerconnection_factory.h"
@@ -29,7 +32,6 @@
 #include "pc/test/fake_periodic_video_track_source.h"
 #include "pc/test/fake_rtc_certificate_generator.h"
 #include "pc/test/mock_peer_connection_observers.h"
-#include "pc/test/peer_connection_test_wrapper.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ref_counted_object.h"
@@ -79,7 +81,7 @@ PeerConnectionTestWrapper::PeerConnectionTestWrapper(
     : name_(name),
       network_thread_(network_thread),
       worker_thread_(worker_thread) {
-  pc_thread_checker_.DetachFromThread();
+  pc_thread_checker_.Detach();
 }
 
 PeerConnectionTestWrapper::~PeerConnectionTestWrapper() {
@@ -140,7 +142,7 @@ void PeerConnectionTestWrapper::OnAddTrack(
   if (receiver->track()->kind() == MediaStreamTrackInterface::kVideoKind) {
     auto* video_track =
         static_cast<VideoTrackInterface*>(receiver->track().get());
-    renderer_ = absl::make_unique<FakeVideoTrackRenderer>(video_track);
+    renderer_ = std::make_unique<FakeVideoTrackRenderer>(video_track);
   }
 }
 

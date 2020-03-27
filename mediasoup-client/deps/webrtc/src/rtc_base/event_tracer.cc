@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <string>
 #include <vector>
 
@@ -91,7 +92,7 @@ class EventLogger final {
                         this,
                         "EventTracingThread",
                         kLowPriority) {}
-  ~EventLogger() { RTC_DCHECK(thread_checker_.CalledOnValidThread()); }
+  ~EventLogger() { RTC_DCHECK(thread_checker_.IsCurrent()); }
 
   void AddTraceEvent(const char* name,
                      const unsigned char* category_enabled,
@@ -189,7 +190,7 @@ class EventLogger final {
   }
 
   void Start(FILE* file, bool owned) {
-    RTC_DCHECK(thread_checker_.CalledOnValidThread());
+    RTC_DCHECK(thread_checker_.IsCurrent());
     RTC_DCHECK(file);
     RTC_DCHECK(!output_file_);
     output_file_ = file;
@@ -213,7 +214,7 @@ class EventLogger final {
   }
 
   void Stop() {
-    RTC_DCHECK(thread_checker_.CalledOnValidThread());
+    RTC_DCHECK(thread_checker_.IsCurrent());
     TRACE_EVENT_INSTANT0("webrtc", "EventLogger::Stop");
     // Try to stop. Abort if we're not currently logging.
     if (rtc::AtomicOps::CompareAndSwap(&g_event_logging_active, 1, 0) == 0)

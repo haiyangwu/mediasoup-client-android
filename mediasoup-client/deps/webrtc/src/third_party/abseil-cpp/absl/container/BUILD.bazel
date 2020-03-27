@@ -141,6 +141,7 @@ cc_library(
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = ["//visibility:private"],
+    deps = ["//absl/base:config"],
 )
 
 cc_test(
@@ -389,6 +390,7 @@ cc_library(
         "//absl/base:config",
         "//absl/hash",
         "//absl/strings",
+        "//absl/strings:cord",
     ],
 )
 
@@ -401,7 +403,10 @@ cc_test(
     deps = [
         ":hash_function_defaults",
         "//absl/hash",
+        "//absl/random",
         "//absl/strings",
+        "//absl/strings:cord",
+        "//absl/strings:cord_test_helpers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -478,6 +483,9 @@ cc_library(
     hdrs = ["internal/hashtable_debug_hooks.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
+    deps = [
+        "//absl/base:config",
+    ],
 )
 
 cc_library(
@@ -521,6 +529,7 @@ cc_library(
     hdrs = ["internal/node_hash_policy.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
+    deps = ["//absl/base:config"],
 )
 
 cc_test(
@@ -662,6 +671,9 @@ cc_library(
     hdrs = ["internal/tracked.h"],
     copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
+    deps = [
+        "//absl/base:config",
+    ],
 )
 
 cc_library(
@@ -820,6 +832,7 @@ cc_library(
         "//absl/memory",
         "//absl/meta:type_traits",
         "//absl/strings",
+        "//absl/strings:cord",
         "//absl/types:compare",
         "//absl/utility",
     ],
@@ -836,6 +849,7 @@ cc_library(
         ":btree",
         ":flat_hash_set",
         "//absl/strings",
+        "//absl/strings:cord",
         "//absl/time",
     ],
 )
@@ -864,5 +878,32 @@ cc_test(
         "//absl/strings",
         "//absl/types:compare",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "btree_benchmark",
+    testonly = 1,
+    srcs = [
+        "btree_benchmark.cc",
+    ],
+    copts = ABSL_TEST_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    tags = ["benchmark"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":btree",
+        ":btree_test_common",
+        ":flat_hash_map",
+        ":flat_hash_set",
+        ":hashtable_debug",
+        "//absl/base:raw_logging_internal",
+        "//absl/flags:flag",
+        "//absl/hash",
+        "//absl/memory",
+        "//absl/strings:cord",
+        "//absl/strings:str_format",
+        "//absl/time",
+        "@com_github_google_benchmark//:benchmark_main",
     ],
 )

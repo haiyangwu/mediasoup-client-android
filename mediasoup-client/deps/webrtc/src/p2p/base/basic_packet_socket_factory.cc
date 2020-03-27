@@ -11,6 +11,7 @@
 #include "p2p/base/basic_packet_socket_factory.h"
 
 #include <stddef.h>
+
 #include <string>
 
 #include "p2p/base/async_stun_tcp_socket.h"
@@ -94,18 +95,6 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
     return new cricket::AsyncStunTCPSocket(socket, true);
 
   return new AsyncTCPSocket(socket, true);
-}
-
-AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
-    const SocketAddress& local_address,
-    const SocketAddress& remote_address,
-    const ProxyInfo& proxy_info,
-    const std::string& user_agent,
-    int opts) {
-  PacketSocketTcpOptions tcp_options;
-  tcp_options.opts = opts;
-  return CreateClientTcpSocket(local_address, remote_address, proxy_info,
-                               user_agent, tcp_options);
 }
 
 AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(

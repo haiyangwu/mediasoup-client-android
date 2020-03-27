@@ -16,21 +16,53 @@
 #include <utility>
 #include <vector>
 
+#include "api/rtc_event_log/rtc_event_log.h"
 #include "call/call.h"
-#include "logging/rtc_event_log/rtc_event_log.h"
 #include "modules/audio_device/include/test_audio_device.h"
-#include "modules/congestion_controller/test/controller_printer.h"
-#include "modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "modules/congestion_controller/goog_cc/test/goog_cc_printer.h"
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/task_queue_for_test.h"
 #include "test/logging/log_writer.h"
+#include "test/network/network_emulation.h"
+#include "test/rtp_header_parser.h"
 #include "test/scenario/column_printer.h"
-#include "test/scenario/network/network_emulation.h"
 #include "test/scenario/network_node.h"
 #include "test/scenario/scenario_config.h"
+#include "test/time_controller/time_controller.h"
 
 namespace webrtc {
 
 namespace test {
+// Helper class to capture network controller state.
+class NetworkControleUpdateCache : public NetworkControllerInterface {
+ public:
+  explicit NetworkControleUpdateCache(
+      std::unique_ptr<NetworkControllerInterface> controller);
+
+  NetworkControlUpdate OnNetworkAvailability(NetworkAvailability msg) override;
+  NetworkControlUpdate OnNetworkRouteChange(NetworkRouteChange msg) override;
+  NetworkControlUpdate OnProcessInterval(ProcessInterval msg) override;
+  NetworkControlUpdate OnRemoteBitrateReport(RemoteBitrateReport msg) override;
+  NetworkControlUpdate OnRoundTripTimeUpdate(RoundTripTimeUpdate msg) override;
+  NetworkControlUpdate OnSentPacket(SentPacket msg) override;
+  NetworkControlUpdate OnReceivedPacket(ReceivedPacket msg) override;
+  NetworkControlUpdate OnStreamsConfig(StreamsConfig msg) override;
+  NetworkControlUpdate OnTargetRateConstraints(
+      TargetRateConstraints msg) override;
+  NetworkControlUpdate OnTransportLossReport(TransportLossReport msg) override;
+  NetworkControlUpdate OnTransportPacketsFeedback(
+      TransportPacketsFeedback msg) override;
+  NetworkControlUpdate OnNetworkStateEstimate(
+      NetworkStateEstimate msg) override;
+
+  NetworkControlUpdate update_state() const;
+
+ private:
+  NetworkControlUpdate Update(NetworkControlUpdate update);
+  const std::unique_ptr<NetworkControllerInterface> controller_;
+  NetworkControlUpdate update_state_;
+};
+
 class LoggingNetworkControllerFactory
     : public NetworkControllerFactoryInterface {
  public:
@@ -43,13 +75,14 @@ class LoggingNetworkControllerFactory
   TimeDelta GetProcessInterval() const override;
   // TODO(srte): Consider using the Columnprinter interface for this.
   void LogCongestionControllerStats(Timestamp at_time);
-  RtcEventLog* GetEventLog() const;
+
+  NetworkControlUpdate GetUpdate() const;
 
  private:
-  std::unique_ptr<RtcEventLog> event_log_;
-  std::unique_ptr<NetworkControllerFactoryInterface> owned_cc_factory_;
+  GoogCcDebugFactory goog_cc_factory_;
   NetworkControllerFactoryInterface* cc_factory_ = nullptr;
-  std::unique_ptr<ControlStatePrinter> cc_printer_;
+  bool print_cc_state_ = false;
+  NetworkControleUpdateCache* last_controller_ = nullptr;
 };
 
 struct CallClientFakeAudio {
@@ -62,7 +95,7 @@ struct CallClientFakeAudio {
 // stream session.
 class CallClient : public EmulatedNetworkReceiverInterface {
  public:
-  CallClient(Clock* clock,
+  CallClient(TimeController* time_controller,
              std::unique_ptr<LogWriterFactoryInterface> log_writer_factory,
              CallClientConfig config);
   RTC_DISALLOW_COPY_AND_ASSIGN(CallClient);
@@ -73,6 +106,9 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   DataRate send_bandwidth() {
     return DataRate::bps(GetStats().send_bandwidth_bps);
   }
+  DataRate target_rate() const;
+  DataRate stable_target_rate() const;
+  DataRate padding_rate() const;
 
   void OnPacketReceived(EmulatedIpPacket packet) override;
   std::unique_ptr<RtcEventLogOutput> GetLogWriter(std::string name);
@@ -92,28 +128,30 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   uint32_t GetNextAudioSsrc();
   uint32_t GetNextAudioLocalSsrc();
   uint32_t GetNextRtxSsrc();
-  std::string GetNextPriorityId();
   void AddExtensions(std::vector<RtpExtension> extensions);
+  void SendTask(std::function<void()> task);
 
+  TimeController* const time_controller_;
   Clock* clock_;
   const std::unique_ptr<LogWriterFactoryInterface> log_writer_factory_;
+  std::unique_ptr<RtcEventLog> event_log_;
   LoggingNetworkControllerFactory network_controller_factory_;
   CallClientFakeAudio fake_audio_setup_;
   std::unique_ptr<Call> call_;
-  NetworkNodeTransport transport_;
-  RtpHeaderParser* const header_parser_;
+  std::unique_ptr<NetworkNodeTransport> transport_;
+  std::unique_ptr<RtpHeaderParser> const header_parser_;
 
-  std::unique_ptr<FecControllerFactoryInterface> fec_controller_factory_;
   // Stores the configured overhead per known destination endpoint. This is used
   // to subtract the overhead before processing.
-  std::map<uint64_t, DataSize> route_overhead_;
+  std::map<rtc::IPAddress, DataSize> route_overhead_;
   int next_video_ssrc_index_ = 0;
   int next_video_local_ssrc_index_ = 0;
   int next_rtx_ssrc_index_ = 0;
   int next_audio_ssrc_index_ = 0;
   int next_audio_local_ssrc_index_ = 0;
-  int next_priority_index_ = 0;
   std::map<uint32_t, MediaType> ssrc_media_types_;
+  // Defined last so it's destroyed first.
+  TaskQueueForTest task_queue_;
 };
 
 class CallClientPair {

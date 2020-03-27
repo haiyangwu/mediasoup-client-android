@@ -12,7 +12,9 @@
 
 #include <stdint.h>
 #include <string.h>
+
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "media/base/rtp_utils.h"
@@ -197,7 +199,7 @@ bool SrtpTransport::SendRtcpPacket(rtc::CopyOnWriteBuffer* packet,
   return SendPacket(/*rtcp=*/true, packet, options, flags);
 }
 
-void SrtpTransport::OnRtpPacketReceived(rtc::CopyOnWriteBuffer* packet,
+void SrtpTransport::OnRtpPacketReceived(rtc::CopyOnWriteBuffer packet,
                                         int64_t packet_time_us) {
   if (!IsSrtpActive()) {
     RTC_LOG(LS_WARNING)
@@ -205,8 +207,8 @@ void SrtpTransport::OnRtpPacketReceived(rtc::CopyOnWriteBuffer* packet,
     return;
   }
   TRACE_EVENT0("webrtc", "SRTP Decode");
-  char* data = packet->data<char>();
-  int len = rtc::checked_cast<int>(packet->size());
+  char* data = packet.data<char>();
+  int len = rtc::checked_cast<int>(packet.size());
   if (!UnprotectRtp(data, len, &len)) {
     int seq_num = -1;
     uint32_t ssrc = 0;
@@ -225,11 +227,11 @@ void SrtpTransport::OnRtpPacketReceived(rtc::CopyOnWriteBuffer* packet,
     ++decryption_failure_count_;
     return;
   }
-  packet->SetSize(len);
-  DemuxPacket(packet, packet_time_us);
+  packet.SetSize(len);
+  DemuxPacket(std::move(packet), packet_time_us);
 }
 
-void SrtpTransport::OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
+void SrtpTransport::OnRtcpPacketReceived(rtc::CopyOnWriteBuffer packet,
                                          int64_t packet_time_us) {
   if (!IsSrtpActive()) {
     RTC_LOG(LS_WARNING)
@@ -237,8 +239,8 @@ void SrtpTransport::OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
     return;
   }
   TRACE_EVENT0("webrtc", "SRTP Decode");
-  char* data = packet->data<char>();
-  int len = rtc::checked_cast<int>(packet->size());
+  char* data = packet.data<char>();
+  int len = rtc::checked_cast<int>(packet.size());
   if (!UnprotectRtcp(data, len, &len)) {
     int type = -1;
     cricket::GetRtcpType(data, len, &type);
@@ -246,8 +248,8 @@ void SrtpTransport::OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
                       << ", type=" << type;
     return;
   }
-  packet->SetSize(len);
-  SignalRtcpPacketReceived(packet, packet_time_us);
+  packet.SetSize(len);
+  SignalRtcpPacketReceived(&packet, packet_time_us);
 }
 
 void SrtpTransport::OnNetworkRouteChanged(

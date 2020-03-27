@@ -12,6 +12,8 @@
 
 #include <math.h>
 
+#include <cmath>
+
 #include "modules/audio_processing/aec3/aec3_fft.h"
 #include "modules/audio_processing/aec3/aec_state.h"
 #include "test/gtest.h"
@@ -67,7 +69,7 @@ TEST(TransformDbMetricForReporting, DbFsScaling) {
   fft.ZeroPaddedFft(x, Aec3Fft::Window::kRectangular, &X);
   X.Spectrum(Aec3Optimization::kNone, X2);
 
-  float offset = -10.f * log10(32768.f * 32768.f);
+  float offset = -10.f * std::log10(32768.f * 32768.f);
   EXPECT_NEAR(offset, -90.3f, 0.1f);
   EXPECT_EQ(
       static_cast<int>(30.3f),
@@ -136,7 +138,7 @@ TEST(DbMetric, Constructor) {
 // Verify the general functionality of EchoRemoverMetrics.
 TEST(EchoRemoverMetrics, NormalUsage) {
   EchoRemoverMetrics metrics;
-  AecState aec_state(EchoCanceller3Config{});
+  AecState aec_state(EchoCanceller3Config{}, 1);
   std::array<float, kFftLengthBy2Plus1> comfort_noise_spectrum;
   std::array<float, kFftLengthBy2Plus1> suppressor_gain;
   comfort_noise_spectrum.fill(10.f);

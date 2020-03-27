@@ -12,7 +12,7 @@
 
 #include <string>
 
-#include "sdk/android/generated_peerconnection_jni/jni/RtpTransceiver_jni.h"
+#include "sdk/android/generated_peerconnection_jni/RtpTransceiver_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/pc/media_stream_track.h"
@@ -48,6 +48,12 @@ RtpTransceiverInit JavaToNativeRtpTransceiverInit(
       Java_RtpTransceiverInit_getStreamIds(jni, j_init);
   init.stream_ids = JavaListToNativeVector<std::string, jstring>(
       jni, j_stream_ids, &JavaToNativeString);
+
+  // Convert the send encodings.
+  ScopedJavaLocalRef<jobject> j_send_encodings =
+      Java_RtpTransceiverInit_getSendEncodings(jni, j_init);
+  init.send_encodings = JavaListToNativeVector<RtpEncodingParameters, jobject>(
+      jni, j_send_encodings, &JavaToNativeRtpEncodingParameters);
   return init;
 }
 

@@ -15,7 +15,6 @@ group("modules") {
     "audio_device",
     "audio_mixer",
     "audio_processing",
-    "bitrate_controller",
     "congestion_controller",
     "pacing",
     "remote_bitrate_estimator",
@@ -48,11 +47,6 @@ rtc_source_set("module_api") {
     "include/module_common_types.h",
   ]
   deps = [
-    ":module_api_public",
-    ":module_fec_api",
-    "..:webrtc_common",
-    "../api:libjingle_peerconnection_api",
-    "../modules/rtp_rtcp:rtp_video_header",
     "../rtc_base:safe_conversions",
     "../rtc_base/system:rtc_export",
   ]
@@ -117,8 +111,6 @@ if (rtc_include_tests) {
   }
 
   modules_unittests_resources = [
-    "../resources/att-downlink.rx",
-    "../resources/att-uplink.rx",
     "../resources/audio_coding/neteq_opus.rtp",
     "../resources/audio_coding/neteq_opus_dtx.rtp",
     "../resources/audio_coding/neteq_universal_new.rtp",
@@ -208,15 +200,6 @@ if (rtc_include_tests) {
     "../resources/short_mixed_mono_48.pcm",
     "../resources/short_mixed_stereo_48.dat",
     "../resources/short_mixed_stereo_48.pcm",
-    "../resources/sprint-downlink.rx",
-    "../resources/sprint-uplink.rx",
-    "../resources/synthetic-trace.rx",
-    "../resources/tmobile-downlink.rx",
-    "../resources/tmobile-uplink.rx",
-    "../resources/verizon3g-downlink.rx",
-    "../resources/verizon3g-uplink.rx",
-    "../resources/verizon4g-downlink.rx",
-    "../resources/verizon4g-uplink.rx",
     "../resources/voice_engine/audio_tiny48.wav",
   ]
   if (is_ios) {
@@ -246,7 +229,6 @@ if (rtc_include_tests) {
       "audio_mixer:audio_mixer_unittests",
       "audio_processing:audio_processing_unittests",
       "audio_processing/aec3:aec3_unittests",
-      "bitrate_controller:bitrate_controller_unittests",
       "congestion_controller:congestion_controller_unittests",
       "pacing:pacing_unittests",
       "remote_bitrate_estimator:remote_bitrate_estimator_unittests",
@@ -258,10 +240,6 @@ if (rtc_include_tests) {
 
     if (rtc_desktop_capture_supported) {
       deps += [ "desktop_capture:desktop_capture_unittests" ]
-    }
-
-    if (!build_with_mozilla) {
-      deps += [ "video_capture" ]
     }
 
     data = modules_unittests_resources

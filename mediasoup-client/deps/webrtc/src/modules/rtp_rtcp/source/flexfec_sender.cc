@@ -11,6 +11,7 @@
 #include "modules/rtp_rtcp/include/flexfec_sender.h"
 
 #include <string.h>
+
 #include <list>
 #include <utility>
 
@@ -113,7 +114,7 @@ bool FlexfecSender::AddRtpPacketAndGenerateFec(const RtpPacketToSend& packet) {
   // protection.
   RTC_DCHECK_EQ(packet.Ssrc(), protected_media_ssrc_);
   return ulpfec_generator_.AddRtpPacketAndGenerateFec(
-             packet.data(), packet.payload_size(), packet.headers_size()) == 0;
+             packet.Buffer(), packet.headers_size()) == 0;
 }
 
 bool FlexfecSender::FecAvailable() const {
@@ -126,7 +127,8 @@ std::vector<std::unique_ptr<RtpPacketToSend>> FlexfecSender::GetFecPackets() {
   for (const auto* fec_packet : ulpfec_generator_.generated_fec_packets_) {
     std::unique_ptr<RtpPacketToSend> fec_packet_to_send(
         new RtpPacketToSend(&rtp_header_extension_map_));
-    fec_packet_to_send->set_is_fec(true);
+    fec_packet_to_send->set_packet_type(
+        RtpPacketToSend::Type::kForwardErrorCorrection);
 
     // RTP header.
     fec_packet_to_send->SetMarker(false);
@@ -151,8 +153,9 @@ std::vector<std::unique_ptr<RtpPacketToSend>> FlexfecSender::GetFecPackets() {
     }
 
     // RTP payload.
-    uint8_t* payload = fec_packet_to_send->AllocatePayload(fec_packet->length);
-    memcpy(payload, fec_packet->data, fec_packet->length);
+    uint8_t* payload =
+        fec_packet_to_send->AllocatePayload(fec_packet->data.size());
+    memcpy(payload, fec_packet->data.cdata(), fec_packet->data.size());
 
     fec_packets_to_send.push_back(std::move(fec_packet_to_send));
   }

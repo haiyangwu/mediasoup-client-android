@@ -12,11 +12,13 @@
 #define RTC_BASE_RTC_CERTIFICATE_H_
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 
 #include "api/scoped_refptr.h"
 #include "rtc_base/ref_count.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace rtc {
 
@@ -47,7 +49,7 @@ class RTCCertificatePEM {
 // A thin abstraction layer between "lower level crypto stuff" like
 // SSLCertificate and WebRTC usage. Takes ownership of some lower level objects,
 // reference counting protects these from premature destruction.
-class RTCCertificate : public RefCountInterface {
+class RTC_EXPORT RTCCertificate : public RefCountInterface {
  public:
   // Takes ownership of |identity|.
   static scoped_refptr<RTCCertificate> Create(

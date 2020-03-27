@@ -1,10 +1,10 @@
-#ifndef SDPTRANSFORM_HELPERS_HPP
-#define	SDPTRANSFORM_HELPERS_HPP
+#ifndef MSC_TEST_HELPERS_HPP
+#define MSC_TEST_HELPERS_HPP
 
-#include <string>
-#include <fstream>   // std::ifstream
-#include <streambuf> // std::istreambuf_iterator
+#include <fstream> // std::ifstream
 #include <stdexcept>
+#include <streambuf> // std::istreambuf_iterator
+#include <string>
 
 namespace helpers
 {
@@ -21,12 +21,10 @@ namespace helpers
 		content.reserve(in.tellg());
 		in.seekg(0, std::ios::beg);
 
-		content.assign(
-			(std::istreambuf_iterator<char>(in)),
-			std::istreambuf_iterator<char>());
+		content.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
 		return content;
 	}
-}
+} // namespace helpers
 
 #endif

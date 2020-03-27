@@ -19,7 +19,6 @@
 #include <memory>
 
 #include "modules/audio_coding/neteq/tools/packet.h"
-#include "modules/rtp_rtcp/include/rtp_header_parser.h"
 #include "rtc_base/checks.h"
 #include "test/rtp_file_reader.h"
 
@@ -49,8 +48,7 @@ RtpFileSource::~RtpFileSource() {}
 
 bool RtpFileSource::RegisterRtpHeaderExtension(RTPExtensionType type,
                                                uint8_t id) {
-  assert(parser_.get());
-  return parser_->RegisterRtpHeaderExtension(type, id);
+  return rtp_header_extension_map_.RegisterByType(id, type);
 }
 
 std::unique_ptr<Packet> RtpFileSource::NextPacket() {
@@ -66,9 +64,11 @@ std::unique_ptr<Packet> RtpFileSource::NextPacket() {
     }
     std::unique_ptr<uint8_t[]> packet_memory(new uint8_t[temp_packet.length]);
     memcpy(packet_memory.get(), temp_packet.data, temp_packet.length);
-    std::unique_ptr<Packet> packet(new Packet(
+    RtpUtility::RtpHeaderParser parser(packet_memory.get(), temp_packet.length);
+    auto packet = std::make_unique<Packet>(
         packet_memory.release(), temp_packet.length,
-        temp_packet.original_length, temp_packet.time_ms, *parser_.get()));
+        temp_packet.original_length, temp_packet.time_ms, parser,
+        &rtp_header_extension_map_);
     if (!packet->valid_header()) {
       continue;
     }
@@ -83,7 +83,6 @@ std::unique_ptr<Packet> RtpFileSource::NextPacket() {
 
 RtpFileSource::RtpFileSource(absl::optional<uint32_t> ssrc_filter)
     : PacketSource(),
-      parser_(RtpHeaderParser::Create()),
       ssrc_filter_(ssrc_filter) {}
 
 bool RtpFileSource::OpenFile(const std::string& file_name) {

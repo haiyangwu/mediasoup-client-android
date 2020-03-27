@@ -13,30 +13,72 @@
 
 #include <stdint.h>
 
+#include <map>
+#include <utility>
+
 #include "absl/types/optional.h"
+#include "api/rtp_packet_infos.h"
+#include "api/scoped_refptr.h"
 #include "api/video/color_space.h"
 #include "api/video/video_codec_constants.h"
 #include "api/video/video_codec_type.h"
 #include "api/video/video_content_type.h"
+#include "api/video/video_frame_type.h"
 #include "api/video/video_rotation.h"
 #include "api/video/video_timing.h"
 #include "common_types.h"  // NOLINT(build/include)
 #include "rtc_base/checks.h"
-#include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/deprecation.h"
+#include "rtc_base/ref_count.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
+
+// Abstract interface for buffer storage. Intended to support buffers owned by
+// external encoders with special release requirements, e.g, java encoders with
+// releaseOutputBuffer.
+class EncodedImageBufferInterface : public rtc::RefCountInterface {
+ public:
+  virtual const uint8_t* data() const = 0;
+  // TODO(bugs.webrtc.org/9378): Make interface essentially read-only, delete
+  // this non-const data method.
+  virtual uint8_t* data() = 0;
+  virtual size_t size() const = 0;
+  // TODO(bugs.webrtc.org/9378): Delete from this interface, together with
+  // EncodedImage::Allocate. Implemented properly only by the below concrete
+  // class
+  virtual void Realloc(size_t size) { RTC_NOTREACHED(); }
+  // Will be implemented by RefCountedObject, which also implements
+  // |rtc::RefCountInterface|.
+  virtual bool HasOneRef() const = 0;
+};
+
+// Basic implementation of EncodedImageBufferInterface.
+class EncodedImageBuffer : public EncodedImageBufferInterface {
+ public:
+  static rtc::scoped_refptr<EncodedImageBuffer> Create() { return Create(0); }
+  static rtc::scoped_refptr<EncodedImageBuffer> Create(size_t size);
+  static rtc::scoped_refptr<EncodedImageBuffer> Create(const uint8_t* data,
+                                                       size_t size);
+
+  const uint8_t* data() const override;
+  uint8_t* data() override;
+  size_t size() const override;
+  void Realloc(size_t t) override;
+
+ protected:
+  explicit EncodedImageBuffer(size_t size);
+  EncodedImageBuffer(const uint8_t* data, size_t size);
+  ~EncodedImageBuffer();
+
+  size_t size_;
+  uint8_t* buffer_;
+};
 
 // TODO(bug.webrtc.org/9378): This is a legacy api class, which is slowly being
 // cleaned up. Direct use of its members is strongly discouraged.
 class RTC_EXPORT EncodedImage {
  public:
-  static const size_t kBufferPaddingBytesH264;
-
-  // Some decoders require encoded image buffers to be padded with a small
-  // number of additional bytes (due to over-reading byte readers).
-  static size_t GetBufferPaddingBytes(VideoCodecType codec_type);
-
   EncodedImage();
   EncodedImage(EncodedImage&&);
   // Discouraged: potentially expensive.
@@ -59,14 +101,17 @@ class RTC_EXPORT EncodedImage {
 
   void SetEncodeTime(int64_t encode_start_ms, int64_t encode_finish_ms);
 
-  absl::optional<int> SpatialIndex() const {
-    return spatial_index_;
-  }
+  absl::optional<int> SpatialIndex() const { return spatial_index_; }
   void SetSpatialIndex(absl::optional<int> spatial_index) {
     RTC_DCHECK_GE(spatial_index.value_or(0), 0);
     RTC_DCHECK_LT(spatial_index.value_or(0), kMaxSpatialLayers);
     spatial_index_ = spatial_index;
   }
+
+  // These methods can be used to set/get size of subframe with spatial index
+  // |spatial_index| on encoded frames that consist of multiple spatial layers.
+  absl::optional<size_t> SpatialLayerFrameSize(int spatial_index) const;
+  void SetSpatialLayerFrameSize(int spatial_index, size_t size_bytes);
 
   const webrtc::ColorSpace* ColorSpace() const {
     return color_space_ ? &*color_space_ : nullptr;
@@ -75,26 +120,52 @@ class RTC_EXPORT EncodedImage {
     color_space_ = color_space;
   }
 
+  const RtpPacketInfos& PacketInfos() const { return packet_infos_; }
+  void SetPacketInfos(RtpPacketInfos packet_infos) {
+    packet_infos_ = std::move(packet_infos);
+  }
+
+  bool RetransmissionAllowed() const { return retransmission_allowed_; }
+  void SetRetransmissionAllowed(bool retransmission_allowed) {
+    retransmission_allowed_ = retransmission_allowed;
+  }
+
   size_t size() const { return size_; }
   void set_size(size_t new_size) {
-    RTC_DCHECK_LE(new_size, capacity());
+    // Allow set_size(0) even if we have no buffer.
+    RTC_DCHECK_LE(new_size, new_size == 0 ? 0 : capacity());
     size_ = new_size;
   }
-  size_t capacity() const { return buffer_ ? capacity_ : encoded_data_.size(); }
+  // TODO(nisse): Delete, provide only read-only access to the buffer.
+  size_t capacity() const {
+    return buffer_ ? capacity_ : (encoded_data_ ? encoded_data_->size() : 0);
+  }
 
   void set_buffer(uint8_t* buffer, size_t capacity) {
     buffer_ = buffer;
     capacity_ = capacity;
   }
 
-  void Allocate(size_t capacity) {
-    encoded_data_.SetSize(capacity);
+  // TODO(bugs.webrtc.org/9378): Delete; this method implies realloc, which
+  // should not be generally supported by the EncodedImageBufferInterface.
+  RTC_DEPRECATED
+  void Allocate(size_t capacity);
+
+  void SetEncodedData(
+      rtc::scoped_refptr<EncodedImageBufferInterface> encoded_data) {
+    encoded_data_ = encoded_data;
+    size_ = encoded_data->size();
     buffer_ = nullptr;
   }
 
-  uint8_t* data() { return buffer_ ? buffer_ : encoded_data_.data(); }
+  // TODO(nisse): Delete, provide only read-only access to the buffer.
+  uint8_t* data() {
+    return buffer_ ? buffer_
+                   : (encoded_data_ ? encoded_data_->data() : nullptr);
+  }
   const uint8_t* data() const {
-    return buffer_ ? buffer_ : encoded_data_.cdata();
+    return buffer_ ? buffer_
+                   : (encoded_data_ ? encoded_data_->data() : nullptr);
   }
   // TODO(nisse): At some places, code accepts a const ref EncodedImage, but
   // still writes to it, to clear padding at the end of the encoded data.
@@ -115,7 +186,7 @@ class RTC_EXPORT EncodedImage {
   // NTP time of the capture time in local timebase in milliseconds.
   int64_t ntp_time_ms_ = 0;
   int64_t capture_time_ms_ = 0;
-  FrameType _frameType = kVideoFrameDelta;
+  VideoFrameType _frameType = VideoFrameType::kVideoFrameDelta;
   VideoRotation rotation_ = kVideoRotation_0;
   VideoContentType content_type_ = VideoContentType::UNSPECIFIED;
   bool _completeFrame = false;
@@ -141,15 +212,22 @@ class RTC_EXPORT EncodedImage {
  private:
   // TODO(bugs.webrtc.org/9378): We're transitioning to always owning the
   // encoded data.
-  rtc::CopyOnWriteBuffer encoded_data_;
-  size_t size_;      // Size of encoded frame data.
+  rtc::scoped_refptr<EncodedImageBufferInterface> encoded_data_;
+  size_t size_;  // Size of encoded frame data.
   // Non-null when used with an un-owned buffer.
   uint8_t* buffer_;
   // Allocated size of _buffer; relevant only if it's non-null.
   size_t capacity_;
   uint32_t timestamp_rtp_ = 0;
   absl::optional<int> spatial_index_;
+  std::map<int, size_t> spatial_layer_frame_size_bytes_;
   absl::optional<webrtc::ColorSpace> color_space_;
+  // Information about packets used to assemble this video frame. This is needed
+  // by |SourceTracker| when the frame is delivered to the RTCRtpReceiver's
+  // MediaStreamTrack, in order to implement getContributingSources(). See:
+  // https://w3c.github.io/webrtc-pc/#dom-rtcrtpreceiver-getcontributingsources
+  RtpPacketInfos packet_infos_;
+  bool retransmission_allowed_ = true;
 };
 
 }  // namespace webrtc

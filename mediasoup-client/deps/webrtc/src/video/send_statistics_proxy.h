@@ -11,13 +11,18 @@
 #ifndef VIDEO_SEND_STATISTICS_PROXY_H_
 #define VIDEO_SEND_STATISTICS_PROXY_H_
 
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "api/video/video_codec_constants.h"
 #include "api/video/video_stream_encoder_observer.h"
+#include "api/video_codecs/video_encoder_config.h"
 #include "call/video_send_stream.h"
+#include "modules/include/module_common_types_public.h"
+#include "modules/rtp_rtcp/include/report_block_data.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_coding_defines.h"
 #include "rtc_base/critical_section.h"
@@ -25,6 +30,7 @@
 #include "rtc_base/rate_tracker.h"
 #include "rtc_base/thread_annotations.h"
 #include "system_wrappers/include/clock.h"
+#include "video/quality_limitation_reason_tracker.h"
 #include "video/report_block_stats.h"
 #include "video/stats_counter.h"
 
@@ -32,6 +38,7 @@ namespace webrtc {
 
 class SendStatisticsProxy : public VideoStreamEncoderObserver,
                             public RtcpStatisticsCallback,
+                            public ReportBlockDataObserver,
                             public RtcpPacketTypeCounterObserver,
                             public StreamDataCountersCallback,
                             public BitrateStatisticsObserver,
@@ -67,6 +74,10 @@ class SendStatisticsProxy : public VideoStreamEncoderObserver,
                            const AdaptationSteps& cpu_counts,
                            const AdaptationSteps& quality_counts) override;
 
+  void OnBitrateAllocationUpdated(
+      const VideoCodec& codec,
+      const VideoBitrateAllocation& allocation) override;
+
   void OnMinPixelLimitReached() override;
   void OnInitialQualityResolutionAdaptDown() override;
 
@@ -92,7 +103,8 @@ class SendStatisticsProxy : public VideoStreamEncoderObserver,
   // From RtcpStatisticsCallback.
   void StatisticsUpdated(const RtcpStatistics& statistics,
                          uint32_t ssrc) override;
-  void CNameChanged(const char* cname, uint32_t ssrc) override;
+  // From ReportBlockDataObserver.
+  void OnReportBlockDataUpdated(ReportBlockData report_block_data) override;
   // From RtcpPacketTypeCounterObserver.
   void RtcpPacketTypesCounterUpdated(
       uint32_t ssrc,
@@ -112,6 +124,7 @@ class SendStatisticsProxy : public VideoStreamEncoderObserver,
 
   void SendSideDelayUpdated(int avg_delay_ms,
                             int max_delay_ms,
+                            uint64_t total_delay_ms,
                             uint32_t ssrc) override;
 
  private:
@@ -210,9 +223,7 @@ class SendStatisticsProxy : public VideoStreamEncoderObserver,
 
   void SetAdaptTimer(const AdaptationSteps& counts, StatsTimer* timer)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
-  void UpdateAdaptationStats(const AdaptationSteps& cpu_counts,
-                             const AdaptationSteps& quality_counts)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
+  void UpdateAdaptationStats() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
   void TryUpdateInitialQualityResolutionAdaptUp(
       const AdaptationSteps& quality_counts)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
@@ -239,10 +250,22 @@ class SendStatisticsProxy : public VideoStreamEncoderObserver,
   rtc::ExpFilter encode_time_ RTC_GUARDED_BY(crit_);
   int quality_downscales_ RTC_GUARDED_BY(crit_);
   int cpu_downscales_ RTC_GUARDED_BY(crit_);
+  QualityLimitationReasonTracker quality_limitation_reason_tracker_
+      RTC_GUARDED_BY(crit_);
   rtc::RateTracker media_byte_rate_tracker_ RTC_GUARDED_BY(crit_);
   rtc::RateTracker encoded_frame_rate_tracker_ RTC_GUARDED_BY(crit_);
 
   absl::optional<int64_t> last_outlier_timestamp_ RTC_GUARDED_BY(crit_);
+
+  int last_num_spatial_layers_ RTC_GUARDED_BY(crit_);
+  int last_num_simulcast_streams_ RTC_GUARDED_BY(crit_);
+  std::array<bool, kMaxSpatialLayers> last_spatial_layer_use_
+      RTC_GUARDED_BY(crit_);
+  // Indicates if the latest bitrate allocation had layers disabled by low
+  // available bandwidth.
+  bool bw_limited_layers_ RTC_GUARDED_BY(crit_);
+  AdaptationSteps cpu_counts_ RTC_GUARDED_BY(crit_);
+  AdaptationSteps quality_counts_ RTC_GUARDED_BY(crit_);
 
   struct EncoderChangeEvent {
     std::string previous_encoder_implementation;

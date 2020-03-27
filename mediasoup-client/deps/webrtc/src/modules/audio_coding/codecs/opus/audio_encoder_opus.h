@@ -81,13 +81,9 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   AudioEncoderOpusImpl(int payload_type, const SdpAudioFormat& format);
   ~AudioEncoderOpusImpl() override;
 
-  // Static interface for use by BuiltinAudioEncoderFactory.
-  static constexpr const char* GetPayloadName() { return "opus"; }
-  static absl::optional<AudioCodecInfo> QueryAudioEncoder(
-      const SdpAudioFormat& format);
-
   int SampleRateHz() const override;
   size_t NumChannels() const override;
+  int RtpTimestampRateHz() const override;
   size_t Num10MsFramesInNextPacket() const override;
   size_t Max10MsFramesInAPacket() const override;
   int GetTargetBitrate() const override;
@@ -119,6 +115,8 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   void SetReceiverFrameLengthRange(int min_frame_length_ms,
                                    int max_frame_length_ms) override;
   ANAStats GetANAStats() const override;
+  absl::optional<std::pair<TimeDelta, TimeDelta> > GetFrameLengthRange()
+      const override;
   rtc::ArrayView<const int> supported_frame_lengths_ms() const {
     return config_.supported_frame_lengths_ms;
   }
@@ -178,7 +176,7 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   AudioEncoderOpusConfig config_;
   const int payload_type_;
   const bool send_side_bwe_with_overhead_;
-  const bool use_link_capacity_for_adaptation_;
+  const bool use_stable_target_for_adaptation_;
   const bool adjust_bandwidth_;
   bool bitrate_changed_;
   float packet_loss_rate_;
@@ -196,7 +194,6 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   absl::optional<size_t> overhead_bytes_per_packet_;
   const std::unique_ptr<SmoothingFilter> bitrate_smoother_;
   absl::optional<int64_t> bitrate_smoother_last_update_time_;
-  absl::optional<int64_t> link_capacity_allocation_bps_;
   int consecutive_dtx_frames_;
 
   friend struct AudioEncoderOpus;

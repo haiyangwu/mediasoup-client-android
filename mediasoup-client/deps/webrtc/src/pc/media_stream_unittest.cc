@@ -8,11 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/media_stream.h"
+
 #include <stddef.h>
+
 #include <string>
 
 #include "pc/audio_track.h"
-#include "pc/media_stream.h"
 #include "pc/test/fake_video_track_source.h"
 #include "pc/video_track.h"
 #include "rtc_base/thread.h"
@@ -50,7 +52,7 @@ class MockObserver : public ObserverInterface {
   NotifierInterface* notifier_;
 };
 
-class MediaStreamTest : public testing::Test {
+class MediaStreamTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
     stream_ = MediaStream::Create(kStreamId1);

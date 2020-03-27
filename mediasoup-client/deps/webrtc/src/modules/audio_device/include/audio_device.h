@@ -12,6 +12,7 @@
 #define MODULES_AUDIO_DEVICE_INCLUDE_AUDIO_DEVICE_H_
 
 #include "api/scoped_refptr.h"
+#include "api/task_queue/task_queue_factory.h"
 #include "modules/audio_device/include/audio_device_defines.h"
 #include "rtc_base/ref_count.h"
 
@@ -43,11 +44,13 @@ class AudioDeviceModule : public rtc::RefCountInterface {
  public:
   // Creates a default ADM for usage in production code.
   static rtc::scoped_refptr<AudioDeviceModule> Create(
-      const AudioLayer audio_layer);
+      AudioLayer audio_layer,
+      TaskQueueFactory* task_queue_factory);
   // Creates an ADM with support for extra test methods. Don't use this factory
   // in production code.
   static rtc::scoped_refptr<AudioDeviceModuleForTest> CreateForTest(
-      const AudioLayer audio_layer);
+      AudioLayer audio_layer,
+      TaskQueueFactory* task_queue_factory);
 
   // Retrieve the currently utilized audio layer
   virtual int32_t ActiveAudioLayer(AudioLayer* audioLayer) const = 0;
@@ -142,6 +145,10 @@ class AudioDeviceModule : public rtc::RefCountInterface {
   virtual int32_t EnableBuiltInAEC(bool enable) = 0;
   virtual int32_t EnableBuiltInAGC(bool enable) = 0;
   virtual int32_t EnableBuiltInNS(bool enable) = 0;
+
+  // Play underrun count. Only supported on Android.
+  // TODO(alexnarest): Make it abstract after upstream projects support it.
+  virtual int32_t GetPlayoutUnderrunCount() const { return -1; }
 
 // Only supported on iOS.
 #if defined(WEBRTC_IOS)

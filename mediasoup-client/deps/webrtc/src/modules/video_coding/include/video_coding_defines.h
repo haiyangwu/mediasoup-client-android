@@ -18,7 +18,6 @@
 #include "api/video/video_content_type.h"
 #include "api/video/video_frame.h"
 #include "api/video/video_timing.h"
-#include "common_types.h"  // NOLINT(build/include)
 
 namespace webrtc {
 
@@ -28,11 +27,8 @@ namespace webrtc {
 #define VCM_OK 0
 #define VCM_GENERAL_ERROR -1
 #define VCM_PARAMETER_ERROR -4
-#define VCM_CODEC_ERROR -6
-#define VCM_UNINITIALIZED -7
 #define VCM_NO_CODEC_REGISTERED -8
 #define VCM_JITTER_BUFFER_ERROR -9
-#define VCM_OLD_PACKET_ERROR -10
 
 enum {
   // Timing frames settings. Timing frames are sent every
@@ -41,7 +37,7 @@ enum {
   kDefaultTimingFramesDelayMs = 200,
   kDefaultOutlierFrameSizePercent = 500,
   // Maximum number of frames for what we store encode start timing information.
-  kMaxEncodeStartTimeListSize = 50,
+  kMaxEncodeStartTimeListSize = 150,
 };
 
 enum VCMVideoProtection {
@@ -51,24 +47,17 @@ enum VCMVideoProtection {
   kProtectionNackFEC,
 };
 
-enum VCMTemporalDecimation {
-  kBitrateOverUseDecimation,
-};
-
-struct VCMFrameCount {
-  uint32_t numKeyFrames;
-  uint32_t numDeltaFrames;
-};
-
 // Callback class used for passing decoded frames which are ready to be
 // rendered.
 class VCMReceiveCallback {
  public:
   virtual int32_t FrameToRender(VideoFrame& videoFrame,  // NOLINT
                                 absl::optional<uint8_t> qp,
+                                int32_t decode_time_ms,
                                 VideoContentType content_type) = 0;
 
-  virtual int32_t ReceivedDecodedReferenceFrame(const uint64_t pictureId);
+  virtual void OnDroppedFrames(uint32_t frames_dropped);
+
   // Called when the current receive codec changes.
   virtual void OnIncomingPayloadType(int payload_type);
   virtual void OnDecoderImplementationName(const char* implementation_name);
@@ -81,14 +70,13 @@ class VCMReceiveCallback {
 // rate.
 class VCMReceiveStatisticsCallback {
  public:
-  virtual void OnReceiveRatesUpdated(uint32_t bitRate, uint32_t frameRate) = 0;
   virtual void OnCompleteFrame(bool is_keyframe,
                                size_t size_bytes,
                                VideoContentType content_type) = 0;
-  virtual void OnDiscardedPacketsUpdated(int discarded_packets) = 0;
-  virtual void OnFrameCountsUpdated(const FrameCounts& frame_counts) = 0;
-  virtual void OnFrameBufferTimingsUpdated(int decode_ms,
-                                           int max_decode_ms,
+
+  virtual void OnDroppedFrames(uint32_t frames_dropped) = 0;
+
+  virtual void OnFrameBufferTimingsUpdated(int max_decode_ms,
                                            int current_delay_ms,
                                            int target_delay_ms,
                                            int jitter_buffer_ms,

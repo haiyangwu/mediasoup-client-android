@@ -11,6 +11,7 @@
 #include "rtc_base/null_socket_server.h"
 
 #include <stdint.h>
+
 #include <memory>
 
 #include "rtc_base/gunit.h"
@@ -25,7 +26,7 @@ namespace rtc {
 
 static const uint32_t kTimeout = 5000U;
 
-class NullSocketServerTest : public testing::Test, public MessageHandler {
+class NullSocketServerTest : public ::testing::Test, public MessageHandler {
  protected:
   void OnMessage(Message* message) override { ss_.WakeUp(); }
 

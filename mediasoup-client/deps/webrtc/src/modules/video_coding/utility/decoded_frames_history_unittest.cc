@@ -9,6 +9,7 @@
  */
 
 #include "modules/video_coding/utility/decoded_frames_history.h"
+
 #include "test/gtest.h"
 
 namespace webrtc {
@@ -119,6 +120,25 @@ TEST(DecodedFramesHistory, ReturnsLastDecodedFrameTimestamp) {
   EXPECT_EQ(history.GetLastDecodedFrameTimestamp(), 12345u);
   history.InsertDecoded({1235, 0}, 12366);
   EXPECT_EQ(history.GetLastDecodedFrameTimestamp(), 12366u);
+}
+
+TEST(DecodedFramesHistory, NegativePictureIds) {
+  DecodedFramesHistory history(kHistorySize);
+  history.InsertDecoded({-1234, 0}, 12345);
+  history.InsertDecoded({-1233, 0}, 12366);
+  EXPECT_EQ(history.GetLastDecodedFrameId()->picture_id, -1233);
+
+  history.InsertDecoded({-1, 0}, 12377);
+  history.InsertDecoded({0, 0}, 12388);
+  EXPECT_EQ(history.GetLastDecodedFrameId()->picture_id, 0);
+
+  history.InsertDecoded({1, 0}, 12399);
+  EXPECT_EQ(history.GetLastDecodedFrameId()->picture_id, 1);
+
+  EXPECT_EQ(history.WasDecoded({-1234, 0}), true);
+  EXPECT_EQ(history.WasDecoded({-1, 0}), true);
+  EXPECT_EQ(history.WasDecoded({0, 0}), true);
+  EXPECT_EQ(history.WasDecoded({1, 0}), true);
 }
 
 }  // namespace

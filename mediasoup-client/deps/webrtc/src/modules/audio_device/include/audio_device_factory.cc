@@ -10,6 +10,8 @@
 
 #include "modules/audio_device/include/audio_device_factory.h"
 
+#include <memory>
+
 #if defined(WEBRTC_WIN)
 #include "modules/audio_device/win/audio_device_module_win.h"
 #include "modules/audio_device/win/core_audio_input_win.h"
@@ -17,19 +19,23 @@
 #include "modules/audio_device/win/core_audio_utility_win.h"
 #endif
 
-#include "absl/memory/memory.h"
+#include "api/task_queue/task_queue_factory.h"
 #include "rtc_base/logging.h"
 
 namespace webrtc {
 
-rtc::scoped_refptr<AudioDeviceModule>
-CreateWindowsCoreAudioAudioDeviceModule() {
+rtc::scoped_refptr<AudioDeviceModule> CreateWindowsCoreAudioAudioDeviceModule(
+    TaskQueueFactory* task_queue_factory,
+    bool automatic_restart) {
   RTC_DLOG(INFO) << __FUNCTION__;
-  return CreateWindowsCoreAudioAudioDeviceModuleForTest();
+  return CreateWindowsCoreAudioAudioDeviceModuleForTest(task_queue_factory,
+                                                        automatic_restart);
 }
 
 rtc::scoped_refptr<AudioDeviceModuleForTest>
-CreateWindowsCoreAudioAudioDeviceModuleForTest() {
+CreateWindowsCoreAudioAudioDeviceModuleForTest(
+    TaskQueueFactory* task_queue_factory,
+    bool automatic_restart) {
   RTC_DLOG(INFO) << __FUNCTION__;
   // Returns NULL if Core Audio is not supported or if COM has not been
   // initialized correctly using webrtc_win::ScopedCOMInitializer.
@@ -39,8 +45,9 @@ CreateWindowsCoreAudioAudioDeviceModuleForTest() {
     return nullptr;
   }
   return CreateWindowsCoreAudioAudioDeviceModuleFromInputAndOutput(
-      absl::make_unique<webrtc_win::CoreAudioInput>(),
-      absl::make_unique<webrtc_win::CoreAudioOutput>());
+      std::make_unique<webrtc_win::CoreAudioInput>(automatic_restart),
+      std::make_unique<webrtc_win::CoreAudioOutput>(automatic_restart),
+      task_queue_factory);
 }
 
 }  // namespace webrtc

@@ -10,7 +10,6 @@
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "api/test/create_simulcast_test_fixture.h"
 #include "api/test/simulcast_test_fixture.h"
 #include "api/test/video/function_video_decoder_factory.h"
@@ -24,10 +23,10 @@ namespace test {
 namespace {
 std::unique_ptr<SimulcastTestFixture> CreateSpecificSimulcastTestFixture() {
   std::unique_ptr<VideoEncoderFactory> encoder_factory =
-      absl::make_unique<FunctionVideoEncoderFactory>(
+      std::make_unique<FunctionVideoEncoderFactory>(
           []() { return H264Encoder::Create(cricket::VideoCodec("H264")); });
   std::unique_ptr<VideoDecoderFactory> decoder_factory =
-      absl::make_unique<FunctionVideoDecoderFactory>(
+      std::make_unique<FunctionVideoDecoderFactory>(
           []() { return H264Decoder::Create(); });
   return CreateSimulcastTestFixture(std::move(encoder_factory),
                                     std::move(decoder_factory),
@@ -93,6 +92,11 @@ TEST(TestH264Simulcast, TestSwitchingToOneOddStream) {
 TEST(TestH264Simulcast, TestStrideEncodeDecode) {
   auto fixture = CreateSpecificSimulcastTestFixture();
   fixture->TestStrideEncodeDecode();
+}
+
+TEST(TestH264Simulcast, TestSpatioTemporalLayers333PatternEncoder) {
+  auto fixture = CreateSpecificSimulcastTestFixture();
+  fixture->TestSpatioTemporalLayers333PatternEncoder();
 }
 
 }  // namespace test

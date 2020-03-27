@@ -11,13 +11,11 @@
 #ifndef MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODING_H_
 #define MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODING_H_
 
-#include "api/fec_controller.h"
 #include "api/video/video_frame.h"
 #include "api/video_codecs/video_codec.h"
 #include "modules/include/module.h"
-#include "modules/include/module_common_types.h"
+#include "modules/rtp_rtcp/source/rtp_video_header.h"
 #include "modules/video_coding/include/video_coding_defines.h"
-#include "rtc_base/deprecation.h"
 
 namespace webrtc {
 
@@ -29,8 +27,6 @@ struct CodecSpecificInfo;
 
 class VideoCodingModule : public Module {
  public:
-  enum SenderNackMode { kNackNone, kNackAll, kNackSelective };
-
   // DEPRECATED.
   static VideoCodingModule* Create(Clock* clock);
 
@@ -129,31 +125,15 @@ class VideoCodingModule : public Module {
   // Input:
   //      - incomingPayload      : Payload of the packet.
   //      - payloadLength        : Length of the payload.
-  //      - rtpInfo              : The parsed header.
+  //      - rtp_header           : The parsed RTP header.
+  //      - video_header         : The relevant extensions and payload header.
   //
   // Return value      : VCM_OK, on success.
   //                     < 0,    on error.
   virtual int32_t IncomingPacket(const uint8_t* incomingPayload,
                                  size_t payloadLength,
-                                 const WebRtcRTPHeader& rtpInfo) = 0;
-
-  // Robustness APIs
-
-  // DEPRECATED.
-  // Set the receiver robustness mode. The mode decides how the receiver
-  // responds to losses in the stream. The type of counter-measure is selected
-  // through the robustnessMode parameter. The errorMode parameter decides if it
-  // is allowed to display frames corrupted by losses. Note that not all
-  // combinations of the two parameters are feasible. An error will be
-  // returned for invalid combinations.
-  // Input:
-  //      - robustnessMode : selected robustness mode.
-  //      - errorMode      : selected error mode.
-  //
-  // Return value      : VCM_OK, on success;
-  //                     < 0, on error.
-  enum ReceiverRobustness { kNone, kHardNack };
-  virtual int SetReceiverRobustnessMode(ReceiverRobustness robustnessMode) = 0;
+                                 const RTPHeader& rtp_header,
+                                 const RTPVideoHeader& video_header) = 0;
 
   // Sets the maximum number of sequence numbers that we are allowed to NACK
   // and the oldest sequence number that we will consider to NACK. If a

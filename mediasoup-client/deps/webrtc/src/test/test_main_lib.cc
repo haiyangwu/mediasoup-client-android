@@ -11,20 +11,24 @@
 #include "test/test_main_lib.h"
 
 #include <fstream>
+#include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/flags.h"
+#include "rtc_base/event_tracer.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/ssl_adapter.h"
+#include "rtc_base/ssl_stream_adapter.h"
 #include "rtc_base/thread.h"
 #include "system_wrappers/include/field_trial.h"
 #include "system_wrappers/include/metrics.h"
 #include "test/field_trial.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
-#include "test/testsupport/file_utils.h"
 #include "test/testsupport/perf_test.h"
+#include "test/testsupport/resources_dir_flag.h"
 
 #if defined(WEBRTC_WIN)
 #include "rtc_base/win32_socket_init.h"
@@ -33,13 +37,16 @@
 #if defined(WEBRTC_IOS)
 #include "test/ios/test_support.h"
 
-WEBRTC_DEFINE_string(NSTreatUnknownArgumentsAsOpen,
-                     "",
-                     "Intentionally ignored flag intended for iOS simulator.");
-WEBRTC_DEFINE_string(ApplePersistenceIgnoreState,
-                     "",
-                     "Intentionally ignored flag intended for iOS simulator.");
-WEBRTC_DEFINE_bool(
+ABSL_FLAG(std::string,
+          NSTreatUnknownArgumentsAsOpen,
+          "",
+          "Intentionally ignored flag intended for iOS simulator.");
+ABSL_FLAG(std::string,
+          ApplePersistenceIgnoreState,
+          "",
+          "Intentionally ignored flag intended for iOS simulator.");
+ABSL_FLAG(
+    bool,
     save_chartjson_result,
     false,
     "Store the perf results in Documents/perf_result.json in the format "
@@ -49,12 +56,13 @@ WEBRTC_DEFINE_bool(
 
 #else
 
-WEBRTC_DEFINE_string(
-    isolated_script_test_output,
-    "",
-    "Path to output an empty JSON file which Chromium infra requires.");
+ABSL_FLAG(std::string,
+          isolated_script_test_output,
+          "",
+          "Path to output an empty JSON file which Chromium infra requires.");
 
-WEBRTC_DEFINE_string(
+ABSL_FLAG(
+    std::string,
     isolated_script_test_perf_output,
     "",
     "Path where the perf results should be stored in the JSON format described "
@@ -62,19 +70,31 @@ WEBRTC_DEFINE_string(
     "https://github.com/catapult-project/catapult/blob/master/dashboard/docs/"
     "data-format.md.");
 
+constexpr char kPlotAllMetrics[] = "all";
+ABSL_FLAG(std::vector<std::string>,
+          plot,
+          {},
+          "List of metrics that should be exported for plotting (if they are "
+          "available). Example: psnr,ssim,encode_time. To plot all available "
+          " metrics pass 'all' as flag value");
+
 #endif
 
-WEBRTC_DEFINE_bool(logs, false, "print logs to stderr");
-WEBRTC_DEFINE_bool(verbose, false, "verbose logs to stderr");
+ABSL_FLAG(bool, logs, true, "print logs to stderr");
+ABSL_FLAG(bool, verbose, false, "verbose logs to stderr");
 
-WEBRTC_DEFINE_string(
-    force_fieldtrials,
-    "",
-    "Field trials control experimental feature code which can be forced. "
-    "E.g. running with --force_fieldtrials=WebRTC-FooFeature/Enable/"
-    " will assign the group Enable to field trial WebRTC-FooFeature.");
+ABSL_FLAG(std::string,
+          trace_event,
+          "",
+          "Path to collect trace events (json file) for chrome://tracing. "
+          "If not set, events aren't captured.");
 
-WEBRTC_DEFINE_bool(help, false, "Print this message.");
+ABSL_FLAG(std::string,
+          force_fieldtrials,
+          "",
+          "Field trials control experimental feature code which can be forced. "
+          "E.g. running with --force_fieldtrials=WebRTC-FooFeature/Enable/"
+          " will assign the group Enable to field trial WebRTC-FooFeature.");
 
 namespace webrtc {
 
@@ -84,41 +104,44 @@ class TestMainImpl : public TestMain {
  public:
   int Init(int* argc, char* argv[]) override {
     ::testing::InitGoogleMock(argc, argv);
+    absl::ParseCommandLine(*argc, argv);
+
+    // Make sure we always pull in the --resources_dir flag, even if the test
+    // binary doesn't link with fileutils (downstream expects all test mains to
+    // have this flag).
+    (void)absl::GetFlag(FLAGS_resources_dir);
 
     // Default to LS_INFO, even for release builds to provide better test
     // logging.
     if (rtc::LogMessage::GetLogToDebug() > rtc::LS_INFO)
       rtc::LogMessage::LogToDebug(rtc::LS_INFO);
 
-    if (rtc::FlagList::SetFlagsFromCommandLine(argc, argv, false)) {
-      return 1;
-    }
-    if (FLAG_help) {
-      rtc::FlagList::Print(nullptr, false);
-      return 0;
-    }
-
-    if (FLAG_verbose)
+    if (absl::GetFlag(FLAGS_verbose))
       rtc::LogMessage::LogToDebug(rtc::LS_VERBOSE);
 
-    rtc::LogMessage::SetLogToStderr(FLAG_logs || FLAG_verbose);
+    rtc::LogMessage::SetLogToStderr(absl::GetFlag(FLAGS_logs) ||
+                                    absl::GetFlag(FLAGS_verbose));
 
-    // TODO(bugs.webrtc.org/9792): we need to reference something from
-    // fileutils.h so that our downstream hack where we replace fileutils.cc
-    // works. Otherwise the downstream flag implementation will take over and
-    // botch the flag introduced by the hack. Remove this awful thing once the
-    // downstream implementation has been eliminated.
-    (void)webrtc::test::JoinFilename("horrible", "hack");
+    std::string trace_event_path = absl::GetFlag(FLAGS_trace_event);
+    const bool capture_events = !trace_event_path.empty();
+    if (capture_events) {
+      rtc::tracing::SetupInternalTracer();
+      rtc::tracing::StartInternalCapture(trace_event_path.c_str());
+    }
 
-    webrtc::test::ValidateFieldTrialsStringOrDie(FLAG_force_fieldtrials);
     // InitFieldTrialsFromString stores the char*, so the char array must
     // outlive the application.
-    webrtc::field_trial::InitFieldTrialsFromString(FLAG_force_fieldtrials);
+    field_trials_ = absl::GetFlag(FLAGS_force_fieldtrials);
+    webrtc::field_trial::InitFieldTrialsFromString(field_trials_.c_str());
     webrtc::metrics::Enable();
 
 #if defined(WEBRTC_WIN)
-    winsock_init_ = absl::make_unique<rtc::WinsockInitializer>();
+    winsock_init_ = std::make_unique<rtc::WinsockInitializer>();
 #endif
+
+    // Initialize SSL which are used by several tests.
+    rtc::InitializeSSL();
+    rtc::SSLStreamAdapter::EnableTimeCallbackForTesting();
 
     // Ensure that main thread gets wrapped as an rtc::Thread.
     // TODO(bugs.webrt.org/9714): It might be better to avoid wrapping the main
@@ -128,24 +151,38 @@ class TestMainImpl : public TestMain {
     // automatically wrapped.
     rtc::ThreadManager::Instance()->WrapCurrentThread();
     RTC_CHECK(rtc::Thread::Current());
+
+    if (capture_events) {
+      rtc::tracing::StopInternalCapture();
+    }
     return 0;
   }
 
   int Run(int argc, char* argv[]) override {
 #if defined(WEBRTC_IOS)
     rtc::test::InitTestSuite(RUN_ALL_TESTS, argc, argv,
-                             FLAG_save_chartjson_result);
+                             absl::GetFlag(FLAGS_save_chartjson_result));
     rtc::test::RunTestsFromIOSApp();
     return 0;
 #else
     int exit_code = RUN_ALL_TESTS();
 
-    std::string chartjson_result_file = FLAG_isolated_script_test_perf_output;
+    std::string chartjson_result_file =
+        absl::GetFlag(FLAGS_isolated_script_test_perf_output);
     if (!chartjson_result_file.empty()) {
       webrtc::test::WritePerfResults(chartjson_result_file);
     }
+    std::vector<std::string> metrics_to_plot = absl::GetFlag(FLAGS_plot);
+    if (!metrics_to_plot.empty()) {
+      if (metrics_to_plot.size() == 1 &&
+          metrics_to_plot[0] == kPlotAllMetrics) {
+        metrics_to_plot.clear();
+      }
+      webrtc::test::PrintPlottableResults(metrics_to_plot);
+    }
 
-    std::string result_filename = FLAG_isolated_script_test_output;
+    std::string result_filename =
+        absl::GetFlag(FLAGS_isolated_script_test_output);
     if (!result_filename.empty()) {
       std::ofstream result_file(result_filename);
       result_file << "{\"version\": 3}";
@@ -175,7 +212,7 @@ class TestMainImpl : public TestMain {
 }  // namespace
 
 std::unique_ptr<TestMain> TestMain::Create() {
-  return absl::make_unique<TestMainImpl>();
+  return std::make_unique<TestMainImpl>();
 }
 
 }  // namespace webrtc

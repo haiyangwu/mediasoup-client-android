@@ -8,15 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/video_capture/video_capture_impl.h"
+
 #include <stdlib.h>
 #include <string.h>
 
 #include "api/video/i420_buffer.h"
 #include "api/video/video_frame_buffer.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "modules/video_capture/video_capture_config.h"
-#include "modules/video_capture/video_capture_impl.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ref_counted_object.h"
 #include "rtc_base/time_utils.h"
@@ -25,13 +25,6 @@
 
 namespace webrtc {
 namespace videocapturemodule {
-rtc::scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(
-    VideoCaptureExternal*& externalCapture) {
-  rtc::scoped_refptr<VideoCaptureImpl> implementation(
-      new rtc::RefCountedObject<VideoCaptureImpl>());
-  externalCapture = implementation.get();
-  return implementation;
-}
 
 const char* VideoCaptureImpl::CurrentDeviceName() const {
   return _deviceUniqueId;

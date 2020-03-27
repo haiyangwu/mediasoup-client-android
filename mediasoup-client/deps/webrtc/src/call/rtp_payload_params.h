@@ -22,7 +22,6 @@
 
 namespace webrtc {
 
-class RTPFragmentationHeader;
 class RtpRtcp;
 
 // State for setting picture id and tl0 pic idx, for VP8 and VP9
@@ -53,6 +52,15 @@ class RtpPayloadParams final {
                     int64_t shared_frame_id,
                     bool is_keyframe,
                     RTPVideoHeader* rtp_video_header);
+
+  void H264ToGeneric(const CodecSpecificInfoH264& h264_info,
+                     int64_t shared_frame_id,
+                     bool is_keyframe,
+                     RTPVideoHeader* rtp_video_header);
+
+  void GenericToGeneric(int64_t shared_frame_id,
+                        bool is_keyframe,
+                        RTPVideoHeader* rtp_video_header);
 
   // TODO(bugs.webrtc.org/10242): Delete SetDependenciesVp8Deprecated() and move
   // the logic in SetDependenciesVp8New() into Vp8ToGeneric() once all hardware

@@ -10,6 +10,7 @@
 
 package org.webrtc;
 
+import android.support.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 
@@ -17,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  * An encoded frame from a video stream. Used as an input for decoders and as an output for
  * encoders.
  */
-public class EncodedImage {
+public class EncodedImage implements RefCounted {
   // Must be kept in sync with common_types.h FrameType.
   public enum FrameType {
     EmptyFrame(0),
@@ -45,6 +46,8 @@ public class EncodedImage {
     }
   }
 
+  private final RefCountDelegate refCountDelegate;
+  private final boolean supportsRetain;
   public final ByteBuffer buffer;
   public final int encodedWidth;
   public final int encodedHeight;
@@ -53,11 +56,35 @@ public class EncodedImage {
   public final FrameType frameType;
   public final int rotation;
   public final boolean completeFrame;
-  public final Integer qp;
+  public final @Nullable Integer qp;
+
+  // TODO(bugs.webrtc.org/9378): Use retain and release from jni code.
+  @Override
+  public void retain() {
+    refCountDelegate.retain();
+  }
+
+  @Override
+  public void release() {
+    refCountDelegate.release();
+  }
+
+  // A false return value means that the encoder expects that the buffer is no longer used after
+  // VideoEncoder.Callback.onEncodedFrame returns.
+  @CalledByNative
+  boolean maybeRetain() {
+    if (supportsRetain) {
+      retain();
+      return true;
+    } else {
+      return false;
+    }
+  }
 
   @CalledByNative
-  private EncodedImage(ByteBuffer buffer, int encodedWidth, int encodedHeight, long captureTimeNs,
-      FrameType frameType, int rotation, boolean completeFrame, Integer qp) {
+  private EncodedImage(ByteBuffer buffer, boolean supportsRetain,
+      @Nullable Runnable releaseCallback, int encodedWidth, int encodedHeight, long captureTimeNs,
+      FrameType frameType, int rotation, boolean completeFrame, @Nullable Integer qp) {
     this.buffer = buffer;
     this.encodedWidth = encodedWidth;
     this.encodedHeight = encodedHeight;
@@ -67,6 +94,48 @@ public class EncodedImage {
     this.rotation = rotation;
     this.completeFrame = completeFrame;
     this.qp = qp;
+    this.supportsRetain = supportsRetain;
+    this.refCountDelegate = new RefCountDelegate(releaseCallback);
+  }
+
+  @CalledByNative
+  private ByteBuffer getBuffer() {
+    return buffer;
+  }
+
+  @CalledByNative
+  private int getEncodedWidth() {
+    return encodedWidth;
+  }
+
+  @CalledByNative
+  private int getEncodedHeight() {
+    return encodedHeight;
+  }
+
+  @CalledByNative
+  private long getCaptureTimeNs() {
+    return captureTimeNs;
+  }
+
+  @CalledByNative
+  private int getFrameType() {
+    return frameType.getNative();
+  }
+
+  @CalledByNative
+  private int getRotation() {
+    return rotation;
+  }
+
+  @CalledByNative
+  private boolean getCompleteFrame() {
+    return completeFrame;
+  }
+
+  @CalledByNative
+  private @Nullable Integer getQp() {
+    return qp;
   }
 
   public static Builder builder() {
@@ -75,18 +144,30 @@ public class EncodedImage {
 
   public static class Builder {
     private ByteBuffer buffer;
+    private boolean supportsRetain;
+    private @Nullable Runnable releaseCallback;
     private int encodedWidth;
     private int encodedHeight;
     private long captureTimeNs;
     private EncodedImage.FrameType frameType;
     private int rotation;
     private boolean completeFrame;
-    private Integer qp;
+    private @Nullable Integer qp;
 
     private Builder() {}
 
+    @Deprecated
     public Builder setBuffer(ByteBuffer buffer) {
       this.buffer = buffer;
+      this.releaseCallback = null;
+      this.supportsRetain = false;
+      return this;
+    }
+
+    public Builder setBuffer(ByteBuffer buffer, @Nullable Runnable releaseCallback) {
+      this.buffer = buffer;
+      this.releaseCallback = releaseCallback;
+      this.supportsRetain = true;
       return this;
     }
 
@@ -126,14 +207,14 @@ public class EncodedImage {
       return this;
     }
 
-    public Builder setQp(Integer qp) {
+    public Builder setQp(@Nullable Integer qp) {
       this.qp = qp;
       return this;
     }
 
     public EncodedImage createEncodedImage() {
-      return new EncodedImage(buffer, encodedWidth, encodedHeight, captureTimeNs, frameType,
-          rotation, completeFrame, qp);
+      return new EncodedImage(buffer, supportsRetain, releaseCallback, encodedWidth, encodedHeight,
+          captureTimeNs, frameType, rotation, completeFrame, qp);
     }
   }
 }

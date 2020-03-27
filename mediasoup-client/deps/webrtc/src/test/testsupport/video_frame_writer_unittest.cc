@@ -8,19 +8,20 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "test/testsupport/video_frame_writer.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "api/video/i420_buffer.h"
 #include "test/gtest.h"
 #include "test/testsupport/file_utils.h"
 #include "test/testsupport/frame_reader.h"
-#include "test/testsupport/video_frame_writer.h"
 
 namespace webrtc {
 namespace test {
@@ -86,7 +87,7 @@ void AssertI420BuffersEq(
 
 }  // namespace
 
-class VideoFrameWriterTest : public testing::Test {
+class VideoFrameWriterTest : public ::testing::Test {
  protected:
   VideoFrameWriterTest() = default;
   ~VideoFrameWriterTest() override = default;
@@ -94,9 +95,10 @@ class VideoFrameWriterTest : public testing::Test {
   void SetUp() override {
     temp_filename_ = webrtc::test::TempFilename(webrtc::test::OutputPath(),
                                                 "video_frame_writer_unittest");
-    frame_writer_ = absl::make_unique<VideoFrameWriter>(
-        temp_filename_, kFrameWidth, kFrameHeight, kFrameRate);
+    frame_writer_ = CreateFrameWriter();
   }
+
+  virtual std::unique_ptr<VideoFrameWriter> CreateFrameWriter() = 0;
 
   void TearDown() override { remove(temp_filename_.c_str()); }
 
@@ -104,9 +106,25 @@ class VideoFrameWriterTest : public testing::Test {
   std::string temp_filename_;
 };
 
-TEST_F(VideoFrameWriterTest, InitSuccess) {}
+class Y4mVideoFrameWriterTest : public VideoFrameWriterTest {
+ protected:
+  std::unique_ptr<VideoFrameWriter> CreateFrameWriter() override {
+    return std::make_unique<Y4mVideoFrameWriterImpl>(
+        temp_filename_, kFrameWidth, kFrameHeight, kFrameRate);
+  }
+};
 
-TEST_F(VideoFrameWriterTest, WriteFrame) {
+class YuvVideoFrameWriterTest : public VideoFrameWriterTest {
+ protected:
+  std::unique_ptr<VideoFrameWriter> CreateFrameWriter() override {
+    return std::make_unique<YuvVideoFrameWriterImpl>(temp_filename_,
+                                                     kFrameWidth, kFrameHeight);
+  }
+};
+
+TEST_F(Y4mVideoFrameWriterTest, InitSuccess) {}
+
+TEST_F(Y4mVideoFrameWriterTest, WriteFrame) {
   rtc::scoped_refptr<I420Buffer> expected_buffer =
       CreateI420Buffer(kFrameWidth, kFrameHeight);
 
@@ -121,8 +139,33 @@ TEST_F(VideoFrameWriterTest, WriteFrame) {
             GetFileSize(temp_filename_));
 
   std::unique_ptr<FrameReader> frame_reader =
-      absl::make_unique<Y4mFrameReaderImpl>(temp_filename_, kFrameWidth,
-                                            kFrameHeight);
+      std::make_unique<Y4mFrameReaderImpl>(temp_filename_, kFrameWidth,
+                                           kFrameHeight);
+  ASSERT_TRUE(frame_reader->Init());
+  AssertI420BuffersEq(frame_reader->ReadFrame(), expected_buffer);
+  AssertI420BuffersEq(frame_reader->ReadFrame(), expected_buffer);
+  EXPECT_FALSE(frame_reader->ReadFrame());  // End of file.
+  frame_reader->Close();
+}
+
+TEST_F(YuvVideoFrameWriterTest, InitSuccess) {}
+
+TEST_F(YuvVideoFrameWriterTest, WriteFrame) {
+  rtc::scoped_refptr<I420Buffer> expected_buffer =
+      CreateI420Buffer(kFrameWidth, kFrameHeight);
+
+  VideoFrame frame =
+      VideoFrame::Builder().set_video_frame_buffer(expected_buffer).build();
+
+  ASSERT_TRUE(frame_writer_->WriteFrame(frame));
+  ASSERT_TRUE(frame_writer_->WriteFrame(frame));
+
+  frame_writer_->Close();
+  EXPECT_EQ(2 * kFrameLength, GetFileSize(temp_filename_));
+
+  std::unique_ptr<FrameReader> frame_reader =
+      std::make_unique<YuvFrameReaderImpl>(temp_filename_, kFrameWidth,
+                                           kFrameHeight);
   ASSERT_TRUE(frame_reader->Init());
   AssertI420BuffersEq(frame_reader->ReadFrame(), expected_buffer);
   AssertI420BuffersEq(frame_reader->ReadFrame(), expected_buffer);

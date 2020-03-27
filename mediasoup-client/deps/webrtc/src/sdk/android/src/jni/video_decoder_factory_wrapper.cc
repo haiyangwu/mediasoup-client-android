@@ -12,9 +12,8 @@
 
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_decoder.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "rtc_base/logging.h"
-#include "sdk/android/generated_video_jni/jni/VideoDecoderFactory_jni.h"
+#include "sdk/android/generated_video_jni/VideoDecoderFactory_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/video_codec_info.h"
 #include "sdk/android/src/jni/video_decoder_wrapper.h"

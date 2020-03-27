@@ -8,11 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/stats_collector.h"
+
 #include <stdio.h>
+
 #include <memory>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "api/audio_codecs/audio_encoder.h"
 #include "api/candidate.h"
@@ -24,9 +26,10 @@
 #include "pc/data_channel.h"
 #include "pc/media_stream.h"
 #include "pc/media_stream_track.h"
-#include "pc/stats_collector.h"
 #include "pc/test/fake_peer_connection_for_stats.h"
 #include "pc/test/fake_video_track_source.h"
+#include "pc/test/mock_rtp_receiver_internal.h"
+#include "pc/test/mock_rtp_sender_internal.h"
 #include "pc/transport_stats.h"
 #include "pc/video_track.h"
 #include "rtc_base/fake_ssl_identity.h"
@@ -51,6 +54,8 @@ using cricket::VideoSenderInfo;
 using cricket::VoiceMediaInfo;
 using cricket::VoiceReceiverInfo;
 using cricket::VoiceSenderInfo;
+using ::testing::Return;
+using ::testing::UnorderedElementsAre;
 
 namespace webrtc {
 
@@ -208,6 +213,38 @@ const StatsReport* FindNthReportByType(const StatsReports& reports,
   return nullptr;
 }
 
+// Returns the value of the stat identified by |name| in the |n|-th report of
+// type |type| in |reports|.
+// |n| starts from 1 for finding the first report.
+// If either the |n|-th report is not found, or the stat is not present in that
+// report, then nullopt is returned.
+absl::optional<std::string> GetValueInNthReportByType(
+    const StatsReports& reports,
+    StatsReport::StatsType type,
+    StatsReport::StatsValueName name,
+    int n) {
+  const StatsReport* report = FindNthReportByType(reports, type, n);
+  if (!report) {
+    return absl::nullopt;
+  }
+  std::string value;
+  if (!GetValue(report, name, &value)) {
+    return absl::nullopt;
+  }
+  return value;
+}
+
+std::vector<const StatsReport*> GetReportsByType(const StatsReports& reports,
+                                                 StatsReport::StatsType type) {
+  std::vector<const StatsReport*> filtered_reports;
+  for (const StatsReport* report : reports) {
+    if (report->type() == type) {
+      filtered_reports.push_back(report);
+    }
+  }
+  return filtered_reports;
+}
+
 const StatsReport* FindReportById(const StatsReports& reports,
                                   const StatsReport::Id& id) {
   for (const auto* r : reports) {
@@ -287,7 +324,9 @@ void VerifyVoiceReceiverInfoReport(const StatsReport* report,
   EXPECT_EQ(rtc::ToString(info.audio_level), value_in_report);
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameBytesReceived,
                        &value_in_report));
-  EXPECT_EQ(rtc::ToString(info.bytes_rcvd), value_in_report);
+  EXPECT_EQ(rtc::ToString(info.payload_bytes_rcvd +
+                          info.header_and_padding_bytes_rcvd),
+            value_in_report);
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameJitterReceived,
                        &value_in_report));
   EXPECT_EQ(rtc::ToString(info.jitter_ms), value_in_report);
@@ -336,6 +375,9 @@ void VerifyVoiceReceiverInfoReport(const StatsReport* report,
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameDecodingPLC,
                        &value_in_report));
   EXPECT_EQ(rtc::ToString(info.decoding_plc), value_in_report);
+  EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameDecodingCodecPLC,
+                       &value_in_report));
+  EXPECT_EQ(rtc::ToString(info.decoding_codec_plc), value_in_report);
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameDecodingCNG,
                        &value_in_report));
   EXPECT_EQ(rtc::ToString(info.decoding_cng), value_in_report);
@@ -357,7 +399,9 @@ void VerifyVoiceSenderInfoReport(const StatsReport* report,
   EXPECT_EQ(sinfo.codec_name, value_in_report);
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNameBytesSent,
                        &value_in_report));
-  EXPECT_EQ(rtc::ToString(sinfo.bytes_sent), value_in_report);
+  EXPECT_EQ(rtc::ToString(sinfo.payload_bytes_sent +
+                          sinfo.header_and_padding_bytes_sent),
+            value_in_report);
   EXPECT_TRUE(GetValue(report, StatsReport::kStatsValueNamePacketsSent,
                        &value_in_report));
   EXPECT_EQ(rtc::ToString(sinfo.packets_sent), value_in_report);
@@ -484,16 +528,17 @@ void VerifyVoiceSenderInfoReport(const StatsReport* report,
 }
 
 // Helper methods to avoid duplication of code.
-void InitVoiceSenderInfo(cricket::VoiceSenderInfo* voice_sender_info) {
-  voice_sender_info->add_ssrc(kSsrcOfTrack);
+void InitVoiceSenderInfo(cricket::VoiceSenderInfo* voice_sender_info,
+                         uint32_t ssrc = kSsrcOfTrack) {
+  voice_sender_info->add_ssrc(ssrc);
   voice_sender_info->codec_name = "fake_codec";
-  voice_sender_info->bytes_sent = 100;
+  voice_sender_info->payload_bytes_sent = 88;
+  voice_sender_info->header_and_padding_bytes_sent = 12;
   voice_sender_info->packets_sent = 101;
   voice_sender_info->rtt_ms = 102;
   voice_sender_info->fraction_lost = 103;
   voice_sender_info->jitter_ms = 104;
   voice_sender_info->packets_lost = 105;
-  voice_sender_info->ext_seqnum = 106;
   voice_sender_info->audio_level = 107;
   voice_sender_info->apm_statistics.echo_return_loss = 108;
   voice_sender_info->apm_statistics.echo_return_loss_enhancement = 109;
@@ -523,12 +568,10 @@ void UpdateVoiceSenderInfoFromAudioTrack(
 
 void InitVoiceReceiverInfo(cricket::VoiceReceiverInfo* voice_receiver_info) {
   voice_receiver_info->add_ssrc(kSsrcOfTrack);
-  voice_receiver_info->bytes_rcvd = 110;
+  voice_receiver_info->payload_bytes_rcvd = 98;
+  voice_receiver_info->header_and_padding_bytes_rcvd = 12;
   voice_receiver_info->packets_rcvd = 111;
-  voice_receiver_info->packets_lost = 112;
-  voice_receiver_info->fraction_lost = 113;
   voice_receiver_info->packets_lost = 114;
-  voice_receiver_info->ext_seqnum = 115;
   voice_receiver_info->jitter_ms = 116;
   voice_receiver_info->jitter_buffer_ms = 117;
   voice_receiver_info->jitter_buffer_preferred_ms = 118;
@@ -540,6 +583,7 @@ void InitVoiceReceiverInfo(cricket::VoiceReceiverInfo* voice_receiver_info) {
   voice_receiver_info->accelerate_rate = 124;
   voice_receiver_info->preemptive_expand_rate = 125;
   voice_receiver_info->secondary_discarded_rate = 126;
+  voice_receiver_info->decoding_codec_plc = 127;
 }
 
 class StatsCollectorForTest : public StatsCollector {
@@ -553,7 +597,7 @@ class StatsCollectorForTest : public StatsCollector {
   double time_now_;
 };
 
-class StatsCollectorTest : public testing::Test {
+class StatsCollectorTest : public ::testing::Test {
  protected:
   rtc::scoped_refptr<FakePeerConnectionForStats> CreatePeerConnection() {
     return new rtc::RefCountedObject<FakePeerConnectionForStats>();
@@ -561,7 +605,7 @@ class StatsCollectorTest : public testing::Test {
 
   std::unique_ptr<StatsCollectorForTest> CreateStatsCollector(
       PeerConnectionInternal* pc) {
-    return absl::make_unique<StatsCollectorForTest>(pc);
+    return std::make_unique<StatsCollectorForTest>(pc);
   }
 
   void VerifyAudioTrackStats(FakeAudioTrack* audio_track,
@@ -692,6 +736,36 @@ class StatsCollectorTest : public testing::Test {
   }
 };
 
+static rtc::scoped_refptr<MockRtpSenderInternal> CreateMockSender(
+    rtc::scoped_refptr<MediaStreamTrackInterface> track,
+    uint32_t ssrc) {
+  rtc::scoped_refptr<MockRtpSenderInternal> sender(
+      new rtc::RefCountedObject<MockRtpSenderInternal>());
+  EXPECT_CALL(*sender, track()).WillRepeatedly(Return(track));
+  EXPECT_CALL(*sender, ssrc()).WillRepeatedly(Return(ssrc));
+  EXPECT_CALL(*sender, media_type())
+      .WillRepeatedly(
+          Return(track->kind() == MediaStreamTrackInterface::kAudioKind
+                     ? cricket::MEDIA_TYPE_AUDIO
+                     : cricket::MEDIA_TYPE_VIDEO));
+  return sender;
+}
+
+static rtc::scoped_refptr<MockRtpReceiverInternal> CreateMockReceiver(
+    rtc::scoped_refptr<MediaStreamTrackInterface> track,
+    uint32_t ssrc) {
+  rtc::scoped_refptr<MockRtpReceiverInternal> receiver(
+      new rtc::RefCountedObject<MockRtpReceiverInternal>());
+  EXPECT_CALL(*receiver, track()).WillRepeatedly(Return(track));
+  EXPECT_CALL(*receiver, ssrc()).WillRepeatedly(Return(ssrc));
+  EXPECT_CALL(*receiver, media_type())
+      .WillRepeatedly(
+          Return(track->kind() == MediaStreamTrackInterface::kAudioKind
+                     ? cricket::MEDIA_TYPE_AUDIO
+                     : cricket::MEDIA_TYPE_VIDEO));
+  return receiver;
+}
+
 class StatsCollectorTrackTest : public StatsCollectorTest,
                                 public ::testing::WithParamInterface<bool> {
  public:
@@ -710,7 +784,7 @@ class StatsCollectorTrackTest : public StatsCollectorTest,
     } else {
       stats->AddTrack(track_);
     }
-    pc->AddLocalTrack(kSsrcOfTrack, kLocalTrackId);
+    pc->AddSender(CreateMockSender(track_, kSsrcOfTrack));
   }
 
   // Adds a incoming video track with a given SSRC into the stats.
@@ -725,15 +799,16 @@ class StatsCollectorTrackTest : public StatsCollectorTest,
     } else {
       stats->AddTrack(track_);
     }
-    pc->AddRemoteTrack(kSsrcOfTrack, kRemoteTrackId);
+    pc->AddReceiver(CreateMockReceiver(track_, kSsrcOfTrack));
   }
 
   // Adds a outgoing audio track with a given SSRC into the stats,
   // and register it into the stats object.
   // If GetParam() returns true, the track is also inserted into the local
   // stream, which is created if necessary.
-  void AddOutgoingAudioTrack(FakePeerConnectionForStats* pc,
-                             StatsCollectorForTest* stats) {
+  rtc::scoped_refptr<RtpSenderInterface> AddOutgoingAudioTrack(
+      FakePeerConnectionForStats* pc,
+      StatsCollectorForTest* stats) {
     audio_track_ = new rtc::RefCountedObject<FakeAudioTrack>(kLocalTrackId);
     if (GetParam()) {
       if (!stream_)
@@ -743,7 +818,7 @@ class StatsCollectorTrackTest : public StatsCollectorTest,
     } else {
       stats->AddTrack(audio_track_);
     }
-    pc->AddLocalTrack(kSsrcOfTrack, kLocalTrackId);
+    return pc->AddSender(CreateMockSender(audio_track_, kSsrcOfTrack));
   }
 
   // Adds a incoming audio track with a given SSRC into the stats.
@@ -758,7 +833,7 @@ class StatsCollectorTrackTest : public StatsCollectorTest,
     } else {
       stats->AddTrack(audio_track_);
     }
-    pc->AddRemoteTrack(kSsrcOfTrack, kRemoteTrackId);
+    pc->AddReceiver(CreateMockReceiver(audio_track_, kSsrcOfTrack));
   }
 
   rtc::scoped_refptr<MediaStream> stream_;
@@ -835,7 +910,8 @@ TEST_P(StatsCollectorTrackTest, BytesCounterHandles64Bits) {
 
   VideoSenderInfo video_sender_info;
   video_sender_info.add_ssrc(1234);
-  video_sender_info.bytes_sent = kBytesSent;
+  video_sender_info.payload_bytes_sent = kBytesSent;
+  video_sender_info.header_and_padding_bytes_sent = 0;
   VideoMediaInfo video_info;
   video_info.senders.push_back(video_sender_info);
 
@@ -867,7 +943,8 @@ TEST_P(StatsCollectorTrackTest, AudioBandwidthEstimationInfoIsReported) {
 
   VoiceSenderInfo voice_sender_info;
   voice_sender_info.add_ssrc(1234);
-  voice_sender_info.bytes_sent = kBytesSent;
+  voice_sender_info.payload_bytes_sent = kBytesSent - 12;
+  voice_sender_info.header_and_padding_bytes_sent = 12;
   VoiceMediaInfo voice_info;
   voice_info.senders.push_back(voice_sender_info);
 
@@ -915,7 +992,9 @@ TEST_P(StatsCollectorTrackTest, VideoBandwidthEstimationInfoIsReported) {
 
   VideoSenderInfo video_sender_info;
   video_sender_info.add_ssrc(1234);
-  video_sender_info.bytes_sent = kBytesSent;
+  video_sender_info.payload_bytes_sent = kBytesSent - 12;
+  video_sender_info.header_and_padding_bytes_sent = 12;
+
   VideoMediaInfo video_info;
   video_info.senders.push_back(video_sender_info);
 
@@ -1012,7 +1091,8 @@ TEST_P(StatsCollectorTrackTest, TrackAndSsrcObjectExistAfterUpdateSsrcStats) {
 
   VideoSenderInfo video_sender_info;
   video_sender_info.add_ssrc(1234);
-  video_sender_info.bytes_sent = kBytesSent;
+  video_sender_info.payload_bytes_sent = kBytesSent - 12;
+  video_sender_info.header_and_padding_bytes_sent = 12;
   VideoMediaInfo video_info;
   video_info.senders.push_back(video_sender_info);
 
@@ -1066,7 +1146,8 @@ TEST_P(StatsCollectorTrackTest, TransportObjectLinkedFromSsrcObject) {
 
   VideoSenderInfo video_sender_info;
   video_sender_info.add_ssrc(1234);
-  video_sender_info.bytes_sent = kBytesSent;
+  video_sender_info.payload_bytes_sent = kBytesSent - 12;
+  video_sender_info.header_and_padding_bytes_sent = 12;
   VideoMediaInfo video_info;
   video_info.senders.push_back(video_sender_info);
 
@@ -1226,7 +1307,7 @@ TEST_F(StatsCollectorTest, IceCandidateReport) {
   connection_info.local_candidate = local;
   connection_info.remote_candidate = remote;
   TransportChannelStats channel_stats;
-  channel_stats.connection_infos.push_back(connection_info);
+  channel_stats.ice_transport_stats.connection_infos.push_back(connection_info);
 
   pc->AddVoiceChannel("audio", kTransportName);
   pc->SetTransportStats(kTransportName, channel_stats);
@@ -1406,7 +1487,7 @@ TEST_P(StatsCollectorTrackTest, FilterOutNegativeInitialValues) {
   rtc::scoped_refptr<FakeAudioTrackWithInitValue> local_track(
       new rtc::RefCountedObject<FakeAudioTrackWithInitValue>(kLocalTrackId));
   stream_->AddTrack(local_track);
-  pc->AddLocalTrack(kSsrcOfTrack, kLocalTrackId);
+  pc->AddSender(CreateMockSender(local_track, kSsrcOfTrack));
   if (GetParam()) {
     stats->AddStream(stream_);
   }
@@ -1418,7 +1499,7 @@ TEST_P(StatsCollectorTrackTest, FilterOutNegativeInitialValues) {
   rtc::scoped_refptr<FakeAudioTrackWithInitValue> remote_track(
       new rtc::RefCountedObject<FakeAudioTrackWithInitValue>(kRemoteTrackId));
   remote_stream->AddTrack(remote_track);
-  pc->AddRemoteTrack(kSsrcOfTrack, kRemoteTrackId);
+  pc->AddReceiver(CreateMockReceiver(remote_track, kSsrcOfTrack));
   if (GetParam()) {
     stats->AddStream(remote_stream);
   }
@@ -1587,7 +1668,7 @@ TEST_P(StatsCollectorTrackTest, LocalAndRemoteTracksWithSameSsrc) {
       MediaStream::Create("remotestreamid"));
   rtc::scoped_refptr<FakeAudioTrack> remote_track(
       new rtc::RefCountedObject<FakeAudioTrack>(kRemoteTrackId));
-  pc->AddRemoteTrack(kSsrcOfTrack, kRemoteTrackId);
+  pc->AddReceiver(CreateMockReceiver(remote_track, kSsrcOfTrack));
   remote_stream->AddTrack(remote_track);
   stats->AddStream(remote_stream);
 
@@ -1652,7 +1733,7 @@ TEST_P(StatsCollectorTrackTest, TwoLocalTracksWithSameSsrc) {
   auto stats = CreateStatsCollector(pc);
 
   // Create a local stream with a local audio track and adds it to the stats.
-  AddOutgoingAudioTrack(pc, stats.get());
+  auto sender = AddOutgoingAudioTrack(pc, stats.get());
   stats->AddLocalAudioTrack(audio_track_, kSsrcOfTrack);
 
   VoiceSenderInfo voice_sender_info;
@@ -1671,12 +1752,13 @@ TEST_P(StatsCollectorTrackTest, TwoLocalTracksWithSameSsrc) {
   // Remove the previous audio track from the stream.
   stream_->RemoveTrack(audio_track_.get());
   stats->RemoveLocalAudioTrack(audio_track_.get(), kSsrcOfTrack);
+  pc->RemoveSender(sender);
 
   // Create a new audio track and adds it to the stream and stats.
   static const std::string kNewTrackId = "new_track_id";
   rtc::scoped_refptr<FakeAudioTrack> new_audio_track(
       new rtc::RefCountedObject<FakeAudioTrack>(kNewTrackId));
-  pc->AddLocalTrack(kSsrcOfTrack, kNewTrackId);
+  pc->AddSender(CreateMockSender(new_audio_track, kSsrcOfTrack));
   stream_->AddTrack(new_audio_track);
 
   stats->AddLocalAudioTrack(new_audio_track, kSsrcOfTrack);
@@ -1692,6 +1774,72 @@ TEST_P(StatsCollectorTrackTest, TwoLocalTracksWithSameSsrc) {
 
   reports.clear();
   VerifyAudioTrackStats(new_audio_track, stats.get(), new_voice_info, &reports);
+}
+
+// Test that if there are two local senders with the same track then two SSRC
+// reports will be created, one for each sender, with the same track ID and one
+// track report will be created for the shared track.
+TEST_P(StatsCollectorTrackTest, TwoLocalSendersWithSameTrack) {
+  constexpr uint32_t kFirstSsrc = 22;
+  constexpr uint32_t kSecondSsrc = 33;
+
+  auto pc = CreatePeerConnection();
+  auto stats = CreateStatsCollector(pc);
+
+  rtc::scoped_refptr<FakeAudioTrackWithInitValue> local_track(
+      new rtc::RefCountedObject<FakeAudioTrackWithInitValue>(kLocalTrackId));
+  pc->AddSender(CreateMockSender(local_track, kFirstSsrc));
+  stats->AddLocalAudioTrack(local_track.get(), kFirstSsrc);
+  pc->AddSender(CreateMockSender(local_track, kSecondSsrc));
+  stats->AddLocalAudioTrack(local_track.get(), kSecondSsrc);
+
+  VoiceSenderInfo first_sender_info;
+  InitVoiceSenderInfo(&first_sender_info, kFirstSsrc);
+  UpdateVoiceSenderInfoFromAudioTrack(local_track.get(), &first_sender_info,
+                                      false);
+
+  VoiceSenderInfo second_sender_info;
+  InitVoiceSenderInfo(&second_sender_info, kSecondSsrc);
+  UpdateVoiceSenderInfoFromAudioTrack(local_track.get(), &second_sender_info,
+                                      false);
+
+  VoiceMediaInfo voice_info;
+  voice_info.senders.push_back(first_sender_info);
+  voice_info.senders.push_back(second_sender_info);
+
+  auto* voice_media_channel = pc->AddVoiceChannel("voice", "transport");
+  voice_media_channel->SetStats(voice_info);
+
+  stats->UpdateStats(PeerConnectionInterface::kStatsOutputLevelStandard);
+
+  StatsReports reports;
+  stats->GetStats(local_track.get(), &reports);
+  RTC_LOG(LS_INFO) << reports.size();
+
+  // Both SSRC reports have the same track ID.
+  EXPECT_EQ(kLocalTrackId, GetValueInNthReportByType(
+                               reports, StatsReport::kStatsReportTypeSsrc,
+                               StatsReport::kStatsValueNameTrackId, 1));
+  EXPECT_EQ(kLocalTrackId, GetValueInNthReportByType(
+                               reports, StatsReport::kStatsReportTypeSsrc,
+                               StatsReport::kStatsValueNameTrackId, 2));
+
+  // The SSRC in each SSRC report is different and correspond to the sender
+  // SSRC.
+  std::vector<absl::optional<std::string>> ssrcs = {
+      GetValueInNthReportByType(reports, StatsReport::kStatsReportTypeSsrc,
+                                StatsReport::kStatsValueNameSsrc, 1),
+      GetValueInNthReportByType(reports, StatsReport::kStatsReportTypeSsrc,
+                                StatsReport::kStatsValueNameSsrc, 2)};
+  EXPECT_THAT(ssrcs, UnorderedElementsAre(rtc::ToString(kFirstSsrc),
+                                          rtc::ToString(kSecondSsrc)));
+
+  // There is one track report with the same track ID as the SSRC reports.
+  EXPECT_EQ(
+      1u, GetReportsByType(reports, StatsReport::kStatsReportTypeTrack).size());
+  EXPECT_EQ(kLocalTrackId, GetValueInNthReportByType(
+                               reports, StatsReport::kStatsReportTypeTrack,
+                               StatsReport::kStatsValueNameTrackId, 1));
 }
 
 // This test verifies that stats are correctly set in video send ssrc stats.

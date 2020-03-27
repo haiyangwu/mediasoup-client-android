@@ -13,16 +13,20 @@
 
 #include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "api/call/transport.h"
 #include "api/crypto/crypto_options.h"
-#include "api/media_transport_interface.h"
+#include "api/crypto/frame_decryptor_interface.h"
 #include "api/rtp_headers.h"
 #include "api/rtp_parameters.h"
-#include "api/rtp_receiver_interface.h"
+#include "api/transport/media/media_transport_config.h"
+#include "api/transport/media/media_transport_interface.h"
+#include "api/transport/rtp/rtp_source.h"
 #include "api/video/video_content_type.h"
+#include "api/video/video_frame.h"
 #include "api/video/video_sink_interface.h"
 #include "api/video/video_timing.h"
 #include "api/video_codecs/sdp_video_format.h"
@@ -32,7 +36,6 @@
 
 namespace webrtc {
 
-class FrameDecryptorInterface;
 class RtpPacketSinkInterface;
 class VideoDecoderFactory;
 
@@ -75,17 +78,25 @@ class VideoReceiveStream {
     int current_delay_ms = 0;
     int target_delay_ms = 0;
     int jitter_buffer_ms = 0;
+    // https://w3c.github.io/webrtc-stats/#dom-rtcvideoreceiverstats-jitterbufferdelay
+    double jitter_buffer_delay_seconds = 0;
+    // https://w3c.github.io/webrtc-stats/#dom-rtcvideoreceiverstats-jitterbufferemittedcount
+    uint64_t jitter_buffer_emitted_count = 0;
     int min_playout_delay_ms = 0;
     int render_delay_ms = 10;
     int64_t interframe_delay_max_ms = -1;
+    // Frames dropped due to decoding failures or if the system is too slow.
+    // https://www.w3.org/TR/webrtc-stats/#dom-rtcvideoreceiverstats-framesdropped
+    uint32_t frames_dropped = 0;
     uint32_t frames_decoded = 0;
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-totaldecodetime
+    uint64_t total_decode_time_ms = 0;
     int64_t first_frame_received_to_decoded_ms = -1;
     absl::optional<uint64_t> qp_sum;
 
     int current_payload_type = -1;
 
     int total_bitrate_bps = 0;
-    int discarded_packets = 0;
 
     int width = 0;
     int height = 0;
@@ -103,9 +114,8 @@ class VideoReceiveStream {
 
     uint32_t ssrc = 0;
     std::string c_name;
-    StreamDataCounters rtp_stats;
+    RtpReceiveStats rtp_stats;
     RtcpPacketTypeCounter rtcp_packet_type_counts;
-    RtcpStatistics rtcp_stats;
 
     // Timing frame info: all important timestamps for a full lifetime of a
     // single 'timing frame'.
@@ -122,7 +132,7 @@ class VideoReceiveStream {
     Config() = delete;
     Config(Config&&);
     Config(Transport* rtcp_send_transport,
-           MediaTransportInterface* media_transport);
+           MediaTransportConfig media_transport_config);
     explicit Config(Transport* rtcp_send_transport);
     Config& operator=(Config&&);
     Config& operator=(const Config&) = delete;
@@ -132,6 +142,10 @@ class VideoReceiveStream {
     Config Copy() const { return Config(*this); }
 
     std::string ToString() const;
+
+    MediaTransportInterface* media_transport() const {
+      return media_transport_config.media_transport;
+    }
 
     // Decoders for every payload that we can receive.
     std::vector<Decoder> decoders;
@@ -159,20 +173,11 @@ class VideoReceiveStream {
         bool receiver_reference_time_report = false;
       } rtcp_xr;
 
-      // TODO(nisse): This remb setting is currently set but never
-      // applied. REMB logic is now the responsibility of
-      // PacketRouter, and it will generate REMB feedback if
-      // OnReceiveBitrateChanged is used, which depends on how the
-      // estimators belonging to the ReceiveSideCongestionController
-      // are configured. Decide if this setting should be deleted, and
-      // if it needs to be replaced by a setting in PacketRouter to
-      // disable REMB feedback.
-
-      // See draft-alvestrand-rmcat-remb for information.
-      bool remb = false;
-
       // See draft-holmer-rmcat-transport-wide-cc-extensions for details.
       bool transport_cc = false;
+
+      // See LntfConfig for description.
+      LntfConfig lntf;
 
       // See NackConfig for description.
       NackConfig nack;
@@ -191,6 +196,12 @@ class VideoReceiveStream {
       // For RTX to be enabled, both an SSRC and this mapping are needed.
       std::map<int, int> rtx_associated_payload_types;
 
+      // Payload types that should be depacketized using raw depacketizer
+      // (payload header will not be parsed and must not be present, additional
+      // meta data is expected to be present in generic frame descriptor
+      // RTP header extension).
+      std::set<int> raw_payload_types;
+
       // RTP header extensions used for the received stream.
       std::vector<RtpExtension> extensions;
     } rtp;
@@ -198,7 +209,7 @@ class VideoReceiveStream {
     // Transport for outgoing packets (RTCP).
     Transport* rtcp_send_transport = nullptr;
 
-    MediaTransportInterface* media_transport = nullptr;
+    MediaTransportConfig media_transport_config;
 
     // Must always be set.
     rtc::VideoSinkInterface<VideoFrame>* renderer = nullptr;
@@ -260,6 +271,11 @@ class VideoReceiveStream {
 
   // Returns current value of base minimum delay in milliseconds.
   virtual int GetBaseMinimumPlayoutDelayMs() const = 0;
+
+  // Allows a FrameDecryptor to be attached to a VideoReceiveStream after
+  // creation without resetting the decoder state.
+  virtual void SetFrameDecryptor(
+      rtc::scoped_refptr<FrameDecryptorInterface> frame_decryptor) = 0;
 
  protected:
   virtual ~VideoReceiveStream() {}

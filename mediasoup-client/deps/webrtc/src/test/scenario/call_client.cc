@@ -11,9 +11,10 @@
 
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include "api/rtc_event_log/rtc_event_log.h"
+#include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "modules/audio_mixer/audio_mixer_impl.h"
-#include "modules/congestion_controller/goog_cc/test/goog_cc_printer.h"
 
 namespace webrtc {
 namespace test {
@@ -28,14 +29,15 @@ const uint32_t kVideoRecvLocalSsrcs[kNumSsrcs] = {0xDAB001, 0xDAB002, 0xDAB003,
 const uint32_t kAudioSendSsrc = 0xDEADBEEF;
 const uint32_t kReceiverLocalAudioSsrc = 0x1234567;
 
-const char* kPriorityStreamId = "priority-track";
+constexpr int kEventLogOutputIntervalMs = 5000;
 
-CallClientFakeAudio InitAudio() {
+CallClientFakeAudio InitAudio(TimeController* time_controller) {
   CallClientFakeAudio setup;
   auto capturer = TestAudioDeviceModule::CreatePulsedNoiseCapturer(256, 48000);
   auto renderer = TestAudioDeviceModule::CreateDiscardRenderer(48000);
-  setup.fake_audio_device = TestAudioDeviceModule::CreateTestAudioDeviceModule(
-      std::move(capturer), std::move(renderer), 1.f);
+  setup.fake_audio_device = TestAudioDeviceModule::Create(
+      time_controller->GetTaskQueueFactory(), std::move(capturer),
+      std::move(renderer), 1.f);
   setup.apm = AudioProcessingBuilder().Create();
   setup.fake_audio_device->Init();
   AudioState::Config audio_state_config;
@@ -48,91 +50,145 @@ CallClientFakeAudio InitAudio() {
   return setup;
 }
 
-Call* CreateCall(CallClientConfig config,
-                 LoggingNetworkControllerFactory* network_controller_factory_,
+Call* CreateCall(TimeController* time_controller,
+                 RtcEventLog* event_log,
+                 CallClientConfig config,
+                 LoggingNetworkControllerFactory* network_controller_factory,
                  rtc::scoped_refptr<AudioState> audio_state) {
-  CallConfig call_config(network_controller_factory_->GetEventLog());
+  CallConfig call_config(event_log);
   call_config.bitrate_config.max_bitrate_bps =
       config.transport.rates.max_rate.bps_or(-1);
   call_config.bitrate_config.min_bitrate_bps =
       config.transport.rates.min_rate.bps();
   call_config.bitrate_config.start_bitrate_bps =
       config.transport.rates.start_rate.bps();
-  call_config.network_controller_factory = network_controller_factory_;
+  call_config.task_queue_factory = time_controller->GetTaskQueueFactory();
+  call_config.network_controller_factory = network_controller_factory;
   call_config.audio_state = audio_state;
-  return Call::Create(call_config);
+  return Call::Create(call_config, time_controller->GetClock(),
+                      time_controller->CreateProcessThread("CallModules"),
+                      time_controller->CreateProcessThread("Pacer"));
 }
+
+std::unique_ptr<RtcEventLog> CreateEventLog(
+    TaskQueueFactory* task_queue_factory,
+    LogWriterFactoryInterface* log_writer_factory) {
+  if (!log_writer_factory) {
+    return std::make_unique<RtcEventLogNull>();
+  }
+  auto event_log = RtcEventLogFactory(task_queue_factory)
+                       .CreateRtcEventLog(RtcEventLog::EncodingType::NewFormat);
+  bool success = event_log->StartLogging(log_writer_factory->Create(".rtc.dat"),
+                                         kEventLogOutputIntervalMs);
+  RTC_CHECK(success);
+  return event_log;
+}
+}  // namespace
+NetworkControleUpdateCache::NetworkControleUpdateCache(
+    std::unique_ptr<NetworkControllerInterface> controller)
+    : controller_(std::move(controller)) {}
+NetworkControlUpdate NetworkControleUpdateCache::OnNetworkAvailability(
+    NetworkAvailability msg) {
+  return Update(controller_->OnNetworkAvailability(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnNetworkRouteChange(
+    NetworkRouteChange msg) {
+  return Update(controller_->OnNetworkRouteChange(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnProcessInterval(
+    ProcessInterval msg) {
+  return Update(controller_->OnProcessInterval(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnRemoteBitrateReport(
+    RemoteBitrateReport msg) {
+  return Update(controller_->OnRemoteBitrateReport(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnRoundTripTimeUpdate(
+    RoundTripTimeUpdate msg) {
+  return Update(controller_->OnRoundTripTimeUpdate(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnSentPacket(SentPacket msg) {
+  return Update(controller_->OnSentPacket(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnReceivedPacket(
+    ReceivedPacket msg) {
+  return Update(controller_->OnReceivedPacket(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnStreamsConfig(
+    StreamsConfig msg) {
+  return Update(controller_->OnStreamsConfig(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnTargetRateConstraints(
+    TargetRateConstraints msg) {
+  return Update(controller_->OnTargetRateConstraints(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnTransportLossReport(
+    TransportLossReport msg) {
+  return Update(controller_->OnTransportLossReport(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnTransportPacketsFeedback(
+    TransportPacketsFeedback msg) {
+  return Update(controller_->OnTransportPacketsFeedback(msg));
+}
+NetworkControlUpdate NetworkControleUpdateCache::OnNetworkStateEstimate(
+    NetworkStateEstimate msg) {
+  return Update(controller_->OnNetworkStateEstimate(msg));
+}
+
+NetworkControlUpdate NetworkControleUpdateCache::update_state() const {
+  return update_state_;
+}
+NetworkControlUpdate NetworkControleUpdateCache::Update(
+    NetworkControlUpdate update) {
+  if (update.target_rate)
+    update_state_.target_rate = update.target_rate;
+  if (update.pacer_config)
+    update_state_.pacer_config = update.pacer_config;
+  if (update.congestion_window)
+    update_state_.congestion_window = update.congestion_window;
+  if (!update.probe_cluster_configs.empty())
+    update_state_.probe_cluster_configs = update.probe_cluster_configs;
+  return update;
 }
 
 LoggingNetworkControllerFactory::LoggingNetworkControllerFactory(
     LogWriterFactoryInterface* log_writer_factory,
     TransportControllerConfig config) {
-  std::unique_ptr<RtcEventLogOutput> cc_out;
-  if (!log_writer_factory) {
-    event_log_ = RtcEventLog::CreateNull();
+  if (config.cc_factory) {
+    cc_factory_ = config.cc_factory;
+    if (log_writer_factory)
+      RTC_LOG(LS_WARNING)
+          << "Can't log controller state for injected network controllers";
   } else {
-    event_log_ = RtcEventLog::Create(RtcEventLog::EncodingType::Legacy);
-    bool success = event_log_->StartLogging(
-        log_writer_factory->Create(".rtc.dat"), RtcEventLog::kImmediateOutput);
-    RTC_CHECK(success);
-    cc_out = log_writer_factory->Create(".cc_state.txt");
-  }
-  switch (config.cc) {
-    case TransportControllerConfig::CongestionController::kGoogCc:
-      if (cc_out) {
-        auto goog_printer = absl::make_unique<GoogCcStatePrinter>();
-        owned_cc_factory_.reset(
-            new GoogCcDebugFactory(event_log_.get(), goog_printer.get()));
-        cc_printer_.reset(new ControlStatePrinter(std::move(cc_out),
-                                                  std::move(goog_printer)));
-      } else {
-        owned_cc_factory_.reset(
-            new GoogCcNetworkControllerFactory(event_log_.get()));
-      }
-      break;
-    case TransportControllerConfig::CongestionController::kGoogCcFeedback:
-      if (cc_out) {
-        auto goog_printer = absl::make_unique<GoogCcStatePrinter>();
-        owned_cc_factory_.reset(new GoogCcFeedbackDebugFactory(
-            event_log_.get(), goog_printer.get()));
-        cc_printer_.reset(new ControlStatePrinter(std::move(cc_out),
-                                                  std::move(goog_printer)));
-      } else {
-        owned_cc_factory_.reset(
-            new GoogCcFeedbackNetworkControllerFactory(event_log_.get()));
-      }
-      break;
-    case TransportControllerConfig::CongestionController::kInjected:
-      cc_factory_ = config.cc_factory;
-      if (cc_out)
-        RTC_LOG(LS_WARNING)
-            << "Can't log controller state for injected network controllers";
-      break;
-  }
-  if (cc_printer_)
-    cc_printer_->PrintHeaders();
-  if (owned_cc_factory_) {
-    RTC_DCHECK(!cc_factory_);
-    cc_factory_ = owned_cc_factory_.get();
+    if (log_writer_factory) {
+      goog_cc_factory_.AttachWriter(
+          log_writer_factory->Create(".cc_state.txt"));
+      print_cc_state_ = true;
+    }
+    cc_factory_ = &goog_cc_factory_;
   }
 }
 
-LoggingNetworkControllerFactory::~LoggingNetworkControllerFactory() {
-}
+LoggingNetworkControllerFactory::~LoggingNetworkControllerFactory() {}
 
 void LoggingNetworkControllerFactory::LogCongestionControllerStats(
     Timestamp at_time) {
-  if (cc_printer_)
-    cc_printer_->PrintState(at_time);
+  if (print_cc_state_)
+    goog_cc_factory_.PrintState(at_time);
 }
 
-RtcEventLog* LoggingNetworkControllerFactory::GetEventLog() const {
-  return event_log_.get();
+NetworkControlUpdate LoggingNetworkControllerFactory::GetUpdate() const {
+  if (last_controller_)
+    return last_controller_->update_state();
+  return NetworkControlUpdate();
 }
 
 std::unique_ptr<NetworkControllerInterface>
 LoggingNetworkControllerFactory::Create(NetworkControllerConfig config) {
-  return cc_factory_->Create(config);
+  auto controller =
+      std::make_unique<NetworkControleUpdateCache>(cc_factory_->Create(config));
+  last_controller_ = controller.get();
+  return controller;
 }
 
 TimeDelta LoggingNetworkControllerFactory::GetProcessInterval() const {
@@ -140,21 +196,37 @@ TimeDelta LoggingNetworkControllerFactory::GetProcessInterval() const {
 }
 
 CallClient::CallClient(
-    Clock* clock,
+    TimeController* time_controller,
     std::unique_ptr<LogWriterFactoryInterface> log_writer_factory,
     CallClientConfig config)
-    : clock_(clock),
+    : time_controller_(time_controller),
+      clock_(time_controller->GetClock()),
       log_writer_factory_(std::move(log_writer_factory)),
       network_controller_factory_(log_writer_factory_.get(), config.transport),
-      fake_audio_setup_(InitAudio()),
-      call_(CreateCall(config,
-                       &network_controller_factory_,
-                       fake_audio_setup_.audio_state)),
-      transport_(clock_, call_.get()),
-      header_parser_(RtpHeaderParser::Create()) {}
+      header_parser_(RtpHeaderParser::CreateForTest()),
+      task_queue_(time_controller->GetTaskQueueFactory()->CreateTaskQueue(
+          "CallClient",
+          TaskQueueFactory::Priority::NORMAL)) {
+  SendTask([this, config] {
+    event_log_ = CreateEventLog(time_controller_->GetTaskQueueFactory(),
+                                log_writer_factory_.get());
+    fake_audio_setup_ = InitAudio(time_controller_);
+    call_.reset(CreateCall(time_controller_, event_log_.get(), config,
+                           &network_controller_factory_,
+                           fake_audio_setup_.audio_state));
+    transport_ = std::make_unique<NetworkNodeTransport>(clock_, call_.get());
+  });
+}
 
 CallClient::~CallClient() {
-  delete header_parser_;
+  SendTask([&] {
+    call_.reset();
+    fake_audio_setup_ = {};
+    rtc::Event done;
+    event_log_->StopLogging([&done] { done.Set(); });
+    done.Wait(rtc::Event::kForever);
+    event_log_.reset();
+  });
 }
 
 ColumnPrinter CallClient::StatsPrinter() {
@@ -169,29 +241,43 @@ ColumnPrinter CallClient::StatsPrinter() {
 }
 
 Call::Stats CallClient::GetStats() {
-  return call_->GetStats();
+  // This call needs to be made on the thread that |call_| was constructed on.
+  Call::Stats stats;
+  SendTask([this, &stats] { stats = call_->GetStats(); });
+  return stats;
+}
+
+DataRate CallClient::target_rate() const {
+  return network_controller_factory_.GetUpdate().target_rate->target_rate;
+}
+
+DataRate CallClient::stable_target_rate() const {
+  return network_controller_factory_.GetUpdate()
+      .target_rate->stable_target_rate;
+}
+
+DataRate CallClient::padding_rate() const {
+  return network_controller_factory_.GetUpdate().pacer_config->pad_rate();
 }
 
 void CallClient::OnPacketReceived(EmulatedIpPacket packet) {
   // Removes added overhead before delivering packet to sender.
-  RTC_DCHECK_GE(packet.data.size(),
-                route_overhead_.at(packet.dest_endpoint_id).bytes());
-  packet.data.SetSize(packet.data.size() -
-                      route_overhead_.at(packet.dest_endpoint_id).bytes());
+  size_t size =
+      packet.data.size() - route_overhead_.at(packet.to.ipaddr()).bytes();
+  RTC_DCHECK_GE(size, 0);
+  packet.data.SetSize(size);
 
   MediaType media_type = MediaType::ANY;
   if (!RtpHeaderParser::IsRtcp(packet.cdata(), packet.data.size())) {
-    RTPHeader header;
-    bool success =
-        header_parser_->Parse(packet.cdata(), packet.data.size(), &header);
-    if (!success) {
-      RTC_DLOG(LS_ERROR) << "Failed to parse RTP header of packet";
-      return;
-    }
-    media_type = ssrc_media_types_[header.ssrc];
+    auto ssrc = RtpHeaderParser::GetSsrc(packet.cdata(), packet.data.size());
+    RTC_CHECK(ssrc.has_value());
+    media_type = ssrc_media_types_[*ssrc];
   }
-  call_->Receiver()->DeliverPacket(media_type, packet.data,
-                                   packet.arrival_time.us());
+  task_queue_.PostTask(
+      [call = call_.get(), media_type, packet = std::move(packet)]() mutable {
+        call->Receiver()->DeliverPacket(media_type, packet.data,
+                                        packet.arrival_time.us());
+      });
 }
 
 std::unique_ptr<RtcEventLogOutput> CallClient::GetLogWriter(std::string name) {
@@ -227,14 +313,14 @@ uint32_t CallClient::GetNextRtxSsrc() {
   return kSendRtxSsrcs[next_rtx_ssrc_index_++];
 }
 
-std::string CallClient::GetNextPriorityId() {
-  RTC_CHECK_LT(next_priority_index_++, 1);
-  return kPriorityStreamId;
-}
-
 void CallClient::AddExtensions(std::vector<RtpExtension> extensions) {
   for (const auto& extension : extensions)
     header_parser_->RegisterRtpHeaderExtension(extension);
+}
+
+void CallClient::SendTask(std::function<void()> task) {
+  time_controller_->InvokeWithControlledYield(
+      [&] { task_queue_.SendTask(std::move(task), RTC_FROM_HERE); });
 }
 
 CallClientPair::~CallClientPair() = default;

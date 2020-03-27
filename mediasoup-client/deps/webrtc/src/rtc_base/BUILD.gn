@@ -19,27 +19,6 @@ config("rtc_base_chromium_config") {
   defines = [ "NO_MAIN_THREAD_WRAPPING" ]
 }
 
-config("rtc_base_all_dependent_config") {
-  if (is_ios) {
-    libs = [
-      "CFNetwork.framework",
-      "Foundation.framework",
-      "Security.framework",
-      "SystemConfiguration.framework",
-      "UIKit.framework",
-    ]
-  }
-  if (is_mac) {
-    libs = [
-      "Cocoa.framework",
-      "Foundation.framework",
-      "IOKit.framework",
-      "Security.framework",
-      "SystemConfiguration.framework",
-    ]
-  }
-}
-
 if (!rtc_build_ssl) {
   config("external_ssl_library") {
     assert(rtc_ssl_root != "",
@@ -49,7 +28,6 @@ if (!rtc_build_ssl) {
 }
 
 rtc_source_set("protobuf_utils") {
-  visibility = [ "*" ]
   sources = [
     "protobuf_utils.h",
   ]
@@ -76,25 +54,21 @@ rtc_source_set("rtc_base_approved") {
     ":checks",
     ":rtc_task_queue",
     ":safe_compare",
-    ":safe_minmax",
     ":type_traits",
     "../api:array_view",
     "../api:scoped_refptr",
-    "../system_wrappers:field_trial",
-    "experiments:field_trial_parser",
     "system:arch",
+    "system:rtc_export",
     "system:unused",
     "third_party/base64",
-    "//third_party/abseil-cpp/absl/memory",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
+  public_deps = []  # no-presubmit-check TODO(webrtc:8603)
 
   sources = [
     "bind.h",
     "bit_buffer.cc",
     "bit_buffer.h",
-    "bitrate_allocation_strategy.cc",
-    "bitrate_allocation_strategy.h",
     "buffer.h",
     "buffer_queue.cc",
     "buffer_queue.h",
@@ -105,9 +79,6 @@ rtc_source_set("rtc_base_approved") {
     "copy_on_write_buffer.h",
     "event_tracer.cc",
     "event_tracer.h",
-    "flags.cc",
-    "flags.h",
-    "function_view.h",
     "ignore_wundef.h",
     "location.cc",
     "location.h",
@@ -119,8 +90,6 @@ rtc_source_set("rtc_base_approved") {
     "numerics/sample_counter.cc",
     "numerics/sample_counter.h",
     "one_time_event.h",
-    "platform_file.cc",
-    "platform_file.h",
     "race_checker.cc",
     "race_checker.h",
     "random.cc",
@@ -149,14 +118,14 @@ rtc_source_set("rtc_base_approved") {
   }
 
   if (is_nacl) {
-    deps += [ "//native_client_sdk/src/libraries/nacl_io" ]
+    public_deps += [ "//native_client_sdk/src/libraries/nacl_io" ]  # no-presubmit-check TODO(webrtc:8603)
   }
 
   if (is_android) {
     libs = [ "log" ]
   }
 
-  public_deps = [  # no-presubmit-check TODO(webrtc:8603)
+  public_deps += [  # no-presubmit-check TODO(webrtc:8603)
     ":atomicops",
     ":criticalsection",
     ":logging",
@@ -227,7 +196,7 @@ rtc_source_set("platform_thread") {
     ":rtc_task_queue_libevent",
     ":rtc_task_queue_win",
     ":rtc_task_queue_stdlib",
-    ":sequenced_task_checker",
+    "synchronization:sequence_checker",
   ]
   sources = [
     "platform_thread.cc",
@@ -246,21 +215,25 @@ rtc_source_set("platform_thread") {
 }
 
 rtc_source_set("rtc_event") {
-  deps = [
-    ":checks",
-  ]
-
   if (build_with_chromium) {
-    # Dependency on chromium's waitable_event (in //base).
-    deps += [ "//base:base" ]
     sources = [
       "../../webrtc_overrides/rtc_base/event.cc",
       "../../webrtc_overrides/rtc_base/event.h",
+    ]
+    deps = [
+      ":checks",
+      "//base",  # Dependency on chromium's waitable_event.
     ]
   } else {
     sources = [
       "event.cc",
       "event.h",
+    ]
+    deps = [
+      ":checks",
+      "synchronization:yield_policy",
+      "system:warn_current_thread_is_deadlocked",
+      "//third_party/abseil-cpp/absl/types:optional",
     ]
   }
 }
@@ -275,12 +248,14 @@ rtc_source_set("logging") {
     ":platform_thread_types",
     ":stringutils",
     ":timeutils",
+    "//third_party/abseil-cpp/absl/base:core_headers",
+    "//third_party/abseil-cpp/absl/meta:type_traits",
     "//third_party/abseil-cpp/absl/strings",
   ]
 
   if (build_with_chromium) {
     # Dependency on chromium's logging (in //base).
-    deps += [ "//base:base" ]
+    deps += [ "//base" ]
     sources = [
       "../../webrtc_overrides/rtc_base/logging.cc",
       "../../webrtc_overrides/rtc_base/logging.h",
@@ -297,7 +272,7 @@ rtc_source_set("logging") {
     deps += [ "system:inline" ]
 
     if (is_mac) {
-      deps += [ ":logging_mac" ]
+      libs += [ "Foundation.framework" ]
     }
 
     # logging.h needs the deprecation header while downstream projects are
@@ -313,14 +288,10 @@ rtc_source_set("logging") {
 rtc_source_set("thread_checker") {
   sources = [
     "thread_checker.h",
-    "thread_checker_impl.cc",
-    "thread_checker_impl.h",
   ]
   deps = [
-    ":checks",
-    ":criticalsection",
-    ":macromagic",
-    ":platform_thread_types",
+    ":deprecation",
+    "synchronization:sequence_checker",
   ]
 }
 
@@ -341,6 +312,9 @@ rtc_source_set("checks") {
   deps = [
     ":safe_compare",
     "system:inline",
+    "system:rtc_export",
+    "//third_party/abseil-cpp/absl/meta:type_traits",
+    "//third_party/abseil-cpp/absl/strings",
   ]
   if (is_android) {
     libs += [ "log" ]
@@ -365,6 +339,16 @@ rtc_source_set("sanitizer") {
   ]
   deps = [
     "//third_party/abseil-cpp/absl/meta:type_traits",
+  ]
+}
+
+rtc_source_set("divide_round") {
+  sources = [
+    "numerics/divide_round.h",
+  ]
+  deps = [
+    ":checks",
+    ":safe_compare",
   ]
 }
 
@@ -408,7 +392,12 @@ rtc_source_set("timeutils") {
     ":checks",
     ":safe_conversions",
     ":stringutils",
+    "system:rtc_export",
   ]
+  libs = []
+  if (is_win) {
+    libs += [ "winmm.lib" ]
+  }
 }
 
 rtc_source_set("stringutils") {
@@ -427,7 +416,7 @@ rtc_source_set("stringutils") {
     ":macromagic",
     ":safe_minmax",
     "../api:array_view",
-    "//third_party/abseil-cpp/absl/strings:strings",
+    "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
@@ -455,17 +444,6 @@ rtc_source_set("deprecation") {
   ]
 }
 
-if (is_mac && !build_with_chromium) {
-  rtc_source_set("logging_mac") {
-    visibility = [ ":logging" ]
-    libs = [ "Foundation.framework" ]
-    sources = [
-      "logging_mac.h",
-      "logging_mac.mm",
-    ]
-  }
-}
-
 rtc_source_set("rtc_task_queue") {
   visibility = [ "*" ]
   sources = [
@@ -475,21 +453,10 @@ rtc_source_set("rtc_task_queue") {
   deps = [
     ":macromagic",
     "../api/task_queue",
-    "../api/task_queue:global_task_queue_factory",
     "system:rtc_export",
     "task_utils:to_queued_task",
     "//third_party/abseil-cpp/absl/memory",
   ]
-
-  # TODO(danilchap): Move this conditional dependency to global_task_queue_factory
-  # after removing task_queue_impl -> global_task_queue_factory dependency in chromium.
-  if (build_with_chromium) {
-    deps += [ "../../webrtc_overrides:task_queue_impl" ]
-  }
-}
-
-rtc_source_set("rtc_task_queue_api") {
-  visibility = [ "*" ]
 }
 
 if (rtc_enable_libevent) {
@@ -509,7 +476,6 @@ if (rtc_enable_libevent) {
       ":safe_conversions",
       ":timeutils",
       "../api/task_queue",
-      "//third_party/abseil-cpp/absl/memory",
       "//third_party/abseil-cpp/absl/strings",
     ]
     if (rtc_build_libevent) {
@@ -529,7 +495,6 @@ if (is_mac || is_ios) {
       ":checks",
       ":logging",
       "../api/task_queue",
-      "//third_party/abseil-cpp/absl/memory",
       "//third_party/abseil-cpp/absl/strings",
     ]
   }
@@ -552,14 +517,12 @@ if (is_win) {
       ":safe_conversions",
       ":timeutils",
       "../api/task_queue",
-      "//third_party/abseil-cpp/absl/memory",
       "//third_party/abseil-cpp/absl/strings",
     ]
   }
 }
 
 rtc_source_set("rtc_task_queue_stdlib") {
-  visibility = [ "../api/task_queue:default_task_queue_factory" ]
   sources = [
     "task_queue_stdlib.cc",
     "task_queue_stdlib.h",
@@ -574,23 +537,7 @@ rtc_source_set("rtc_task_queue_stdlib") {
     ":safe_conversions",
     ":timeutils",
     "../api/task_queue",
-    "//third_party/abseil-cpp/absl/memory",
     "//third_party/abseil-cpp/absl/strings",
-  ]
-}
-
-rtc_source_set("sequenced_task_checker") {
-  sources = [
-    "sequenced_task_checker.h",
-    "sequenced_task_checker_impl.cc",
-    "sequenced_task_checker_impl.h",
-  ]
-  deps = [
-    ":checks",
-    ":criticalsection",
-    ":macromagic",
-    ":thread_checker",
-    "../api/task_queue",
   ]
 }
 
@@ -601,8 +548,8 @@ rtc_static_library("weak_ptr") {
   ]
   deps = [
     ":refcount",
-    ":sequenced_task_checker",
     "../api:scoped_refptr",
+    "synchronization:sequence_checker",
   ]
 }
 
@@ -610,10 +557,12 @@ rtc_static_library("rtc_numerics") {
   sources = [
     "numerics/exp_filter.cc",
     "numerics/exp_filter.h",
+    "numerics/math_utils.h",
     "numerics/moving_average.cc",
     "numerics/moving_average.h",
     "numerics/moving_median_filter.h",
     "numerics/percentile_filter.h",
+    "numerics/running_statistics.h",
     "numerics/samples_stats_counter.cc",
     "numerics/samples_stats_counter.h",
     "numerics/sequence_number_util.h",
@@ -622,11 +571,29 @@ rtc_static_library("rtc_numerics") {
     ":checks",
     ":rtc_base_approved",
     ":safe_compare",
+    "../api:array_view",
+    "../api/units:timestamp",
+    "//third_party/abseil-cpp/absl/algorithm:container",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
 
+config("rtc_json_suppressions") {
+  if (!is_win || is_clang) {
+    cflags_cc = [
+      # TODO(bugs.webrtc.org/10770): Update jsoncpp API usage and remove
+      # -Wno-deprecated-declarations.
+      "-Wno-deprecated-declarations",
+
+      # TODO(bugs.webrtc.org/10814): Remove -Wno-undef as soon as it get
+      # removed upstream.
+      "-Wno-undef",
+    ]
+  }
+}
+
 rtc_source_set("rtc_json") {
+  public_configs = [ ":rtc_json_suppressions" ]
   defines = []
   sources = [
     "strings/json.cc",
@@ -794,13 +761,14 @@ rtc_static_library("rtc_base") {
   deps = [
     ":checks",
     ":stringutils",
-    "..:webrtc_common",
     "../api:array_view",
     "../api:scoped_refptr",
     "network:sent_packet",
     "system:file_wrapper",
+    "system:rtc_export",
     "third_party/base64",
     "third_party/sigslot",
+    "//third_party/abseil-cpp/absl/algorithm:container",
     "//third_party/abseil-cpp/absl/memory",
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
@@ -809,8 +777,6 @@ rtc_static_library("rtc_base") {
     ":rtc_base_approved",
   ]
   public_configs = []
-
-  all_dependent_configs = [ ":rtc_base_all_dependent_config" ]
 
   sources = [
     "async_invoker.cc",
@@ -835,7 +801,6 @@ rtc_static_library("rtc_base") {
     "dscp.h",
     "file_rotating_stream.cc",
     "file_rotating_stream.h",
-    "gunit_prod.h",
     "helpers.cc",
     "helpers.h",
     "http_common.cc",
@@ -843,8 +808,6 @@ rtc_static_library("rtc_base") {
     "ip_address.cc",
     "ip_address.h",
     "keep_ref_until_done.h",
-    "key_derivation.cc",
-    "key_derivation.h",
     "mdns_responder_interface.h",
     "message_digest.cc",
     "message_digest.h",
@@ -873,8 +836,6 @@ rtc_static_library("rtc_base") {
     "openssl_digest.h",
     "openssl_identity.cc",
     "openssl_identity.h",
-    "openssl_key_derivation_hkdf.cc",
-    "openssl_key_derivation_hkdf.h",
     "openssl_session_cache.cc",
     "openssl_session_cache.h",
     "openssl_stream_adapter.cc",
@@ -933,6 +894,8 @@ rtc_static_library("rtc_base") {
       "ssl_roots.h",
     ]
 
+    deps += [ ":rtc_numerics" ]
+
     if (is_win) {
       sources += [ "win32_socket_init.h" ]
       if (current_os != "winuwp") {
@@ -967,17 +930,6 @@ rtc_static_library("rtc_base") {
     deps += [ "system:cocoa_threading" ]
   }
 
-  if (rtc_use_x11) {
-    libs += [
-      "dl",
-      "rt",
-      "Xext",
-      "X11",
-      "Xcomposite",
-      "Xrender",
-    ]
-  }
-
   if (is_linux) {
     libs += [
       "dl",
@@ -985,10 +937,13 @@ rtc_static_library("rtc_base") {
     ]
   }
 
-  if (is_mac) {
-    sources += [
-      "mac_utils.cc",
-      "mac_utils.h",
+  if (is_ios) {
+    libs += [
+      "CFNetwork.framework",
+      "Foundation.framework",
+      "Security.framework",
+      "SystemConfiguration.framework",
+      "UIKit.framework",
     ]
   }
 
@@ -1017,14 +972,13 @@ rtc_static_library("rtc_base") {
   }
 
   if (is_nacl) {
-    deps += [ "//native_client_sdk/src/libraries/nacl_io" ]
+    public_deps += [ "//native_client_sdk/src/libraries/nacl_io" ]  # no-presubmit-check TODO(webrtc:8603)
     defines += [ "timezone=_timezone" ]
     sources -= [ "ifaddrs_converter.cc" ]
   }
 }
 
 rtc_source_set("gtest_prod") {
-  visibility = [ "*" ]
   sources = [
     "gtest_prod_util.h",
   ]
@@ -1059,7 +1013,6 @@ rtc_source_set("testclient") {
     ":rtc_base",
     ":rtc_base_tests_utils",
     ":timeutils",
-    "//third_party/abseil-cpp/absl/memory",
   ]
 }
 
@@ -1091,7 +1044,6 @@ rtc_source_set("rtc_base_tests_utils") {
     "server_socket_adapters.cc",
     "server_socket_adapters.h",
     "sigslot_tester.h",
-    "sigslottester.h.pump",
     "socket_stream.cc",
     "socket_stream.h",
     "test_base64.h",
@@ -1107,13 +1059,15 @@ rtc_source_set("rtc_base_tests_utils") {
     ":checks",
     ":rtc_base",
     "../api/units:time_delta",
+    "../api/units:timestamp",
+    "memory:fifo_buffer",
     "third_party/sigslot",
+    "//third_party/abseil-cpp/absl/algorithm:container",
     "//third_party/abseil-cpp/absl/memory",
   ]
 }
 
-rtc_source_set("rtc_task_queue_for_test") {
-  visibility = [ "*" ]
+rtc_source_set("task_queue_for_test") {
   testonly = true
 
   sources = [
@@ -1122,9 +1076,14 @@ rtc_source_set("rtc_task_queue_for_test") {
   ]
   deps = [
     ":checks",
+    ":macromagic",
     ":rtc_base_approved",
+    ":rtc_event",
     ":rtc_task_queue",
+    "../api/task_queue",
+    "../api/task_queue:default_task_queue_factory",
     "task_utils:to_queued_task",
+    "//third_party/abseil-cpp/absl/strings",
   ]
 }
 
@@ -1140,27 +1099,6 @@ if (rtc_include_tests) {
       ":rtc_base_tests_utils",
       "../test:test_support",
       "third_party/sigslot",
-    ]
-  }
-
-  rtc_source_set("rtc_base_tests_main") {
-    testonly = true
-    sources = [
-      "unittest_main.cc",
-    ]
-    deps = [
-      ":gunit_helpers",
-      ":rtc_base",
-      ":rtc_base_approved",
-      ":rtc_base_tests_utils",
-      "../system_wrappers:field_trial",
-      "../system_wrappers:metrics",
-      "../test:field_trial",
-      "../test:test_support",
-    ]
-
-    public_deps = [
-      "//testing/gtest",
     ]
   }
 
@@ -1180,13 +1118,13 @@ if (rtc_include_tests) {
       ":checks",
       ":gunit_helpers",
       ":rtc_base",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":testclient",
-      "../system_wrappers:system_wrappers",
+      "../system_wrappers",
       "../test:fileutils",
+      "../test:test_main",
       "../test:test_support",
-      "third_party/sigslot:sigslot",
+      "third_party/sigslot",
       "//testing/gtest",
       "//third_party/abseil-cpp/absl/memory",
     ]
@@ -1202,7 +1140,6 @@ if (rtc_include_tests) {
       "base64_unittest.cc",
       "bind_unittest.cc",
       "bit_buffer_unittest.cc",
-      "bitrate_allocation_strategy_unittest.cc",
       "buffer_queue_unittest.cc",
       "buffer_unittest.cc",
       "byte_buffer_unittest.cc",
@@ -1211,8 +1148,8 @@ if (rtc_include_tests) {
       "critical_section_unittest.cc",
       "event_tracer_unittest.cc",
       "event_unittest.cc",
-      "function_view_unittest.cc",
       "logging_unittest.cc",
+      "numerics/divide_round_unittest.cc",
       "numerics/histogram_percentile_counter_unittest.cc",
       "numerics/mod_ops_unittest.cc",
       "numerics/moving_max_counter_unittest.cc",
@@ -1220,7 +1157,6 @@ if (rtc_include_tests) {
       "numerics/safe_minmax_unittest.cc",
       "numerics/sample_counter_unittest.cc",
       "one_time_event_unittest.cc",
-      "platform_file_unittest.cc",
       "platform_thread_unittest.cc",
       "random_unittest.cc",
       "rate_limiter_unittest.cc",
@@ -1246,11 +1182,11 @@ if (rtc_include_tests) {
     }
     deps = [
       ":checks",
+      ":divide_round",
       ":gunit_helpers",
       ":rate_limiter",
       ":rtc_base",
       ":rtc_base_approved",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_task_queue",
       ":safe_compare",
@@ -1261,18 +1197,19 @@ if (rtc_include_tests) {
       "../api:array_view",
       "../api:scoped_refptr",
       "../api/units:time_delta",
-      "../system_wrappers:system_wrappers",
+      "../system_wrappers",
       "../test:fileutils",
+      "../test:test_main",
       "../test:test_support",
       "memory:unittests",
       "third_party/base64",
-      "third_party/sigslot:sigslot",
+      "third_party/sigslot",
+      "//third_party/abseil-cpp/absl/base:core_headers",
       "//third_party/abseil-cpp/absl/memory",
     ]
   }
 
   rtc_source_set("rtc_task_queue_unittests") {
-    visibility = [ "*" ]
     testonly = true
 
     sources = [
@@ -1281,27 +1218,12 @@ if (rtc_include_tests) {
     deps = [
       ":gunit_helpers",
       ":rtc_base_approved",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_task_queue",
+      ":task_queue_for_test",
+      "../test:test_main",
       "../test:test_support",
       "//third_party/abseil-cpp/absl/memory",
-    ]
-  }
-
-  rtc_source_set("sequenced_task_checker_unittests") {
-    testonly = true
-
-    sources = [
-      "sequenced_task_checker_unittest.cc",
-    ]
-    deps = [
-      ":checks",
-      ":rtc_base_approved",
-      ":rtc_base_tests_main",
-      ":rtc_task_queue",
-      ":sequenced_task_checker",
-      "../test:test_support",
     ]
   }
 
@@ -1314,13 +1236,12 @@ if (rtc_include_tests) {
     deps = [
       ":gunit_helpers",
       ":rtc_base_approved",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_event",
-      ":rtc_task_queue",
+      ":task_queue_for_test",
       ":weak_ptr",
+      "../test:test_main",
       "../test:test_support",
-      "//third_party/abseil-cpp/absl/memory",
     ]
   }
 
@@ -1332,14 +1253,16 @@ if (rtc_include_tests) {
       "numerics/moving_average_unittest.cc",
       "numerics/moving_median_filter_unittest.cc",
       "numerics/percentile_filter_unittest.cc",
+      "numerics/running_statistics_unittest.cc",
       "numerics/samples_stats_counter_unittest.cc",
       "numerics/sequence_number_util_unittest.cc",
     ]
     deps = [
       ":rtc_base_approved",
-      ":rtc_base_tests_main",
       ":rtc_numerics",
+      "../test:test_main",
       "../test:test_support",
+      "//third_party/abseil-cpp/absl/algorithm:container",
     ]
   }
 
@@ -1351,9 +1274,9 @@ if (rtc_include_tests) {
     ]
     deps = [
       ":gunit_helpers",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_json",
+      "../test:test_main",
       "../test:test_support",
     ]
   }
@@ -1366,6 +1289,7 @@ if (rtc_include_tests) {
       "callback_unittest.cc",
       "crc32_unittest.cc",
       "data_rate_limiter_unittest.cc",
+      "fake_clock_unittest.cc",
       "helpers_unittest.cc",
       "ip_address_unittest.cc",
       "memory_usage_unittest.cc",
@@ -1379,7 +1303,6 @@ if (rtc_include_tests) {
       "rtc_certificate_unittest.cc",
       "signal_thread_unittest.cc",
       "sigslot_tester_unittest.cc",
-      "stream_unittest.cc",
       "test_client_unittest.cc",
       "thread_unittest.cc",
       "unique_id_generator_unittest.cc",
@@ -1393,7 +1316,6 @@ if (rtc_include_tests) {
     if (is_posix || is_fuchsia) {
       sources += [
         "openssl_adapter_unittest.cc",
-        "openssl_key_derivation_hkdf_unittest.cc",
         "openssl_session_cache_unittest.cc",
         "openssl_utility_unittest.cc",
         "ssl_adapter_unittest.cc",
@@ -1404,15 +1326,19 @@ if (rtc_include_tests) {
     deps = [
       ":checks",
       ":gunit_helpers",
-      ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":stringutils",
       ":testclient",
       "../api:array_view",
       "../test:fileutils",
+      "../test:test_main",
       "../test:test_support",
+      "memory:fifo_buffer",
+      "synchronization:synchronization_unittests",
       "third_party/sigslot",
+      "//third_party/abseil-cpp/absl/algorithm:container",
       "//third_party/abseil-cpp/absl/memory",
+      "//third_party/abseil-cpp/absl/strings",
       "//third_party/abseil-cpp/absl/types:optional",
     ]
     public_deps = [
@@ -1431,6 +1357,7 @@ if (rtc_include_tests) {
 
 if (is_android) {
   rtc_android_library("base_java") {
+    visibility = [ "*" ]
     java_files = [
       "java/src/org/webrtc/ContextUtils.java",
       "java/src/org/webrtc/Loggable.java",
@@ -1439,7 +1366,7 @@ if (is_android) {
       "java/src/org/webrtc/ThreadUtils.java",
     ]
     deps = [
-      "//third_party/android_deps:android_support_annotations_java",
+      "//third_party/android_deps:com_android_support_support_annotations_java",
     ]
   }
 }

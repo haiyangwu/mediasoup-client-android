@@ -11,6 +11,7 @@
 #include "modules/desktop_capture/fallback_desktop_capturer_wrapper.h"
 
 #include <stddef.h>
+
 #include <utility>
 
 #include "rtc_base/checks.h"
@@ -63,7 +64,7 @@ SharedMemoryFactoryProxy::~SharedMemoryFactoryProxy() = default;
 
 std::unique_ptr<SharedMemory> SharedMemoryFactoryProxy::CreateSharedMemory(
     size_t size) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   return factory_->CreateSharedMemory(size);
 }
 

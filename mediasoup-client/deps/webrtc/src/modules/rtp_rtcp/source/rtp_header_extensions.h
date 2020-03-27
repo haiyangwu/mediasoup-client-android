@@ -12,6 +12,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <string>
 
 #include "api/array_view.h"
@@ -21,7 +22,6 @@
 #include "api/video/video_frame_marking.h"
 #include "api/video/video_rotation.h"
 #include "api/video/video_timing.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 
 namespace webrtc {
@@ -41,6 +41,23 @@ class AbsoluteSendTime {
   static constexpr uint32_t MsTo24Bits(int64_t time_ms) {
     return static_cast<uint32_t>(((time_ms << 18) + 500) / 1000) & 0x00FFFFFF;
   }
+};
+
+class AbsoluteCaptureTimeExtension {
+ public:
+  using value_type = AbsoluteCaptureTime;
+  static constexpr RTPExtensionType kId = kRtpExtensionAbsoluteCaptureTime;
+  static constexpr uint8_t kValueSizeBytes = 16;
+  static constexpr uint8_t kValueSizeBytesWithoutEstimatedCaptureClockOffset =
+      8;
+  static constexpr const char kUri[] =
+      "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time";
+
+  static bool Parse(rtc::ArrayView<const uint8_t> data,
+                    AbsoluteCaptureTime* extension);
+  static size_t ValueSize(const AbsoluteCaptureTime& extension);
+  static bool Write(rtc::ArrayView<uint8_t> data,
+                    const AbsoluteCaptureTime& extension);
 };
 
 class AudioLevel {
@@ -147,9 +164,7 @@ class PlayoutDelayLimits {
 
   static bool Parse(rtc::ArrayView<const uint8_t> data,
                     PlayoutDelay* playout_delay);
-  static size_t ValueSize(const PlayoutDelay&) {
-    return kValueSizeBytes;
-  }
+  static size_t ValueSize(const PlayoutDelay&) { return kValueSizeBytes; }
   static bool Write(rtc::ArrayView<uint8_t> data,
                     const PlayoutDelay& playout_delay);
 };
@@ -164,9 +179,7 @@ class VideoContentTypeExtension {
 
   static bool Parse(rtc::ArrayView<const uint8_t> data,
                     VideoContentType* content_type);
-  static size_t ValueSize(VideoContentType) {
-    return kValueSizeBytes;
-  }
+  static size_t ValueSize(VideoContentType) { return kValueSizeBytes; }
   static bool Write(rtc::ArrayView<uint8_t> data,
                     VideoContentType content_type);
 };
@@ -258,14 +271,6 @@ class BaseRtpStringExtension {
   // String RTP header extensions are limited to 16 bytes because it is the
   // maximum length that can be encoded with one-byte header extensions.
   static constexpr uint8_t kMaxValueSizeBytes = 16;
-
-  static bool Parse(rtc::ArrayView<const uint8_t> data,
-                    StringRtpHeaderExtension* str);
-  static size_t ValueSize(const StringRtpHeaderExtension& str) {
-    return str.size();
-  }
-  static bool Write(rtc::ArrayView<uint8_t> data,
-                    const StringRtpHeaderExtension& str);
 
   static bool Parse(rtc::ArrayView<const uint8_t> data, std::string* str);
   static size_t ValueSize(const std::string& str) { return str.size(); }

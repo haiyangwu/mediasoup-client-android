@@ -14,7 +14,7 @@
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "api/task_queue/task_queue_test.h"
 #include "rtc_base/event.h"
 #include "test/gtest.h"
 
@@ -23,18 +23,19 @@ namespace test {
 
 namespace {
 
-using TaskId = SingleThreadedTaskQueueForTesting::TaskId;
+using TaskId = DEPRECATED_SingleThreadedTaskQueueForTesting::TaskId;
 
 // Test should not rely on the object under test not being faulty. If the task
 // queue ever blocks forever, we want the tests to fail, rather than hang.
 constexpr int kMaxWaitTimeMs = 10000;
 
-TEST(SingleThreadedTaskQueueForTestingTest, SanityConstructionDestruction) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     SanityConstructionDestruction) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, ExecutesPostedTasks) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest, ExecutesPostedTasks) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> executed(false);
   rtc::Event done;
@@ -48,9 +49,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, ExecutesPostedTasks) {
   EXPECT_TRUE(executed.load());
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest,
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
      PostMultipleTasksFromSameExternalThread) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   constexpr size_t kCount = 3;
   std::atomic<bool> executed[kCount];
@@ -60,7 +61,7 @@ TEST(SingleThreadedTaskQueueForTestingTest,
 
   std::vector<std::unique_ptr<rtc::Event>> done_events;
   for (size_t i = 0; i < kCount; i++) {
-    done_events.emplace_back(absl::make_unique<rtc::Event>());
+    done_events.emplace_back(std::make_unique<rtc::Event>());
   }
 
   // To avoid the tasks which comprise the actual test from running before they
@@ -91,8 +92,9 @@ TEST(SingleThreadedTaskQueueForTestingTest,
   }
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, PostToTaskQueueFromOwnThread) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     PostToTaskQueueFromOwnThread) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> executed(false);
   rtc::Event done;
@@ -112,8 +114,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, PostToTaskQueueFromOwnThread) {
   EXPECT_TRUE(executed.load());
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, TasksExecutedInSequence) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     TasksExecutedInSequence) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   // The first task would perform:
   // accumulator = 10 * accumulator + i
@@ -146,8 +149,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, TasksExecutedInSequence) {
   EXPECT_EQ(accumulator, expected_value);
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, ExecutesPostedDelayedTask) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     ExecutesPostedDelayedTask) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> executed(false);
   rtc::Event done;
@@ -166,8 +170,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, ExecutesPostedDelayedTask) {
   EXPECT_TRUE(executed.load());
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, DoesNotExecuteDelayedTaskTooSoon) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     DoesNotExecuteDelayedTaskTooSoon) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> executed(false);
 
@@ -182,9 +187,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, DoesNotExecuteDelayedTaskTooSoon) {
   EXPECT_FALSE(executed.load());
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest,
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
      TaskWithLesserDelayPostedAfterFirstDelayedTaskExectuedBeforeFirst) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> earlier_executed(false);
   constexpr int64_t earlier_delay_ms = 500;
@@ -216,9 +221,9 @@ TEST(SingleThreadedTaskQueueForTestingTest,
   ASSERT_TRUE(later_executed);
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest,
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
      TaskWithGreaterDelayPostedAfterFirstDelayedTaskExectuedAfterFirst) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> earlier_executed(false);
   constexpr int64_t earlier_delay_ms = 500;
@@ -250,8 +255,9 @@ TEST(SingleThreadedTaskQueueForTestingTest,
   ASSERT_TRUE(later_executed);
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, ExternalThreadCancelsTask) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     ExternalThreadCancelsTask) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   rtc::Event done;
 
@@ -276,8 +282,9 @@ TEST(SingleThreadedTaskQueueForTestingTest, ExternalThreadCancelsTask) {
 // In this test, we'll set off a chain where the first task cancels the second
 // task, then a third task runs (showing that we really cancelled the task,
 // rather than just halted the task-queue).
-TEST(SingleThreadedTaskQueueForTestingTest, InternalThreadCancelsTask) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
+     InternalThreadCancelsTask) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   rtc::Event done;
 
@@ -308,8 +315,8 @@ TEST(SingleThreadedTaskQueueForTestingTest, InternalThreadCancelsTask) {
   ASSERT_TRUE(done.Wait(kMaxWaitTimeMs));
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest, SendTask) {
-  SingleThreadedTaskQueueForTesting task_queue("task_queue");
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest, SendTask) {
+  DEPRECATED_SingleThreadedTaskQueueForTesting task_queue("task_queue");
 
   std::atomic<bool> executed(false);
 
@@ -324,10 +331,11 @@ TEST(SingleThreadedTaskQueueForTestingTest, SendTask) {
   EXPECT_TRUE(executed);
 }
 
-TEST(SingleThreadedTaskQueueForTestingTest,
+TEST(DEPRECATED_SingleThreadedTaskQueueForTestingTest,
      DestructTaskQueueWhileTasksPending) {
   auto task_queue =
-      absl::make_unique<SingleThreadedTaskQueueForTesting>("task_queue");
+      std::make_unique<DEPRECATED_SingleThreadedTaskQueueForTesting>(
+          "task_queue");
 
   std::atomic<size_t> counter(0);
 
@@ -344,6 +352,22 @@ TEST(SingleThreadedTaskQueueForTestingTest,
 
   EXPECT_LT(counter, tasks);
 }
+
+class SingleThreadedTaskQueueForTestingFactory : public TaskQueueFactory {
+ public:
+  std::unique_ptr<TaskQueueBase, TaskQueueDeleter> CreateTaskQueue(
+      absl::string_view /* name */,
+      Priority /*priority*/) const override {
+    return std::unique_ptr<TaskQueueBase, TaskQueueDeleter>(
+        new DEPRECATED_SingleThreadedTaskQueueForTesting("noname"));
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    DeprecatedSingleThreadedTaskQueueForTesting,
+    TaskQueueTest,
+    ::testing::Values(
+        std::make_unique<SingleThreadedTaskQueueForTestingFactory>));
 
 }  // namespace
 }  // namespace test

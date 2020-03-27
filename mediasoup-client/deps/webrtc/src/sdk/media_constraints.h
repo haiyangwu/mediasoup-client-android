@@ -59,8 +59,6 @@ class MediaConstraints {
   // These keys are google specific.
   static const char kGoogEchoCancellation[];  // googEchoCancellation
 
-  static const char kExtendedFilterEchoCancellation[];  // googEchoCancellation2
-  static const char kDAEchoCancellation[];            // googDAEchoCancellation
   static const char kAutoGainControl[];               // googAutoGainControl
   static const char kExperimentalAutoGainControl[];   // googAutoGainControl2
   static const char kNoiseSuppression[];              // googNoiseSuppression
@@ -101,6 +99,10 @@ class MediaConstraints {
   static const char kCombinedAudioVideoBwe[];  // googCombinedAudioVideoBwe
   static const char kScreencastMinBitrate[];   // googScreencastMinBitrate
   static const char kCpuOveruseDetection[];    // googCpuOveruseDetection
+
+  // Constraint to enable negotiating raw RTP packetization using attribute
+  // "a=packetization:<payload_type> raw" in the SDP for all video payload.
+  static const char kRawPacketizationForVideoEnabled[];
 
   // Specifies number of simulcast layers for all video tracks
   // with a Plan B offer/answer

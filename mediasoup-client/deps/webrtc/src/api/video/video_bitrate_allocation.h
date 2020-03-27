@@ -13,12 +13,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <limits>
 #include <string>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "api/video/video_codec_constants.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
@@ -27,7 +29,7 @@ namespace webrtc {
 // layers are dependent or not, it is up to the user to aggregate.
 // For each index, the bitrate can also both set and unset. This is used with a
 // set bps = 0 to signal an explicit "turn off" signal.
-class VideoBitrateAllocation {
+class RTC_EXPORT VideoBitrateAllocation {
  public:
   static constexpr uint32_t kMaxBitrateBps =
       std::numeric_limits<uint32_t>::max();
@@ -78,9 +80,15 @@ class VideoBitrateAllocation {
 
   std::string ToString() const;
 
+  // Indicates if the allocation has some layers/streams disabled due to
+  // low available bandwidth.
+  void set_bw_limited(bool limited) { is_bw_limited_ = limited; }
+  bool is_bw_limited() const { return is_bw_limited_; }
+
  private:
   uint32_t sum_;
   absl::optional<uint32_t> bitrates_[kMaxSpatialLayers][kMaxTemporalStreams];
+  bool is_bw_limited_;
 };
 
 }  // namespace webrtc

@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "api/test/video_quality_analyzer_interface.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_frame.h"
 #include "api/video_codecs/sdp_video_format.h"
@@ -24,10 +25,9 @@
 #include "rtc_base/critical_section.h"
 #include "test/pc/e2e/analyzer/video/encoded_image_data_injector.h"
 #include "test/pc/e2e/analyzer/video/id_generator.h"
-#include "test/pc/e2e/api/video_quality_analyzer_interface.h"
 
 namespace webrtc {
-namespace test {
+namespace webrtc_pc_e2e {
 
 // QualityAnalyzingVideoDecoder is used to wrap origin video decoder and inject
 // VideoQualityAnalyzerInterface before and after decoder.
@@ -63,7 +63,6 @@ class QualityAnalyzingVideoDecoder : public VideoDecoder {
                      int32_t number_of_cores) override;
   int32_t Decode(const EncodedImage& input_image,
                  bool missing_frames,
-                 const CodecSpecificInfo* codec_specific_info,
                  int64_t render_time_ms) override;
   int32_t RegisterDecodeCompleteCallback(
       DecodedImageCallback* callback) override;
@@ -85,20 +84,16 @@ class QualityAnalyzingVideoDecoder : public VideoDecoder {
     void Decoded(VideoFrame& decodedImage,
                  absl::optional<int32_t> decode_time_ms,
                  absl::optional<uint8_t> qp) override;
-    int32_t ReceivedDecodedReferenceFrame(uint64_t pictureId) override;
-    int32_t ReceivedDecodedFrame(uint64_t pictureId) override;
 
     int32_t IrrelevantSimulcastStreamDecoded(uint16_t frame_id,
-                                             int64_t timestamp_ms);
+                                             uint32_t timestamp_ms);
 
    private:
-    rtc::scoped_refptr<webrtc::VideoFrameBuffer> GetBlackFrameBuffer(
-        int width,
-        int height);
+    rtc::scoped_refptr<webrtc::VideoFrameBuffer> GetDummyFrameBuffer();
 
     QualityAnalyzingVideoDecoder* const decoder_;
 
-    rtc::scoped_refptr<webrtc::VideoFrameBuffer> black_frame_buffer_;
+    rtc::scoped_refptr<webrtc::VideoFrameBuffer> dummy_frame_buffer_;
 
     rtc::CriticalSection callback_lock_;
     DecodedImageCallback* delegate_callback_ RTC_GUARDED_BY(callback_lock_);
@@ -155,7 +150,7 @@ class QualityAnalyzingVideoDecoderFactory : public VideoDecoderFactory {
   VideoQualityAnalyzerInterface* const analyzer_;
 };
 
-}  // namespace test
+}  // namespace webrtc_pc_e2e
 }  // namespace webrtc
 
 #endif  // TEST_PC_E2E_ANALYZER_VIDEO_QUALITY_ANALYZING_VIDEO_DECODER_H_

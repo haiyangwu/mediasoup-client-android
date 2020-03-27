@@ -70,6 +70,7 @@ struct hash<Hashable> {
 struct NonHashable {};
 
 namespace absl {
+ABSL_NAMESPACE_BEGIN
 namespace {
 
 using ::testing::DoubleEq;
@@ -678,7 +679,7 @@ TEST(VariantTest, TestSelfAssignment) {
   object.operator=(object);
   EXPECT_EQ(0, counter);
 
-  // A std::string long enough that it's likely to defeat any inline representation
+  // A string long enough that it's likely to defeat any inline representation
   // optimization.
   const std::string long_str(128, 'a');
 
@@ -2709,6 +2710,7 @@ TEST(VariantTest, MoveCtorBug) {
 }
 
 }  // namespace
+ABSL_NAMESPACE_END
 }  // namespace absl
 
 #endif  // #if !defined(ABSL_USES_STD_VARIANT)

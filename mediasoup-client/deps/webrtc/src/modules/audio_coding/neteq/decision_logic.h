@@ -14,6 +14,7 @@
 #include "modules/audio_coding/neteq/defines.h"
 #include "modules/audio_coding/neteq/tick_timer.h"
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/experiments/field_trial_parser.h"
 
 namespace webrtc {
 
@@ -116,7 +117,7 @@ class DecisionLogic final {
 
   // Updates the |buffer_level_filter_| with the current buffer level
   // |buffer_size_packets|.
-  void FilterBufferLevel(size_t buffer_size_packets, Modes prev_mode);
+  void FilterBufferLevel(size_t buffer_size_packets);
 
   // Returns the operation given that the next available packet is a comfort
   // noise payload (RFC 3389 only, not codec-internal).
@@ -134,9 +135,7 @@ class DecisionLogic final {
 
   // Returns the operation to do given that the expected packet is not
   // available, but a packet further into the future is at hand.
-  Operations FuturePacketAvailable(const SyncBuffer& sync_buffer,
-                                   const Expand& expand,
-                                   size_t decoder_frame_length,
+  Operations FuturePacketAvailable(size_t decoder_frame_length,
                                    Modes prev_mode,
                                    uint32_t target_timestamp,
                                    uint32_t available_timestamp,
@@ -169,7 +168,7 @@ class DecisionLogic final {
   DelayManager* delay_manager_;
   BufferLevelFilter* buffer_level_filter_;
   const TickTimer* tick_timer_;
-  int fs_mult_;
+  int sample_rate_;
   size_t output_size_samples_;
   CngState cng_state_;  // Remember if comfort noise is interrupted by other
                         // event (e.g., DTMF).
@@ -180,6 +179,10 @@ class DecisionLogic final {
   bool disallow_time_stretching_;
   std::unique_ptr<TickTimer::Countdown> timescale_countdown_;
   int num_consecutive_expands_;
+  int time_stretched_cn_samples_;
+  FieldTrialParameter<bool> estimate_dtx_delay_;
+  FieldTrialParameter<bool> time_stretch_cn_;
+  FieldTrialConstrained<int> target_level_window_ms_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(DecisionLogic);
 };

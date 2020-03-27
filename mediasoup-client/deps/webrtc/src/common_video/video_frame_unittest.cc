@@ -8,12 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "api/video/video_frame.h"
+
 #include <math.h>
 #include <string.h>
 
 #include "api/video/i010_buffer.h"
 #include "api/video/i420_buffer.h"
-#include "api/video/video_frame.h"
 #include "rtc_base/bind.h"
 #include "rtc_base/time_utils.h"
 #include "test/fake_texture_frame.h"
@@ -320,9 +321,9 @@ TEST(TestVideoFrame, ShallowCopy) {
   VideoFrame frame2(frame1);
 
   EXPECT_EQ(frame1.video_frame_buffer(), frame2.video_frame_buffer());
-  rtc::scoped_refptr<I420BufferInterface> yuv1 =
+  const webrtc::I420BufferInterface* yuv1 =
       frame1.video_frame_buffer()->GetI420();
-  rtc::scoped_refptr<I420BufferInterface> yuv2 =
+  const webrtc::I420BufferInterface* yuv2 =
       frame2.video_frame_buffer()->GetI420();
   EXPECT_EQ(yuv1->DataY(), yuv2->DataY());
   EXPECT_EQ(yuv1->DataU(), yuv2->DataU());
@@ -489,7 +490,7 @@ TEST_P(TestPlanarYuvBuffer, PastesIntoBuffer) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(,
+INSTANTIATE_TEST_SUITE_P(All,
                          TestPlanarYuvBuffer,
                          ::testing::Values(VideoFrameBuffer::Type::kI420,
                                            VideoFrameBuffer::Type::kI010));

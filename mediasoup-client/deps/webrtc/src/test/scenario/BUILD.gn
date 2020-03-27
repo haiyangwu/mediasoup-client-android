@@ -21,13 +21,15 @@ rtc_source_set("column_printer") {
   ]
 }
 
-scenario_resources = [
-  "../../resources/difficult_photo_1850_1110.yuv",
-  "../../resources/photo_1850_1110.yuv",
-  "../../resources/presentation_1850_1110.yuv",
-  "../../resources/web_screenshot_1850_1110.yuv",
-]
-scenario_unittest_resources = [ "../../resources/foreman_cif.yuv" ]
+if (is_ios || rtc_include_tests) {
+  scenario_resources = [
+    "../../resources/difficult_photo_1850_1110.yuv",
+    "../../resources/photo_1850_1110.yuv",
+    "../../resources/presentation_1850_1110.yuv",
+    "../../resources/web_screenshot_1850_1110.yuv",
+  ]
+  scenario_unittest_resources = [ "../../resources/foreman_cif.yuv" ]
+}
 
 if (is_ios) {
   bundle_data("scenario_resources_bundle_data") {
@@ -53,20 +55,20 @@ if (rtc_include_tests) {
       "audio_stream.h",
       "call_client.cc",
       "call_client.h",
-      "call_client.h",
       "hardware_codecs.cc",
       "hardware_codecs.h",
       "network_node.cc",
       "network_node.h",
-      "quality_info.h",
-      "quality_stats.cc",
-      "quality_stats.h",
+      "performance_stats.cc",
+      "performance_stats.h",
       "scenario.cc",
       "scenario.h",
       "scenario_config.cc",
       "scenario_config.h",
-      "simulated_time.cc",
-      "simulated_time.h",
+      "stats_collection.cc",
+      "stats_collection.h",
+      "video_frame_matcher.cc",
+      "video_frame_matcher.h",
       "video_stream.cc",
       "video_stream.h",
     ]
@@ -74,14 +76,19 @@ if (rtc_include_tests) {
       ":column_printer",
       "../:fake_video_codecs",
       "../:fileutils",
+      "../:rtp_test_utils",
       "../:test_common",
       "../:test_support",
       "../:video_test_common",
-      "../../:webrtc_common",
+      "../../api:fec_controller_api",
       "../../api:libjingle_peerconnection_api",
+      "../../api:rtc_event_log_output_file",
+      "../../api:rtp_parameters",
       "../../api:transport_api",
       "../../api/audio_codecs:builtin_audio_decoder_factory",
       "../../api/audio_codecs:builtin_audio_encoder_factory",
+      "../../api/rtc_event_log",
+      "../../api/rtc_event_log:rtc_event_log_factory",
       "../../api/test/video:function_video_factory",
       "../../api/transport:network_control",
       "../../api/units:data_rate",
@@ -91,6 +98,7 @@ if (rtc_include_tests) {
       "../../api/video:builtin_video_bitrate_allocator_factory",
       "../../api/video:video_frame",
       "../../api/video:video_frame_i420",
+      "../../api/video:video_rtp_headers",
       "../../api/video_codecs:video_codecs_api",
       "../../audio",
       "../../call",
@@ -99,9 +107,6 @@ if (rtc_include_tests) {
       "../../call:simulated_network",
       "../../call:video_stream_api",
       "../../common_video",
-      "../../logging:rtc_event_log_api",
-      "../../logging:rtc_event_log_impl_base",
-      "../../logging:rtc_event_log_impl_output",
       "../../media:rtc_audio_video",
       "../../media:rtc_internal_video_codecs",
       "../../media:rtc_media_base",
@@ -110,7 +115,6 @@ if (rtc_include_tests) {
       "../../modules/audio_device:mock_audio_device",
       "../../modules/audio_mixer:audio_mixer_impl",
       "../../modules/audio_processing",
-      "../../modules/congestion_controller:test_controller_printer",
       "../../modules/congestion_controller/goog_cc:test_goog_cc_printer",
       "../../modules/rtp_rtcp",
       "../../modules/rtp_rtcp:mock_rtp_rtcp",
@@ -121,18 +125,24 @@ if (rtc_include_tests) {
       "../../modules/video_coding:webrtc_multiplex",
       "../../modules/video_coding:webrtc_vp8",
       "../../modules/video_coding:webrtc_vp9",
+      "../../rtc_base",
       "../../rtc_base:checks",
-      "../../rtc_base:rtc_base",
       "../../rtc_base:rtc_base_approved",
       "../../rtc_base:rtc_base_tests_utils",
+      "../../rtc_base:rtc_numerics",
       "../../rtc_base:rtc_task_queue",
       "../../rtc_base:safe_minmax",
-      "../../rtc_base:sequenced_task_checker",
+      "../../rtc_base:task_queue_for_test",
+      "../../rtc_base/synchronization:sequence_checker",
+      "../../rtc_base/task_utils:repeating_task",
       "../../system_wrappers",
       "../../system_wrappers:field_trial",
       "../../video",
       "../logging:log_writer",
-      "network:emulated_network",
+      "../network:emulated_network",
+      "../time_controller",
+      "//third_party/abseil-cpp/absl/flags:flag",
+      "//third_party/abseil-cpp/absl/flags:parse",
       "//third_party/abseil-cpp/absl/memory",
       "//third_party/abseil-cpp/absl/types:optional",
     ]
@@ -152,7 +162,9 @@ if (rtc_include_tests) {
   rtc_source_set("scenario_unittests") {
     testonly = true
     sources = [
+      "performance_stats_unittest.cc",
       "scenario_unittest.cc",
+      "stats_collection_unittest.cc",
       "video_stream_unittest.cc",
     ]
     deps = [
@@ -164,30 +176,12 @@ if (rtc_include_tests) {
       "../../system_wrappers:field_trial",
       "../../test:field_trial",
       "../../test:test_support",
+      "../logging:log_writer",
       "//testing/gmock",
-      "//third_party/abseil-cpp/absl/memory",
     ]
     data = scenario_unittest_resources
     if (is_ios) {
       deps += [ ":scenario_unittest_resources_bundle_data" ]
     }
-  }
-  rtc_source_set("scenario_slow_tests") {
-    testonly = true
-    sources = [
-      "quality_stats_unittest.cc",
-    ]
-    deps = [
-      ":scenario",
-      "../../logging:mocks",
-      "../../rtc_base:checks",
-      "../../rtc_base:rtc_base_approved",
-      "../../system_wrappers",
-      "../../system_wrappers:field_trial",
-      "../../test:field_trial",
-      "../../test:test_support",
-      "//testing/gmock",
-      "//third_party/abseil-cpp/absl/memory",
-    ]
   }
 }

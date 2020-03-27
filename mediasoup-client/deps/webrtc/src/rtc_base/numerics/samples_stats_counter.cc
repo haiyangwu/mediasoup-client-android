@@ -10,8 +10,10 @@
 
 #include "rtc_base/numerics/samples_stats_counter.h"
 
-#include <algorithm>
 #include <cmath>
+
+#include "absl/algorithm/container.h"
+#include "rtc_base/time_utils.h"
 
 namespace webrtc {
 
@@ -25,16 +27,19 @@ SamplesStatsCounter& SamplesStatsCounter::operator=(SamplesStatsCounter&&) =
     default;
 
 void SamplesStatsCounter::AddSample(double value) {
-  samples_.push_back(value);
+  AddSample(StatsSample{value, Timestamp::us(rtc::TimeMicros())});
+}
+
+void SamplesStatsCounter::AddSample(StatsSample sample) {
+  stats_.AddSample(sample.value);
+  samples_.push_back(sample);
   sorted_ = false;
-  if (value > max_) {
-    max_ = value;
-  }
-  if (value < min_) {
-    min_ = value;
-  }
-  sum_ += value;
-  sum_squared_ += value * value;
+}
+
+void SamplesStatsCounter::AddSamples(const SamplesStatsCounter& other) {
+  stats_.MergeStatistics(other.stats_);
+  samples_.insert(samples_.end(), other.samples_.begin(), other.samples_.end());
+  sorted_ = false;
 }
 
 double SamplesStatsCounter::GetPercentile(double percentile) {
@@ -42,7 +47,9 @@ double SamplesStatsCounter::GetPercentile(double percentile) {
   RTC_CHECK_GE(percentile, 0);
   RTC_CHECK_LE(percentile, 1);
   if (!sorted_) {
-    std::sort(samples_.begin(), samples_.end());
+    absl::c_sort(samples_, [](const StatsSample& a, const StatsSample& b) {
+      return a.value < b.value;
+    });
     sorted_ = true;
   }
   const double raw_rank = percentile * (samples_.size() - 1);
@@ -61,9 +68,29 @@ double SamplesStatsCounter::GetPercentile(double percentile) {
   RTC_DCHECK_LT(fract_part, 1);
   RTC_DCHECK(rank + fract_part == raw_rank);
 
-  const double low = samples_[rank];
-  const double high = samples_[std::min(rank + 1, samples_.size() - 1)];
+  const double low = samples_[rank].value;
+  const double high = samples_[std::min(rank + 1, samples_.size() - 1)].value;
   return low + fract_part * (high - low);
+}
+
+SamplesStatsCounter operator*(const SamplesStatsCounter& counter,
+                              double value) {
+  SamplesStatsCounter out;
+  for (const auto& sample : counter.GetTimedSamples()) {
+    out.AddSample(
+        SamplesStatsCounter::StatsSample{sample.value * value, sample.time});
+  }
+  return out;
+}
+
+SamplesStatsCounter operator/(const SamplesStatsCounter& counter,
+                              double value) {
+  SamplesStatsCounter out;
+  for (const auto& sample : counter.GetTimedSamples()) {
+    out.AddSample(
+        SamplesStatsCounter::StatsSample{sample.value / value, sample.time});
+  }
+  return out;
 }
 
 }  // namespace webrtc

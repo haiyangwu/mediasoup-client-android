@@ -11,6 +11,7 @@
 #ifndef MODULES_RTP_RTCP_INCLUDE_RTP_RTCP_H_
 #define MODULES_RTP_RTCP_INCLUDE_RTP_RTCP_H_
 
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -23,8 +24,10 @@
 #include "modules/include/module.h"
 #include "modules/rtp_rtcp/include/flexfec_sender.h"
 #include "modules/rtp_rtcp/include/receive_statistics.h"
+#include "modules/rtp_rtcp/include/report_block_data.h"
+#include "modules/rtp_rtcp/include/rtp_packet_sender.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
-#include "modules/rtp_rtcp/source/rtp_sender.h"
+#include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/deprecation.h"
 
@@ -37,6 +40,7 @@ class RateLimiter;
 class ReceiveStatisticsProvider;
 class RemoteBitrateEstimator;
 class RtcEventLog;
+class RTPSender;
 class Transport;
 class VideoBitrateAllocationObserver;
 
@@ -48,6 +52,7 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
  public:
   struct Configuration {
     Configuration();
+    Configuration(Configuration&& rhs);
 
     // True for a audio version of the RTP/RTCP module object false will create
     // a video version.
@@ -63,13 +68,17 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
     // out on the network.
     Transport* outgoing_transport = nullptr;
 
-    // Called when the receiver request a intra frame.
+    // Called when the receiver requests an intra frame.
     RtcpIntraFrameObserver* intra_frame_callback = nullptr;
+
+    // Called when the receiver sends a loss notification.
+    RtcpLossNotificationObserver* rtcp_loss_notification_observer = nullptr;
 
     // Called when we receive a changed estimate from the receiver of out
     // stream.
     RtcpBandwidthObserver* bandwidth_callback = nullptr;
 
+    NetworkStateEstimateObserver* network_state_estimate_observer = nullptr;
     TransportFeedbackObserver* transport_feedback_callback = nullptr;
     VideoBitrateAllocationObserver* bitrate_allocation_observer = nullptr;
     RtcpRttStats* rtt_stats = nullptr;
@@ -86,8 +95,6 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
     // TODO(brandtr): Remove when FlexfecSender is wired up to PacedSender.
     FlexfecSender* flexfec_sender = nullptr;
 
-    TransportSequenceNumberAllocator* transport_sequence_number_allocator =
-        nullptr;
     BitrateStatisticsObserver* send_bitrate_observer = nullptr;
     SendSideDelayObserver* send_side_delay_observer = nullptr;
     RtcEventLog* event_log = nullptr;
@@ -95,8 +102,7 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
     RateLimiter* retransmission_rate_limiter = nullptr;
     OverheadObserver* overhead_observer = nullptr;
     RtcpAckObserver* ack_observer = nullptr;
-
-    RtpKeepAliveConfig keepalive_config;
+    StreamDataCountersCallback* rtp_stats_callback = nullptr;
 
     int rtcp_report_interval_ms = 0;
 
@@ -115,13 +121,17 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
     // defaults to  webrtc::FieldTrialBasedConfig.
     const WebRtcKeyValueConfig* field_trials = nullptr;
 
+    // SSRCs for media and retransmission, respectively.
+    // FlexFec SSRC is fetched from |flexfec_sender|.
+    uint32_t local_media_ssrc;
+    absl::optional<uint32_t> rtx_send_ssrc;
+
    private:
     RTC_DISALLOW_COPY_AND_ASSIGN(Configuration);
   };
 
-  // Create a RTP/RTCP module object using the system clock.
-  // |configuration|  - Configuration of the RTP/RTCP module.
-  static RtpRtcp* CreateRtpRtcp(const RtpRtcp::Configuration& configuration);
+  // Creates an RTP/RTCP module object using provided |configuration|.
+  static std::unique_ptr<RtpRtcp> Create(const Configuration& configuration);
 
   // **************************************************************************
   // Receiver functions
@@ -143,11 +153,6 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   // FEC/ULP/RED overhead (when FEC is enabled).
   virtual size_t MaxRtpPacketSize() const = 0;
 
-  virtual void RegisterAudioSendPayload(int payload_type,
-                                        absl::string_view payload_name,
-                                        int frequency,
-                                        int channels,
-                                        int rate) = 0;
   virtual void RegisterSendPayloadFrequency(int payload_type,
                                             int payload_frequency) = 0;
 
@@ -160,14 +165,22 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
 
   // (De)registers RTP header extension type and id.
   // Returns -1 on failure else 0.
-  virtual int32_t RegisterSendRtpHeaderExtension(RTPExtensionType type,
-                                                 uint8_t id) = 0;
-  // Register extension by uri, returns false on failure.
-  virtual bool RegisterRtpHeaderExtension(const std::string& uri, int id) = 0;
+  RTC_DEPRECATED virtual int32_t RegisterSendRtpHeaderExtension(
+      RTPExtensionType type,
+      uint8_t id) = 0;
+  // Register extension by uri, triggers CHECK on falure.
+  virtual void RegisterRtpHeaderExtension(absl::string_view uri, int id) = 0;
 
   virtual int32_t DeregisterSendRtpHeaderExtension(RTPExtensionType type) = 0;
+  virtual void DeregisterSendRtpHeaderExtension(absl::string_view uri) = 0;
 
-  virtual bool HasBweExtensions() const = 0;
+  // Returns true if RTP module is send media, and any of the extensions
+  // required for bandwidth estimation is registered.
+  virtual bool SupportsPadding() const = 0;
+  // Same as SupportsPadding(), but additionally requires that
+  // SetRtxSendStatus() has been called with the kRtxRedundantPayloads option
+  // enabled.
+  virtual bool SupportsRtxPayloadPadding() const = 0;
 
   // Returns start timestamp.
   virtual uint32_t StartTimestamp() const = 0;
@@ -188,10 +201,7 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   virtual RtpState GetRtxState() const = 0;
 
   // Returns SSRC.
-  uint32_t SSRC() const override = 0;
-
-  // Sets SSRC, default is a random number.
-  virtual void SetSSRC(uint32_t ssrc) = 0;
+  virtual uint32_t SSRC() const = 0;
 
   // Sets the value for sending in the RID (and Repaired) RTP header extension.
   // RIDs are used to identify an RTP stream if SSRCs are not negotiated.
@@ -215,10 +225,6 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   // Returns status of sending RTX (RFC 4588). The returned value can be
   // a combination of values of the enumerator RtxMode.
   virtual int RtxSendStatus() const = 0;
-
-  // Sets the SSRC to use when sending RTX packets. This doesn't enable RTX,
-  // only the SSRC is set.
-  virtual void SetRtxSsrc(uint32_t ssrc) = 0;
 
   // Sets the payload type to use when sending RTX packets. Note that this
   // doesn't enable RTX, only the payload type is set.
@@ -254,27 +260,6 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   virtual RTPSender* RtpSender() = 0;
   virtual const RTPSender* RtpSender() const = 0;
 
-  // Used by the codec module to deliver a video or audio frame for
-  // packetization.
-  // |frame_type|    - type of frame to send
-  // |payload_type|  - payload type of frame to send
-  // |timestamp|     - timestamp of frame to send
-  // |payload_data|  - payload buffer of frame to send
-  // |payload_size|  - size of payload buffer to send
-  // |fragmentation| - fragmentation offset data for fragmented frames such
-  //                   as layers or RED
-  // |transport_frame_id_out| - set to RTP timestamp.
-  // Returns true on success.
-  virtual bool SendOutgoingData(FrameType frame_type,
-                                int8_t payload_type,
-                                uint32_t timestamp,
-                                int64_t capture_time_ms,
-                                const uint8_t* payload_data,
-                                size_t payload_size,
-                                const RTPFragmentationHeader* fragmentation,
-                                const RTPVideoHeader* rtp_video_header,
-                                uint32_t* transport_frame_id_out) = 0;
-
   // Record that a frame is about to be sent. Returns true on success, and false
   // if the module isn't ready to send.
   virtual bool OnSendingRtpFrame(uint32_t timestamp,
@@ -282,20 +267,14 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
                                  int payload_type,
                                  bool force_sender_report) = 0;
 
-  virtual bool TimeToSendPacket(uint32_t ssrc,
-                                uint16_t sequence_number,
-                                int64_t capture_time_ms,
-                                bool retransmission,
-                                const PacedPacketInfo& pacing_info) = 0;
+  // Try to send the provided packet. Returns true iff packet matches any of
+  // the SSRCs for this module (media/rtx/fec etc) and was forwarded to the
+  // transport.
+  virtual bool TrySendPacket(RtpPacketToSend* packet,
+                             const PacedPacketInfo& pacing_info) = 0;
 
-  virtual size_t TimeToSendPadding(size_t bytes,
-                                   const PacedPacketInfo& pacing_info) = 0;
-
-  // Called on generation of new statistics after an RTP send.
-  virtual void RegisterSendChannelRtpStatisticsCallback(
-      StreamDataCountersCallback* callback) = 0;
-  virtual StreamDataCountersCallback* GetSendChannelRtpStatisticsCallback()
-      const = 0;
+  virtual std::vector<std::unique_ptr<RtpPacketToSend>> GeneratePadding(
+      size_t target_size_bytes) = 0;
 
   // **************************************************************************
   // RTCP
@@ -347,12 +326,6 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   // Returns -1 on failure else 0.
   virtual int32_t SendRTCP(RTCPPacketType rtcp_packet_type) = 0;
 
-  // Forces a send of a RTCP packet with more than one packet type.
-  // periodic SR and RR are triggered via the process function
-  // Returns -1 on failure else 0.
-  virtual int32_t SendCompoundRTCP(
-      const std::set<RTCPPacketType>& rtcp_packet_types) = 0;
-
   // Returns statistics of the amount of data sent.
   // Returns -1 on failure else 0.
   virtual int32_t DataCountersRTP(size_t* bytes_sent,
@@ -363,16 +336,17 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
       StreamDataCounters* rtp_counters,
       StreamDataCounters* rtx_counters) const = 0;
 
-  // Returns packet loss statistics for the RTP stream.
-  virtual void GetRtpPacketLossStats(
-      bool outgoing,
-      uint32_t ssrc,
-      struct RtpPacketLossStats* loss_stats) const = 0;
-
   // Returns received RTCP report block.
   // Returns -1 on failure else 0.
+  // TODO(https://crbug.com/webrtc/10678): Remove this in favor of
+  // GetLatestReportBlockData().
   virtual int32_t RemoteRTCPStat(
       std::vector<RTCPReportBlock>* receive_blocks) const = 0;
+  // A snapshot of Report Blocks with additional data of interest to statistics.
+  // Within this list, the sender-source SSRC pair is unique and per-pair the
+  // ReportBlockData represents the latest Report Block that was received for
+  // that pair.
+  virtual std::vector<ReportBlockData> GetLatestReportBlockData() const = 0;
 
   // (APP) Sets application specific data.
   // Returns -1 on failure else 0.
@@ -419,49 +393,42 @@ class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
   virtual bool StorePackets() const = 0;
 
   // Called on receipt of RTCP report block from remote side.
+  // TODO(https://crbug.com/webrtc/10678): Remove RtcpStatisticsCallback in
+  // favor of ReportBlockDataObserver.
+  // TODO(https://crbug.com/webrtc/10679): Consider whether we want to use only
+  // getters or only callbacks. If we decide on getters, the
+  // ReportBlockDataObserver should also be removed in favor of
+  // GetLatestReportBlockData().
+  // TODO(nisse): Replace RegisterRtcpStatisticsCallback and
+  // RegisterRtcpCnameCallback with construction-time settings in
+  // RtpRtcp::Configuration.
   virtual void RegisterRtcpStatisticsCallback(
       RtcpStatisticsCallback* callback) = 0;
   virtual RtcpStatisticsCallback* GetRtcpStatisticsCallback() = 0;
-  // BWE feedback packets.
-  bool SendFeedbackPacket(const rtcp::TransportFeedback& packet) override = 0;
-
+  virtual void RegisterRtcpCnameCallback(RtcpCnameCallback* callback) = 0;
+  // TODO(https://crbug.com/webrtc/10680): When callbacks are registered at
+  // construction, remove this setter.
+  virtual void SetReportBlockDataObserver(
+      ReportBlockDataObserver* observer) = 0;
   virtual void SetVideoBitrateAllocation(
       const VideoBitrateAllocation& bitrate) = 0;
-
-  // **************************************************************************
-  // Audio
-  // **************************************************************************
-
-  // Sends a TelephoneEvent tone using RFC 2833 (4733).
-  // Returns -1 on failure else 0.
-  virtual int32_t SendTelephoneEventOutband(uint8_t key,
-                                            uint16_t time_ms,
-                                            uint8_t level) = 0;
-
-  // Store the audio level in dBov for header-extension-for-audio-level-
-  // indication.
-  // This API shall be called before transmision of an RTP packet to ensure
-  // that the |level| part of the extended RTP header is updated.
-  // return -1 on failure else 0.
-  virtual int32_t SetAudioLevel(uint8_t level_dbov) = 0;
 
   // **************************************************************************
   // Video
   // **************************************************************************
 
-  // Set method for requestion a new key frame.
-  // Returns -1 on failure else 0.
-  virtual int32_t SetKeyFrameRequestMethod(KeyFrameRequestMethod method) = 0;
-
-  // Sends a request for a keyframe.
-  // Returns -1 on failure else 0.
-  virtual int32_t RequestKeyFrame() = 0;
+  // Requests new key frame.
+  // using PLI, https://tools.ietf.org/html/rfc4585#section-6.3.1.1
+  void SendPictureLossIndication() { SendRTCP(kRtcpPli); }
+  // using FIR, https://tools.ietf.org/html/rfc5104#section-4.3.1.2
+  void SendFullIntraRequest() { SendRTCP(kRtcpFir); }
 
   // Sends a LossNotification RTCP message.
   // Returns -1 on failure else 0.
   virtual int32_t SendLossNotification(uint16_t last_decoded_seq_num,
                                        uint16_t last_received_seq_num,
-                                       bool decodability_flag) = 0;
+                                       bool decodability_flag,
+                                       bool buffering_allowed) = 0;
 };
 
 }  // namespace webrtc

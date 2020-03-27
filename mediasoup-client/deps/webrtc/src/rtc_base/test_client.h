@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <vector>
+
 #include "rtc_base/async_udp_socket.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/critical_section.h"
@@ -48,7 +49,8 @@ class TestClient : public sigslot::has_slots<> {
   // Create a test client that will use a fake clock. NextPacket needs to wait
   // for a packet to be received, and thus it needs to advance the fake clock
   // if the test is using one, rather than just sleeping.
-  TestClient(std::unique_ptr<AsyncPacketSocket> socket, FakeClock* fake_clock);
+  TestClient(std::unique_ptr<AsyncPacketSocket> socket,
+             ThreadProcessingFakeClock* fake_clock);
   ~TestClient() override;
 
   SocketAddress address() const { return socket_->GetLocalAddress(); }
@@ -102,7 +104,7 @@ class TestClient : public sigslot::has_slots<> {
   bool CheckTimestamp(int64_t packet_timestamp);
   void AdvanceTime(int ms);
 
-  FakeClock* fake_clock_ = nullptr;
+  ThreadProcessingFakeClock* fake_clock_ = nullptr;
   CriticalSection crit_;
   std::unique_ptr<AsyncPacketSocket> socket_;
   std::vector<std::unique_ptr<Packet>> packets_;

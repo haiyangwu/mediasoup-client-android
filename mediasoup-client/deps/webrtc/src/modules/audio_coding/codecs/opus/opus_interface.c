@@ -28,52 +28,30 @@ enum {
    * side, we must allow for packets of that size. NetEq is currently limited
    * to 60 ms on the receive side. */
   kWebRtcOpusMaxDecodeFrameSizeMs = 120,
-
-  /* Maximum sample count per channel is 48 kHz * maximum frame size in
-   * milliseconds. */
-  kWebRtcOpusMaxFrameSizePerChannel = 48 * kWebRtcOpusMaxDecodeFrameSizeMs,
-
-  /* Default frame size, 20 ms @ 48 kHz, in samples (for one channel). */
-  kWebRtcOpusDefaultFrameSize = 960,
 };
 
-int16_t GetSurroundParameters(int channels,
-                              int *streams,
-                              int *coupled_streams,
-                              unsigned char *mapping) {
-  int opus_error;
-  int ret = 0;
-  // Use 'surround encoder create' to get values for 'coupled_streams',
-  // 'streams' and 'mapping'.
-  OpusMSEncoder* ms_encoder_ptr = opus_multistream_surround_encoder_create(
-      48000,
-      channels,
-      /* mapping family */ channels <= 2 ? 0 : 1,
-      streams,
-      coupled_streams,
-      mapping,
-      OPUS_APPLICATION_VOIP, // Application type shouldn't affect
-                             // streams/mapping values.
-      &opus_error);
+static int FrameSizePerChannel(int frame_size_ms, int sample_rate_hz) {
+  RTC_DCHECK_GT(frame_size_ms, 0);
+  RTC_DCHECK_EQ(frame_size_ms % 10, 0);
+  RTC_DCHECK_GT(sample_rate_hz, 0);
+  RTC_DCHECK_EQ(sample_rate_hz % 1000, 0);
+  return frame_size_ms * (sample_rate_hz / 1000);
+}
 
-  // This shouldn't fail; if it fails,
-  // signal an error and return invalid values.
-  if (opus_error != OPUS_OK || ms_encoder_ptr == NULL) {
-    ret = -1;
-    *streams = -1;
-    *coupled_streams = -1;
-  }
+// Maximum sample count per channel.
+static int MaxFrameSizePerChannel(int sample_rate_hz) {
+  return FrameSizePerChannel(kWebRtcOpusMaxDecodeFrameSizeMs, sample_rate_hz);
+}
 
-  // We don't need the encoder.
-  if (ms_encoder_ptr != NULL) {
-    opus_multistream_encoder_destroy(ms_encoder_ptr);
-  }
-  return ret;
+// Default sample count per channel.
+static int DefaultFrameSizePerChannel(int sample_rate_hz) {
+  return FrameSizePerChannel(20, sample_rate_hz);
 }
 
 int16_t WebRtcOpus_EncoderCreate(OpusEncInst** inst,
                                  size_t channels,
-                                 int32_t application) {
+                                 int32_t application,
+                                 int sample_rate_hz) {
   int opus_app;
   if (!inst)
     return -1;
@@ -93,30 +71,60 @@ int16_t WebRtcOpus_EncoderCreate(OpusEncInst** inst,
   RTC_DCHECK(state);
 
   int error;
-  if (channels <= 2) {
-    state->encoder.encoder = opus_encoder_create(48000, (int)channels, opus_app,
-                                         &error);
+  state->encoder = opus_encoder_create(sample_rate_hz, (int)channels, opus_app,
+                                       &error);
 
-  } else {
-    unsigned char mapping[255];
-    memset(mapping, 0, 255);
-    int streams = -1;
-    int coupled_streams = -1;
-
-    state->encoder.multistream_encoder =
-        opus_multistream_surround_encoder_create(
-        48000,
-        channels,
-        /* mapping family */ 1,
-        &streams,
-        &coupled_streams,
-        mapping,
-        opus_app,
-        &error);
+  if (error != OPUS_OK || (!state->encoder &&
+                           !state->multistream_encoder)) {
+    WebRtcOpus_EncoderFree(state);
+    return -1;
   }
 
-  if (error != OPUS_OK || (!state->encoder.encoder &&
-                           !state->encoder.multistream_encoder)) {
+  state->in_dtx_mode = 0;
+  state->channels = channels;
+
+  *inst = state;
+  return 0;
+}
+
+int16_t WebRtcOpus_MultistreamEncoderCreate(
+    OpusEncInst** inst,
+    size_t channels,
+    int32_t application,
+    size_t streams,
+    size_t coupled_streams,
+    const unsigned char *channel_mapping) {
+  int opus_app;
+  if (!inst)
+    return -1;
+
+  switch (application) {
+    case 0:
+      opus_app = OPUS_APPLICATION_VOIP;
+      break;
+    case 1:
+      opus_app = OPUS_APPLICATION_AUDIO;
+      break;
+    default:
+      return -1;
+  }
+
+  OpusEncInst* state = (OpusEncInst*)calloc(1, sizeof(OpusEncInst));
+  RTC_DCHECK(state);
+
+  int error;
+  state->multistream_encoder =
+      opus_multistream_encoder_create(
+          48000,
+          channels,
+          streams,
+          coupled_streams,
+          channel_mapping,
+          opus_app,
+          &error);
+
+  if (error != OPUS_OK || (!state->encoder &&
+                           !state->multistream_encoder)) {
     WebRtcOpus_EncoderFree(state);
     return -1;
   }
@@ -130,10 +138,10 @@ int16_t WebRtcOpus_EncoderCreate(OpusEncInst** inst,
 
 int16_t WebRtcOpus_EncoderFree(OpusEncInst* inst) {
   if (inst) {
-    if (inst->channels <= 2) {
-      opus_encoder_destroy(inst->encoder.encoder);
+    if (inst->encoder) {
+      opus_encoder_destroy(inst->encoder);
     } else {
-      opus_multistream_encoder_destroy(inst->encoder.multistream_encoder);
+      opus_multistream_encoder_destroy(inst->multistream_encoder);
     }
     free(inst);
     return 0;
@@ -153,14 +161,14 @@ int WebRtcOpus_Encode(OpusEncInst* inst,
     return -1;
   }
 
-  if (inst->channels <= 2) {
-    res = opus_encode(inst->encoder.encoder,
+  if (inst->encoder) {
+    res = opus_encode(inst->encoder,
                       (const opus_int16*)audio_in,
                       (int)samples,
                       encoded,
                       (opus_int32)length_encoded_buffer);
   } else {
-    res = opus_multistream_encode(inst->encoder.multistream_encoder,
+    res = opus_multistream_encode(inst->multistream_encoder,
                                   (const opus_int16*)audio_in,
                                   (int)samples,
                                   encoded,
@@ -187,10 +195,10 @@ int WebRtcOpus_Encode(OpusEncInst* inst,
   return res;
 }
 
-#define ENCODER_CTL(inst, vargs) (                                      \
-    inst->channels <= 2 ?                                               \
-    opus_encoder_ctl(inst->encoder.encoder, vargs)                      \
-    : opus_multistream_encoder_ctl(inst->encoder.multistream_encoder, vargs))
+#define ENCODER_CTL(inst, vargs) (                                   \
+    inst->encoder ?                                                  \
+    opus_encoder_ctl(inst->encoder, vargs)                           \
+    : opus_multistream_encoder_ctl(inst->multistream_encoder, vargs))
 
 
 int16_t WebRtcOpus_SetBitRate(OpusEncInst* inst, int32_t rate) {
@@ -231,9 +239,9 @@ int16_t WebRtcOpus_SetMaxPlaybackRate(OpusEncInst* inst, int32_t frequency_hz) {
 
 int16_t WebRtcOpus_GetMaxPlaybackRate(OpusEncInst* const inst,
                                       int32_t* result_hz) {
-  if (inst->channels <= 2) {
+  if (inst->encoder) {
     if (opus_encoder_ctl(
-            inst->encoder.encoder,
+            inst->encoder,
             OPUS_GET_MAX_BANDWIDTH(result_hz)) == OPUS_OK) {
       return 0;
     }
@@ -377,7 +385,9 @@ int16_t WebRtcOpus_SetForceChannels(OpusEncInst* inst, size_t num_channels) {
   }
 }
 
-int16_t WebRtcOpus_DecoderCreate(OpusDecInst** inst, size_t channels) {
+int16_t WebRtcOpus_DecoderCreate(OpusDecInst** inst,
+                                 size_t channels,
+                                 int sample_rate_hz) {
   int error;
   OpusDecInst* state;
 
@@ -388,45 +398,61 @@ int16_t WebRtcOpus_DecoderCreate(OpusDecInst** inst, size_t channels) {
       return -1;
     }
 
-    if (channels <= 2) {
-      state->decoder.decoder = opus_decoder_create(48000,
-                                                   (int)channels, &error);
-    } else {
-      unsigned char mapping[255];
-      memset(mapping, 0, 255);
-      int streams = -1;
-      int coupled_streams = -1;
-      if (GetSurroundParameters(channels, &streams,
-                                &coupled_streams, mapping) != 0) {
-        free(state);
-        return -1;
-      }
-
-      // Create new memory, always at 48000 Hz.
-      state->decoder.multistream_decoder = opus_multistream_decoder_create(
-          48000, (int)channels,
-          /* streams = */ streams,
-          /* coupled streams = */ coupled_streams,
-          mapping,
-          &error);
-    }
-    if (error == OPUS_OK && (state->decoder.decoder ||
-                             state->decoder.multistream_decoder)) {
+    state->decoder = opus_decoder_create(sample_rate_hz, (int)channels, &error);
+    if (error == OPUS_OK && state->decoder) {
       // Creation of memory all ok.
       state->channels = channels;
-      state->prev_decoded_samples = kWebRtcOpusDefaultFrameSize;
+      state->prev_decoded_samples = DefaultFrameSizePerChannel(sample_rate_hz);
       state->in_dtx_mode = 0;
+      state->sample_rate_hz = sample_rate_hz;
       *inst = state;
       return 0;
     }
 
     // If memory allocation was unsuccessful, free the entire state.
-    if (state->decoder.decoder) {
-      opus_decoder_destroy(state->decoder.decoder);
-
-    } else if (state->decoder.multistream_decoder) {
-      opus_multistream_decoder_destroy(state->decoder.multistream_decoder);
+    if (state->decoder) {
+      opus_decoder_destroy(state->decoder);
     }
+    free(state);
+  }
+  return -1;
+}
+
+int16_t WebRtcOpus_MultistreamDecoderCreate(
+    OpusDecInst** inst, size_t channels,
+    size_t streams,
+    size_t coupled_streams,
+    const unsigned char* channel_mapping) {
+  int error;
+  OpusDecInst* state;
+
+  if (inst != NULL) {
+    // Create Opus decoder state.
+    state = (OpusDecInst*) calloc(1, sizeof(OpusDecInst));
+    if (state == NULL) {
+      return -1;
+    }
+
+    // Create new memory, always at 48000 Hz.
+    state->multistream_decoder = opus_multistream_decoder_create(
+        48000, channels,
+        streams,
+        coupled_streams,
+        channel_mapping,
+        &error);
+
+    if (error == OPUS_OK && state->multistream_decoder) {
+      // Creation of memory all ok.
+      state->channels = channels;
+      state->prev_decoded_samples = DefaultFrameSizePerChannel(48000);
+      state->in_dtx_mode = 0;
+      state->sample_rate_hz = 48000;
+      *inst = state;
+      return 0;
+    }
+
+    // If memory allocation was unsuccessful, free the entire state.
+    opus_multistream_decoder_destroy(state->multistream_decoder);
     free(state);
   }
   return -1;
@@ -434,10 +460,10 @@ int16_t WebRtcOpus_DecoderCreate(OpusDecInst** inst, size_t channels) {
 
 int16_t WebRtcOpus_DecoderFree(OpusDecInst* inst) {
   if (inst) {
-    if (inst->channels <= 2) {
-      opus_decoder_destroy(inst->decoder.decoder);
-    } else if (inst->channels > 2) {
-      opus_multistream_decoder_destroy(inst->decoder.multistream_decoder);
+    if (inst->decoder) {
+      opus_decoder_destroy(inst->decoder);
+    } else if (inst->multistream_decoder) {
+      opus_multistream_decoder_destroy(inst->multistream_decoder);
     }
     free(inst);
     return 0;
@@ -451,10 +477,10 @@ size_t WebRtcOpus_DecoderChannels(OpusDecInst* inst) {
 }
 
 void WebRtcOpus_DecoderInit(OpusDecInst* inst) {
-  if (inst->channels <= 2) {
-    opus_decoder_ctl(inst->decoder.decoder, OPUS_RESET_STATE);
+  if (inst->decoder) {
+    opus_decoder_ctl(inst->decoder, OPUS_RESET_STATE);
   } else {
-    opus_multistream_decoder_ctl(inst->decoder.multistream_decoder,
+    opus_multistream_decoder_ctl(inst->multistream_decoder,
                                  OPUS_RESET_STATE);
   }
   inst->in_dtx_mode = 0;
@@ -490,12 +516,12 @@ static int DecodeNative(OpusDecInst* inst, const uint8_t* encoded,
                         size_t encoded_bytes, int frame_size,
                         int16_t* decoded, int16_t* audio_type, int decode_fec) {
   int res = -1;
-  if (inst->channels <= 2) {
-    res = opus_decode(inst->decoder.decoder, encoded, (opus_int32)encoded_bytes,
+  if (inst->decoder) {
+    res = opus_decode(inst->decoder, encoded, (opus_int32)encoded_bytes,
                       (opus_int16*)decoded, frame_size, decode_fec);
   } else {
     res = opus_multistream_decode(
-        inst->decoder.multistream_decoder, encoded, (opus_int32)encoded_bytes,
+        inst->multistream_decoder, encoded, (opus_int32)encoded_bytes,
         (opus_int16*)decoded, frame_size, decode_fec);
   }
 
@@ -516,13 +542,9 @@ int WebRtcOpus_Decode(OpusDecInst* inst, const uint8_t* encoded,
     *audio_type = DetermineAudioType(inst, encoded_bytes);
     decoded_samples = WebRtcOpus_DecodePlc(inst, decoded, 1);
   } else {
-    decoded_samples = DecodeNative(inst,
-                                   encoded,
-                                   encoded_bytes,
-                                   kWebRtcOpusMaxFrameSizePerChannel,
-                                   decoded,
-                                   audio_type,
-                                   0);
+    decoded_samples = DecodeNative(inst, encoded, encoded_bytes,
+                                   MaxFrameSizePerChannel(inst->sample_rate_hz),
+                                   decoded, audio_type, 0);
   }
   if (decoded_samples < 0) {
     return -1;
@@ -542,10 +564,13 @@ int WebRtcOpus_DecodePlc(OpusDecInst* inst, int16_t* decoded,
 
   /* The number of samples we ask for is |number_of_lost_frames| times
    * |prev_decoded_samples_|. Limit the number of samples to maximum
-   * |kWebRtcOpusMaxFrameSizePerChannel|. */
+   * |MaxFrameSizePerChannel()|. */
   plc_samples = number_of_lost_frames * inst->prev_decoded_samples;
-  plc_samples = (plc_samples <= kWebRtcOpusMaxFrameSizePerChannel) ?
-      plc_samples : kWebRtcOpusMaxFrameSizePerChannel;
+  const int max_samples_per_channel =
+      MaxFrameSizePerChannel(inst->sample_rate_hz);
+  plc_samples = plc_samples <= max_samples_per_channel
+                    ? plc_samples
+                    : max_samples_per_channel;
   decoded_samples = DecodeNative(inst, NULL, 0, plc_samples,
                                  decoded, &audio_type, 0);
   if (decoded_samples < 0) {
@@ -565,7 +590,8 @@ int WebRtcOpus_DecodeFec(OpusDecInst* inst, const uint8_t* encoded,
     return 0;
   }
 
-  fec_samples = opus_packet_get_samples_per_frame(encoded, 48000);
+  fec_samples =
+      opus_packet_get_samples_per_frame(encoded, inst->sample_rate_hz);
 
   decoded_samples = DecodeNative(inst, encoded, encoded_bytes,
                                  fec_samples, decoded, audio_type, 1);
@@ -591,9 +617,10 @@ int WebRtcOpus_DurationEst(OpusDecInst* inst,
     /* Invalid payload data. */
     return 0;
   }
-  samples = frames * opus_packet_get_samples_per_frame(payload, 48000);
-  if (samples < 120 || samples > 5760) {
-    /* Invalid payload duration. */
+  samples =
+      frames * opus_packet_get_samples_per_frame(payload, inst->sample_rate_hz);
+  if (samples > 120 * inst->sample_rate_hz / 1000) {
+    // More than 120 ms' worth of samples.
     return 0;
   }
   return samples;
@@ -602,67 +629,48 @@ int WebRtcOpus_DurationEst(OpusDecInst* inst,
 int WebRtcOpus_PlcDuration(OpusDecInst* inst) {
   /* The number of samples we ask for is |number_of_lost_frames| times
    * |prev_decoded_samples_|. Limit the number of samples to maximum
-   * |kWebRtcOpusMaxFrameSizePerChannel|. */
+   * |MaxFrameSizePerChannel()|. */
   const int plc_samples = inst->prev_decoded_samples;
-  return (plc_samples <= kWebRtcOpusMaxFrameSizePerChannel) ?
-      plc_samples : kWebRtcOpusMaxFrameSizePerChannel;
+  const int max_samples_per_channel =
+      MaxFrameSizePerChannel(inst->sample_rate_hz);
+  return plc_samples <= max_samples_per_channel ? plc_samples
+                                                : max_samples_per_channel;
 }
 
 int WebRtcOpus_FecDurationEst(const uint8_t* payload,
-                              size_t payload_length_bytes) {
-  int samples;
+                              size_t payload_length_bytes,
+                              int sample_rate_hz) {
   if (WebRtcOpus_PacketHasFec(payload, payload_length_bytes) != 1) {
     return 0;
   }
-
-  samples = opus_packet_get_samples_per_frame(payload, 48000);
-  if (samples < 480 || samples > 5760) {
+  const int samples =
+      opus_packet_get_samples_per_frame(payload, sample_rate_hz);
+  const int samples_per_ms = sample_rate_hz / 1000;
+  if (samples < 10 * samples_per_ms || samples > 120 * samples_per_ms) {
     /* Invalid payload duration. */
     return 0;
   }
   return samples;
 }
 
+// This method is based on Definition of the Opus Audio Codec
+// (https://tools.ietf.org/html/rfc6716). Basically, this method is based on
+// parsing the LP layer of an Opus packet, particularly the LBRR flag.
 int WebRtcOpus_PacketHasFec(const uint8_t* payload,
                             size_t payload_length_bytes) {
-  int frames, channels, payload_length_ms;
-  int n;
-  opus_int16 frame_sizes[48];
-  const unsigned char *frame_data[48];
-
   if (payload == NULL || payload_length_bytes == 0)
     return 0;
 
-  /* In CELT_ONLY mode, packets should not have FEC. */
+  // In CELT_ONLY mode, packets should not have FEC.
   if (payload[0] & 0x80)
     return 0;
 
-  payload_length_ms = opus_packet_get_samples_per_frame(payload, 48000) / 48;
-  if (10 > payload_length_ms)
-    payload_length_ms = 10;
+  // Max number of frames in an Opus packet is 48.
+  opus_int16 frame_sizes[48];
+  const unsigned char *frame_data[48];
 
-  channels = opus_packet_get_nb_channels(payload);
-
-  switch (payload_length_ms) {
-    case 10:
-    case 20: {
-      frames = 1;
-      break;
-    }
-    case 40: {
-      frames = 2;
-      break;
-    }
-    case 60: {
-      frames = 3;
-      break;
-    }
-    default: {
-      return 0; // It is actually even an invalid packet.
-    }
-  }
-
-  /* The following is to parse the LBRR flags. */
+  // Parse packet to get the frames. But we only care about the first frame,
+  // since we can only decode the FEC from the first one.
   if (opus_packet_parse(payload, (opus_int32)payload_length_bytes, NULL,
                         frame_data, frame_sizes, NULL) < 0) {
     return 0;
@@ -672,8 +680,44 @@ int WebRtcOpus_PacketHasFec(const uint8_t* payload,
     return 0;
   }
 
-  for (n = 0; n < channels; n++) {
-    if (frame_data[0][0] & (0x80 >> ((n + 1) * (frames + 1) - 1)))
+  // For computing the payload length in ms, the sample rate is not important
+  // since it cancels out. We use 48 kHz, but any valid sample rate would work.
+  int payload_length_ms =
+      opus_packet_get_samples_per_frame(payload, 48000) / 48;
+  if (payload_length_ms < 10)
+    payload_length_ms = 10;
+
+  int silk_frames;
+  switch (payload_length_ms) {
+    case 10:
+    case 20:
+      silk_frames = 1;
+      break;
+    case 40:
+      silk_frames = 2;
+      break;
+    case 60:
+      silk_frames = 3;
+      break;
+    default:
+      return 0; // It is actually even an invalid packet.
+  }
+
+  const int channels = opus_packet_get_nb_channels(payload);
+  RTC_DCHECK(channels == 1 || channels == 2);
+
+  // A frame starts with the LP layer. The LP layer begins with two to eight
+  // header bits.These consist of one VAD bit per SILK frame (up to 3),
+  // followed by a single flag indicating the presence of LBRR frames.
+  // For a stereo packet, these first flags correspond to the mid channel, and
+  // a second set of flags is included for the side channel. Because these are
+  // the first symbols decoded by the range coder and because they are coded
+  // as binary values with uniform probability, they can be extracted directly
+  // from the most significant bits of the first byte of compressed data.
+  for (int n = 0; n < channels; n++) {
+    // The LBRR bit for channel 1 is on the (|silk_frames| + 1)-th bit, and
+    // that of channel 2 is on the |(|silk_frames| + 1) * 2 + 1|-th bit.
+    if (frame_data[0][0] & (0x80 >> ((n + 1) * (silk_frames + 1) - 1)))
       return 1;
   }
 

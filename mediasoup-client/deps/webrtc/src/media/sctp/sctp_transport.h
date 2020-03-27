@@ -19,7 +19,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "rtc_base/async_invoker.h"
+#include "rtc_base/buffer.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
@@ -32,6 +34,8 @@
 struct sockaddr_conn;
 struct sctp_assoc_change;
 struct sctp_stream_reset_event;
+struct sctp_sendv_spa;
+
 // Defined by <sys/socket.h>
 struct socket;
 namespace cricket {
@@ -72,13 +76,20 @@ class SctpTransport : public SctpTransportInternal,
 
   // SctpTransportInternal overrides (see sctptransportinternal.h for comments).
   void SetDtlsTransport(rtc::PacketTransportInternal* transport) override;
-  bool Start(int local_port, int remote_port) override;
+  bool Start(int local_port, int remote_port, int max_message_size) override;
   bool OpenStream(int sid) override;
   bool ResetStream(int sid) override;
   bool SendData(const SendDataParams& params,
                 const rtc::CopyOnWriteBuffer& payload,
                 SendDataResult* result = nullptr) override;
   bool ReadyToSendData() override;
+  int max_message_size() const override { return max_message_size_; }
+  absl::optional<int> max_outbound_streams() const override {
+    return max_outbound_streams_;
+  }
+  absl::optional<int> max_inbound_streams() const override {
+    return max_inbound_streams_;
+  }
   void set_debug_name_for_testing(const char* debug_name) override {
     debug_name_ = debug_name;
   }
@@ -88,6 +99,36 @@ class SctpTransport : public SctpTransportInternal,
   rtc::Thread* network_thread() const { return network_thread_; }
 
  private:
+  // A message to be sent by the sctp library. This class is used to track the
+  // progress of writing a single message to the sctp library in the presence of
+  // partial writes. In this case, the Advance() function is provided in order
+  // to advance over what has already been accepted by the sctp library and
+  // avoid copying the remaining partial message buffer.
+  class OutgoingMessage {
+   public:
+    OutgoingMessage(const rtc::CopyOnWriteBuffer& buffer,
+                    const SendDataParams& send_params)
+        : buffer_(buffer), send_params_(send_params) {}
+
+    // Advances the buffer by the incremented amount. Must not advance further
+    // than the current data size.
+    void Advance(size_t increment) {
+      RTC_DCHECK_LE(increment + offset_, buffer_.size());
+      offset_ += increment;
+    }
+
+    size_t size() const { return buffer_.size() - offset_; }
+
+    const void* data() const { return buffer_.data() + offset_; }
+
+    SendDataParams send_params() const { return send_params_; }
+
+   private:
+    const rtc::CopyOnWriteBuffer buffer_;
+    const SendDataParams send_params_;
+    size_t offset_ = 0;
+  };
+
   void ConnectTransportSignals();
   void DisconnectTransportSignals();
 
@@ -106,6 +147,15 @@ class SctpTransport : public SctpTransportInternal,
 
   // Sets the "ready to send" flag and fires signal if needed.
   void SetReadyToSendData();
+
+  // Sends the outgoing buffered message that was only partially accepted by the
+  // sctp lib because it did not have enough space. Returns true if the entire
+  // buffered message was accepted by the sctp lib.
+  bool SendBufferedMessage();
+
+  // Tries to send the |payload| on the usrsctp lib. The message will be
+  // advanced by the amount that was sent.
+  SendDataResult SendMessageInternal(OutgoingMessage* message);
 
   // Callbacks from DTLS transport.
   void OnWritableState(rtc::PacketTransportInternal* transport);
@@ -144,13 +194,19 @@ class SctpTransport : public SctpTransportInternal,
 
   // Track the data received from usrsctp between callbacks until the EOR bit
   // arrives.
-  rtc::CopyOnWriteBuffer partial_message_;
+  rtc::CopyOnWriteBuffer partial_incoming_message_;
   ReceiveDataParams partial_params_;
   int partial_flags_;
+  // A message that was attempted to be sent, but was only partially accepted by
+  // usrsctp lib with usrsctp_sendv() because it cannot buffer the full message.
+  // This occurs because we explicitly set the EOR bit when sending, so
+  // usrsctp_sendv() is not atomic.
+  absl::optional<OutgoingMessage> partial_outgoing_message_;
 
   bool was_ever_writable_ = false;
   int local_port_ = kSctpDefaultPort;
   int remote_port_ = kSctpDefaultPort;
+  int max_message_size_ = kSctpSendBufferSize;
   struct socket* sock_ = nullptr;  // The socket created by usrsctp_socket(...).
 
   // Has Start been called? Don't create SCTP socket until it has.
@@ -206,6 +262,9 @@ class SctpTransport : public SctpTransportInternal,
   const char* debug_name_ = "SctpTransport";
   // Hides usrsctp interactions from this header file.
   class UsrSctpWrapper;
+  // Number of channels negotiated. Not set before negotiation completes.
+  absl::optional<int> max_outbound_streams_;
+  absl::optional<int> max_inbound_streams_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(SctpTransport);
 };

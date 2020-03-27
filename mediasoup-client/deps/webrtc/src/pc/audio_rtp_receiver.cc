@@ -11,12 +11,15 @@
 #include "pc/audio_rtp_receiver.h"
 
 #include <stddef.h>
+
 #include <utility>
 #include <vector>
 
 #include "api/media_stream_proxy.h"
 #include "api/media_stream_track_proxy.h"
 #include "pc/audio_track.h"
+#include "pc/jitter_buffer_delay.h"
+#include "pc/jitter_buffer_delay_proxy.h"
 #include "pc/media_stream.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/location.h"
@@ -42,7 +45,11 @@ AudioRtpReceiver::AudioRtpReceiver(
       track_(AudioTrackProxy::Create(rtc::Thread::Current(),
                                      AudioTrack::Create(receiver_id, source_))),
       cached_track_enabled_(track_->enabled()),
-      attachment_id_(GenerateUniqueId()) {
+      attachment_id_(GenerateUniqueId()),
+      delay_(JitterBufferDelayProxy::Create(
+          rtc::Thread::Current(),
+          worker_thread_,
+          new rtc::RefCountedObject<JitterBufferDelay>(worker_thread))) {
   RTC_DCHECK(worker_thread_);
   RTC_DCHECK(track_->GetSource()->remote());
   track_->RegisterObserver(this);
@@ -67,9 +74,10 @@ bool AudioRtpReceiver::SetOutputVolume(double volume) {
   RTC_DCHECK_GE(volume, 0.0);
   RTC_DCHECK_LE(volume, 10.0);
   RTC_DCHECK(media_channel_);
-  RTC_DCHECK(ssrc_);
+  RTC_DCHECK(!stopped_);
   return worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
-    return media_channel_->SetOutputVolume(*ssrc_, volume);
+    // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC value.
+    return media_channel_->SetOutputVolume(ssrc_.value_or(0), volume);
   });
 }
 
@@ -77,7 +85,7 @@ void AudioRtpReceiver::OnSetVolume(double volume) {
   RTC_DCHECK_GE(volume, 0);
   RTC_DCHECK_LE(volume, 10);
   cached_volume_ = volume;
-  if (!media_channel_ || !ssrc_) {
+  if (!media_channel_ || stopped_) {
     RTC_LOG(LS_ERROR)
         << "AudioRtpReceiver::OnSetVolume: No audio channel exists.";
     return;
@@ -100,21 +108,23 @@ std::vector<std::string> AudioRtpReceiver::stream_ids() const {
 }
 
 RtpParameters AudioRtpReceiver::GetParameters() const {
-  if (!media_channel_ || !ssrc_ || stopped_) {
+  if (!media_channel_ || stopped_) {
     return RtpParameters();
   }
   return worker_thread_->Invoke<RtpParameters>(RTC_FROM_HERE, [&] {
-    return media_channel_->GetRtpReceiveParameters(*ssrc_);
+    // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC value.
+    return media_channel_->GetRtpReceiveParameters(ssrc_.value_or(0));
   });
 }
 
 bool AudioRtpReceiver::SetParameters(const RtpParameters& parameters) {
   TRACE_EVENT0("webrtc", "AudioRtpReceiver::SetParameters");
-  if (!media_channel_ || !ssrc_ || stopped_) {
+  if (!media_channel_ || stopped_) {
     return false;
   }
   return worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
-    return media_channel_->SetRtpReceiveParameters(*ssrc_, parameters);
+    return media_channel_->SetRtpReceiveParameters(ssrc_.value_or(0),
+                                                   parameters);
   });
 }
 
@@ -139,12 +149,29 @@ void AudioRtpReceiver::Stop() {
   if (stopped_) {
     return;
   }
-  if (media_channel_ && ssrc_) {
+  if (media_channel_) {
     // Allow that SetOutputVolume fail. This is the normal case when the
     // underlying media channel has already been deleted.
     SetOutputVolume(0.0);
   }
   stopped_ = true;
+}
+
+void AudioRtpReceiver::RestartMediaChannel(absl::optional<uint32_t> ssrc) {
+  RTC_DCHECK(media_channel_);
+  if (!stopped_ && ssrc_ == ssrc) {
+    return;
+  }
+
+  if (!stopped_) {
+    source_->Stop(media_channel_, ssrc_.value_or(0));
+    delay_->OnStop();
+  }
+  ssrc_ = ssrc;
+  stopped_ = false;
+  source_->Start(media_channel_, ssrc.value_or(0));
+  delay_->OnStart(media_channel_, ssrc.value_or(0));
+  Reconfigure();
 }
 
 void AudioRtpReceiver::SetupMediaChannel(uint32_t ssrc) {
@@ -153,15 +180,15 @@ void AudioRtpReceiver::SetupMediaChannel(uint32_t ssrc) {
         << "AudioRtpReceiver::SetupMediaChannel: No audio channel exists.";
     return;
   }
-  if (ssrc_ == ssrc) {
-    return;
+  RestartMediaChannel(ssrc);
+}
+
+void AudioRtpReceiver::SetupUnsignaledMediaChannel() {
+  if (!media_channel_) {
+    RTC_LOG(LS_ERROR) << "AudioRtpReceiver::SetupUnsignaledMediaChannel: No "
+                         "audio channel exists.";
   }
-  if (ssrc_) {
-    source_->Stop(media_channel_, *ssrc_);
-  }
-  ssrc_ = ssrc;
-  source_->Start(media_channel_, *ssrc_);
-  Reconfigure();
+  RestartMediaChannel(absl::nullopt);
 }
 
 void AudioRtpReceiver::set_stream_ids(std::vector<std::string> stream_ids) {
@@ -210,8 +237,7 @@ std::vector<RtpSource> AudioRtpReceiver::GetSources() const {
 }
 
 void AudioRtpReceiver::Reconfigure() {
-  RTC_DCHECK(!stopped_);
-  if (!media_channel_ || !ssrc_) {
+  if (!media_channel_ || stopped_) {
     RTC_LOG(LS_ERROR)
         << "AudioRtpReceiver::Reconfigure: No audio channel exists.";
     return;
@@ -230,6 +256,11 @@ void AudioRtpReceiver::SetObserver(RtpReceiverObserverInterface* observer) {
   if (received_first_packet_ && observer_) {
     observer_->OnFirstPacketReceived(media_type());
   }
+}
+
+void AudioRtpReceiver::SetJitterBufferMinimumDelay(
+    absl::optional<double> delay_seconds) {
+  delay_->Set(delay_seconds);
 }
 
 void AudioRtpReceiver::SetMediaChannel(cricket::MediaChannel* media_channel) {

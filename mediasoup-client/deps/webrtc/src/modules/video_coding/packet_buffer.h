@@ -16,10 +16,8 @@
 #include <set>
 #include <vector>
 
-#include "api/scoped_refptr.h"
-#include "modules/include/module_common_types.h"
+#include "api/video/encoded_image.h"
 #include "modules/video_coding/packet.h"
-#include "modules/video_coding/rtp_frame_reference_finder.h"
 #include "rtc_base/critical_section.h"
 #include "rtc_base/numerics/sequence_number_util.h"
 #include "rtc_base/thread_annotations.h"
@@ -41,17 +39,17 @@ class OnAssembledFrameCallback {
 
 class PacketBuffer {
  public:
-  static rtc::scoped_refptr<PacketBuffer> Create(
-      Clock* clock,
-      size_t start_buffer_size,
-      size_t max_buffer_size,
-      OnAssembledFrameCallback* frame_callback);
-
+  // Both |start_buffer_size| and |max_buffer_size| must be a power of 2.
+  PacketBuffer(Clock* clock,
+               size_t start_buffer_size,
+               size_t max_buffer_size,
+               OnAssembledFrameCallback* frame_callback);
   virtual ~PacketBuffer();
 
-  // Returns true if |packet| is inserted into the packet buffer, false
-  // otherwise. The PacketBuffer will always take ownership of the
-  // |packet.dataPtr| when this function is called. Made virtual for testing.
+  // Returns true unless the packet buffer is cleared, which means that a key
+  // frame request should be sent. The PacketBuffer will always take ownership
+  // of the |packet.dataPtr| when this function is called. Made virtual for
+  // testing.
   virtual bool InsertPacket(VCMPacket* packet);
   void ClearTo(uint16_t seq_num);
   void Clear();
@@ -63,16 +61,6 @@ class PacketBuffer {
 
   // Returns number of different frames seen in the packet buffer
   int GetUniqueFramesSeen() const;
-
-  int AddRef() const;
-  int Release() const;
-
- protected:
-  // Both |start_buffer_size| and |max_buffer_size| must be a power of 2.
-  PacketBuffer(Clock* clock,
-               size_t start_buffer_size,
-               size_t max_buffer_size,
-               OnAssembledFrameCallback* frame_callback);
 
  private:
   friend RtpFrameObject;
@@ -113,18 +101,20 @@ class PacketBuffer {
   std::vector<std::unique_ptr<RtpFrameObject>> FindFrames(uint16_t seq_num)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
-  // Copy the bitstream for |frame| to |destination|.
-  // Virtual for testing.
-  virtual bool GetBitstream(const RtpFrameObject& frame, uint8_t* destination);
+  rtc::scoped_refptr<EncodedImageBuffer> GetEncodedImageBuffer(
+      size_t frame_size,
+      uint16_t first_seq_num,
+      uint16_t last_seq_num) RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
   // Get the packet with sequence number |seq_num|.
   // Virtual for testing.
   virtual VCMPacket* GetPacket(uint16_t seq_num)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
-  // Mark all slots used by |frame| as not used.
-  // Virtual for testing.
-  virtual void ReturnFrame(RtpFrameObject* frame);
+  // Clears the packet buffer from |start_seq_num| to |stop_seq_num| where the
+  // endpoints are inclusive.
+  void ClearInterval(uint16_t start_seq_num, uint16_t stop_seq_num)
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
   void UpdateMissingPackets(uint16_t seq_num)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
@@ -178,8 +168,6 @@ class PacketBuffer {
   std::set<uint32_t> rtp_timestamps_history_set_ RTC_GUARDED_BY(crit_);
   // Stores the same unique timestamps in the order of insertion.
   std::queue<uint32_t> rtp_timestamps_history_queue_ RTC_GUARDED_BY(crit_);
-
-  mutable volatile int ref_count_ = 0;
 };
 
 }  // namespace video_coding

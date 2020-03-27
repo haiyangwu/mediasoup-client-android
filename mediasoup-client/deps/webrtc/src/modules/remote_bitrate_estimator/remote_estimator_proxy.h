@@ -14,9 +14,12 @@
 #include <map>
 #include <vector>
 
-#include "modules/include/module_common_types.h"
+#include "api/transport/network_control.h"
+#include "api/transport/webrtc_key_value_config.h"
 #include "modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "rtc_base/critical_section.h"
+#include "rtc_base/experiments/field_trial_parser.h"
+#include "rtc_base/numerics/sequence_number_util.h"
 
 namespace webrtc {
 
@@ -32,12 +35,10 @@ class TransportFeedback;
 
 class RemoteEstimatorProxy : public RemoteBitrateEstimator {
  public:
-  static const int kMinSendIntervalMs;
-  static const int kMaxSendIntervalMs;
-  static const int kDefaultSendIntervalMs;
-  static const int kBackWindowMs;
   RemoteEstimatorProxy(Clock* clock,
-                       TransportFeedbackSenderInterface* feedback_sender);
+                       TransportFeedbackSenderInterface* feedback_sender,
+                       const WebRtcKeyValueConfig* key_value_config,
+                       NetworkStateEstimator* network_state_estimator);
   ~RemoteEstimatorProxy() override;
 
   void IncomingPacket(int64_t arrival_time_ms,
@@ -51,14 +52,26 @@ class RemoteEstimatorProxy : public RemoteBitrateEstimator {
   int64_t TimeUntilNextProcess() override;
   void Process() override;
   void OnBitrateChanged(int bitrate);
-  void SetSendFeedbackOnRequestOnly(bool send_feedback_on_request_only);
+  void SetSendPeriodicFeedback(bool send_periodic_feedback);
 
  private:
+  struct TransportWideFeedbackConfig {
+    FieldTrialParameter<TimeDelta> back_window{"wind", TimeDelta::ms(500)};
+    FieldTrialParameter<TimeDelta> min_interval{"min", TimeDelta::ms(50)};
+    FieldTrialParameter<TimeDelta> max_interval{"max", TimeDelta::ms(250)};
+    FieldTrialParameter<TimeDelta> default_interval{"def", TimeDelta::ms(100)};
+    FieldTrialParameter<double> bandwidth_fraction{"frac", 0.05};
+    explicit TransportWideFeedbackConfig(
+        const WebRtcKeyValueConfig* key_value_config) {
+      ParseFieldTrial({&back_window, &min_interval, &max_interval,
+                       &default_interval, &bandwidth_fraction},
+                      key_value_config->Lookup(
+                          "WebRTC-Bwe-TransportWideFeedbackIntervals"));
+    }
+  };
+
   static const int kMaxNumberOfPackets;
-  void OnPacketArrival(uint16_t sequence_number,
-                       int64_t arrival_time,
-                       absl::optional<FeedbackRequest> feedback_request)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(&lock_);
+
   void SendPeriodicFeedbacks() RTC_EXCLUSIVE_LOCKS_REQUIRED(&lock_);
   void SendFeedbackOnRequest(int64_t sequence_number,
                              const FeedbackRequest& feedback_request)
@@ -75,18 +88,25 @@ class RemoteEstimatorProxy : public RemoteBitrateEstimator {
 
   Clock* const clock_;
   TransportFeedbackSenderInterface* const feedback_sender_;
+  const TransportWideFeedbackConfig send_config_;
   int64_t last_process_time_ms_;
 
   rtc::CriticalSection lock_;
-
+  //  |network_state_estimator_| may be null.
+  NetworkStateEstimator* const network_state_estimator_
+      RTC_PT_GUARDED_BY(&lock_);
   uint32_t media_ssrc_ RTC_GUARDED_BY(&lock_);
   uint8_t feedback_packet_count_ RTC_GUARDED_BY(&lock_);
-  SequenceNumberUnwrapper unwrapper_ RTC_GUARDED_BY(&lock_);
-  int64_t window_start_seq_ RTC_GUARDED_BY(&lock_);
+  SeqNumUnwrapper<uint16_t> unwrapper_ RTC_GUARDED_BY(&lock_);
+  absl::optional<int64_t> periodic_window_start_seq_ RTC_GUARDED_BY(&lock_);
   // Map unwrapped seq -> time.
   std::map<int64_t, int64_t> packet_arrival_times_ RTC_GUARDED_BY(&lock_);
   int64_t send_interval_ms_ RTC_GUARDED_BY(&lock_);
-  bool send_feedback_on_request_only_ RTC_GUARDED_BY(&lock_);
+  bool send_periodic_feedback_ RTC_GUARDED_BY(&lock_);
+
+  // Unwraps absolute send times.
+  uint32_t previous_abs_send_time_ RTC_GUARDED_BY(&lock_);
+  Timestamp abs_send_timestamp_ RTC_GUARDED_BY(&lock_);
 };
 
 }  // namespace webrtc

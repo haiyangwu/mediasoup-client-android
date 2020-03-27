@@ -10,9 +10,9 @@
 
 #include "modules/audio_coding/test/TestRedFec.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "api/audio_codecs/L16/audio_decoder_L16.h"
 #include "api/audio_codecs/L16/audio_encoder_L16.h"
@@ -61,8 +61,8 @@ TestRedFec::~TestRedFec() {
 }
 
 void TestRedFec::Perform() {
-  const std::string file_name = webrtc::test::ResourcePath(
-      "audio_coding/testfile32kHz", "pcm");
+  const std::string file_name =
+      webrtc::test::ResourcePath("audio_coding/testfile32kHz", "pcm");
   _inFileA.Open(file_name, 32000, "rb");
 
   ASSERT_EQ(0, _acmA->InitializeReceiver());
@@ -183,15 +183,14 @@ void TestRedFec::RegisterSendCodec(
       config.payload_type = cn_payload_type;
       config.vad_mode = vad_mode.value();
       encoder = CreateComfortNoiseEncoder(std::move(config));
-      receive_codecs.emplace(
-          std::make_pair(cn_payload_type,
-                         SdpAudioFormat("CN", codec_format.clockrate_hz, 1)));
+      receive_codecs.emplace(std::make_pair(
+          cn_payload_type, SdpAudioFormat("CN", codec_format.clockrate_hz, 1)));
     }
     if (use_red) {
       AudioEncoderCopyRed::Config config;
       config.payload_type = red_payload_type;
       config.speech_encoder = std::move(encoder);
-      encoder = absl::make_unique<AudioEncoderCopyRed>(std::move(config));
+      encoder = std::make_unique<AudioEncoderCopyRed>(std::move(config));
       receive_codecs.emplace(
           std::make_pair(red_payload_type,
                          SdpAudioFormat("red", codec_format.clockrate_hz, 1)));

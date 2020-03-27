@@ -13,10 +13,12 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 
 #include "api/crypto/crypto_options.h"
+#include "api/dtls_transport_interface.h"
 #include "api/scoped_refptr.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/packet_transport_internal.h"
@@ -40,6 +42,9 @@ enum DtlsTransportState {
   // Failed due to some error in the handshake process.
   DTLS_TRANSPORT_FAILED,
 };
+
+webrtc::DtlsTransportState ConvertDtlsTransportState(
+    cricket::DtlsTransportState cricket_state);
 
 enum PacketFlags {
   PF_NORMAL = 0x00,       // A normal packet.

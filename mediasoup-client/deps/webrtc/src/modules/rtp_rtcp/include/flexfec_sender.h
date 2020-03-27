@@ -17,7 +17,6 @@
 
 #include "api/array_view.h"
 #include "api/rtp_parameters.h"
-#include "modules/include/module_common_types.h"
 #include "modules/rtp_rtcp/include/rtp_header_extension_map.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/rtp_header_extension_size.h"

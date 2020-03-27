@@ -13,7 +13,7 @@
 
 #include <memory>
 
-#include "logging/rtc_event_log/events/rtc_event.h"
+#include "api/rtc_event_log/rtc_event.h"
 #include "modules/rtp_rtcp/source/rtp_packet.h"
 
 namespace webrtc {
@@ -43,7 +43,7 @@ class RtcEventRtpPacketIncoming final : public RtcEvent {
  private:
   RtcEventRtpPacketIncoming(const RtcEventRtpPacketIncoming& other);
 
-  RtpPacket header_;            // Only the packet's header will be stored here.
+  RtpPacket header_;  // Only the packet's header will be stored here.
   const size_t payload_length_;  // Media payload, excluding header and padding.
   const size_t header_length_;   // RTP header.
   const size_t padding_length_;  // RTP padding.

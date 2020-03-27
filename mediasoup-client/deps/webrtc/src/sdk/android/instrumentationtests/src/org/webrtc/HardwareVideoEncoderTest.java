@@ -70,7 +70,8 @@ public class HardwareVideoEncoderTest {
   private static final boolean ENABLE_H264_HIGH_PROFILE = true;
   private static final VideoEncoder.Settings SETTINGS =
       new VideoEncoder.Settings(1 /* core */, 640 /* width */, 480 /* height */, 300 /* kbps */,
-          30 /* fps */, 1 /* numberOfSimulcastStreams */, true /* automaticResizeOn */);
+          30 /* fps */, 1 /* numberOfSimulcastStreams */, true /* automaticResizeOn */,
+          /* capabilities= */ new VideoEncoder.Capabilities(false /* lossNotification */));
   private static final int ENCODE_TIMEOUT_MS = 1000;
   private static final int NUM_TEST_FRAMES = 10;
   private static final int NUM_ENCODE_TRIES = 100;
@@ -356,7 +357,7 @@ public class HardwareVideoEncoderTest {
   public void setUp() {
     NativeLibrary.initialize(new NativeLibrary.DefaultLoader(), TestConstants.NATIVE_LIBRARY);
 
-    eglBase = new EglBase14(null, EglBase.CONFIG_PLAIN);
+    eglBase = EglBase.createEgl14(EglBase.CONFIG_PLAIN);
     eglBase.createDummyPbufferSurface();
     eglBase.makeCurrent();
     lastTimestampNs = System.nanoTime();

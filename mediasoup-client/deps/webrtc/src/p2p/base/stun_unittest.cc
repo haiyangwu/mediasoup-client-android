@@ -8,12 +8,14 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/base/stun.h"
+
 #include <string.h>
+
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
-#include "p2p/base/stun.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/byte_buffer.h"
 #include "rtc_base/byte_order.h"
@@ -1116,7 +1118,7 @@ TEST_F(StunTest, WriteMessageWithOriginAttribute) {
       std::string(reinterpret_cast<const char*>(kTestTransactionId1),
                   kStunTransactionIdLength));
   auto origin =
-      absl::make_unique<StunByteStringAttribute>(STUN_ATTR_ORIGIN, kTestOrigin);
+      std::make_unique<StunByteStringAttribute>(STUN_ATTR_ORIGIN, kTestOrigin);
   msg.AddAttribute(std::move(origin));
 
   rtc::ByteBufferWriter out;

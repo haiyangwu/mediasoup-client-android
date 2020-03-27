@@ -18,8 +18,9 @@
 #include "api/video/video_stream_encoder_observer.h"
 #include "modules/video_coding/utility/quality_scaler.h"
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/experiments/field_trial_parser.h"
 #include "rtc_base/numerics/exp_filter.h"
-#include "rtc_base/sequenced_task_checker.h"
+#include "rtc_base/synchronization/sequence_checker.h"
 #include "rtc_base/task_queue.h"
 #include "rtc_base/task_utils/repeating_task.h"
 #include "rtc_base/thread_annotations.h"
@@ -57,7 +58,8 @@ class OveruseFrameDetector {
   virtual ~OveruseFrameDetector();
 
   // Start to periodically check for overuse.
-  void StartCheckForOveruse(const CpuOveruseOptions& options,
+  void StartCheckForOveruse(rtc::TaskQueue* task_queue,
+                            const CpuOveruseOptions& options,
                             AdaptationObserverInterface* overuse_observer);
 
   // StopCheckForOveruse must be called before destruction if
@@ -121,7 +123,7 @@ class OveruseFrameDetector {
   static std::unique_ptr<ProcessingUsage> CreateProcessingUsage(
       const CpuOveruseOptions& options);
 
-  rtc::SequencedTaskChecker task_checker_;
+  SequenceChecker task_checker_;
   // Owned by the task queue from where StartCheckForOveruse is called.
   RepeatingTaskHandle check_overuse_task_ RTC_GUARDED_BY(task_checker_);
 
@@ -144,6 +146,9 @@ class OveruseFrameDetector {
   int current_rampup_delay_ms_ RTC_GUARDED_BY(task_checker_);
 
   std::unique_ptr<ProcessingUsage> usage_ RTC_PT_GUARDED_BY(task_checker_);
+
+  // If set by field trial, overrides CpuOveruseOptions::filter_time_ms.
+  FieldTrialOptional<TimeDelta> filter_time_constant_{"tau"};
 
   RTC_DISALLOW_COPY_AND_ASSIGN(OveruseFrameDetector);
 };

@@ -10,15 +10,20 @@
 
 #include "api/video/video_stream_decoder_create.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "video/video_stream_decoder_impl.h"
 
 namespace webrtc {
-std::unique_ptr<VideoStreamDecoder> CreateVideoStreamDecoder(
-    VideoStreamDecoder::Callbacks* callbacks,
+
+std::unique_ptr<VideoStreamDecoderInterface> CreateVideoStreamDecoder(
+    VideoStreamDecoderInterface::Callbacks* callbacks,
     VideoDecoderFactory* decoder_factory,
+    TaskQueueFactory* task_queue_factory,
     std::map<int, std::pair<SdpVideoFormat, int>> decoder_settings) {
-  return absl::make_unique<VideoStreamDecoderImpl>(callbacks, decoder_factory,
-                                                   std::move(decoder_settings));
+  return std::make_unique<VideoStreamDecoderImpl>(callbacks, decoder_factory,
+                                                  task_queue_factory,
+                                                  std::move(decoder_settings));
 }
+
 }  // namespace webrtc

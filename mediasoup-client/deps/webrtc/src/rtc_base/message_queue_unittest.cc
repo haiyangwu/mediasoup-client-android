@@ -26,7 +26,7 @@
 namespace rtc {
 namespace {
 
-class MessageQueueTest : public testing::Test, public MessageQueue {
+class MessageQueueTest : public ::testing::Test, public MessageQueue {
  public:
   MessageQueueTest() : MessageQueue(SocketServer::CreateDefault(), true) {}
   bool IsLocked_Worker() {
@@ -120,20 +120,6 @@ TEST_F(MessageQueueTest, DiposeHandlerWithPostedMessagePending) {
   EXPECT_FALSE(Get(&msg, 0));
   EXPECT_TRUE(deleted);
 }
-
-struct UnwrapMainThreadScope {
-  UnwrapMainThreadScope() : rewrap_(Thread::Current() != nullptr) {
-    if (rewrap_)
-      ThreadManager::Instance()->UnwrapCurrentThread();
-  }
-  ~UnwrapMainThreadScope() {
-    if (rewrap_)
-      ThreadManager::Instance()->WrapCurrentThread();
-  }
-
- private:
-  bool rewrap_;
-};
 
 // Ensure that ProcessAllMessageQueues does its essential function; process
 // all messages (both delayed and non delayed) up until the current time, on

@@ -51,6 +51,10 @@
 #include "rtc_base/null_socket_server.h"
 #include "rtc_base/time_utils.h"
 
+#if defined(WEBRTC_LINUX)
+#include <linux/sockios.h>
+#endif
+
 #if defined(WEBRTC_WIN)
 #define LAST_SYSTEM_ERROR (::GetLastError())
 #elif defined(__native_client__) && __native_client__
@@ -319,7 +323,7 @@ int PhysicalSocket::Send(const void* pv, size_t cb) {
 #else
       0
 #endif
-      );
+  );
   UpdateLastError();
   MaybeRemapSendError();
   // We have seen minidumps where this may be false.

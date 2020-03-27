@@ -8,6 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "rtc_base/thread.h"
+
 #include <memory>
 
 #include "rtc_base/async_invoker.h"
@@ -18,7 +20,6 @@
 #include "rtc_base/physical_socket_server.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
-#include "rtc_base/thread.h"
 
 #if defined(WEBRTC_WIN)
 #include <comdef.h>  // NOLINT
@@ -266,15 +267,18 @@ TEST(ThreadTest, Names) {
 
 TEST(ThreadTest, Wrap) {
   Thread* current_thread = Thread::Current();
-  current_thread->UnwrapCurrent();
-  CustomThread* cthread = new CustomThread();
-  EXPECT_TRUE(cthread->WrapCurrent());
-  EXPECT_TRUE(cthread->RunningForTest());
-  EXPECT_FALSE(cthread->IsOwned());
-  cthread->UnwrapCurrent();
-  EXPECT_FALSE(cthread->RunningForTest());
-  delete cthread;
-  current_thread->WrapCurrent();
+  ThreadManager::Instance()->SetCurrentThread(nullptr);
+
+  {
+    CustomThread cthread;
+    EXPECT_TRUE(cthread.WrapCurrent());
+    EXPECT_EQ(&cthread, Thread::Current());
+    EXPECT_TRUE(cthread.RunningForTest());
+    EXPECT_FALSE(cthread.IsOwned());
+    cthread.UnwrapCurrent();
+    EXPECT_FALSE(cthread.RunningForTest());
+  }
+  ThreadManager::Instance()->SetCurrentThread(current_thread);
 }
 
 TEST(ThreadTest, Invoke) {
@@ -425,7 +429,7 @@ TEST(ThreadTest, SetNameOnSignalQueueDestroyed) {
   delete thread2;
 }
 
-class AsyncInvokeTest : public testing::Test {
+class AsyncInvokeTest : public ::testing::Test {
  public:
   void IntCallback(int value) {
     EXPECT_EQ(expected_thread_, Thread::Current());
@@ -513,7 +517,7 @@ TEST_F(AsyncInvokeTest, KillInvokerDuringExecuteWithReentrantInvoke) {
   bool reentrant_functor_run = false;
 
   Thread* main = Thread::Current();
-  Thread thread;
+  Thread thread(std::make_unique<NullSocketServer>());
   thread.Start();
   {
     AsyncInvoker invoker;
@@ -572,7 +576,7 @@ TEST_F(AsyncInvokeTest, FlushWithIds) {
   EXPECT_TRUE(flag2.get());
 }
 
-class GuardedAsyncInvokeTest : public testing::Test {
+class GuardedAsyncInvokeTest : public ::testing::Test {
  public:
   void IntCallback(int value) {
     EXPECT_EQ(expected_thread_, Thread::Current());

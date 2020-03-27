@@ -108,8 +108,8 @@ bool ParseDataChannelOpenMessage(const rtc::CopyOnWriteBuffer& payload,
       config->ordered = false;
   }
 
-  config->maxRetransmits = -1;
-  config->maxRetransmitTime = -1;
+  config->maxRetransmits = absl::nullopt;
+  config->maxRetransmitTime = absl::nullopt;
   switch (channel_type) {
     case DCOMCT_ORDERED_PARTIAL_RTXS:
     case DCOMCT_UNORDERED_PARTIAL_RTXS:
@@ -142,27 +142,27 @@ bool WriteDataChannelOpenMessage(const std::string& label,
                                  const DataChannelInit& config,
                                  rtc::CopyOnWriteBuffer* payload) {
   // Format defined at
-  // http://tools.ietf.org/html/draft-ietf-rtcweb-data-protocol-00#section-6.1
+  // http://tools.ietf.org/html/draft-ietf-rtcweb-data-protocol-09#section-5.1
   uint8_t channel_type = 0;
   uint32_t reliability_param = 0;
   uint16_t priority = 0;
   if (config.ordered) {
-    if (config.maxRetransmits > -1) {
+    if (config.maxRetransmits) {
       channel_type = DCOMCT_ORDERED_PARTIAL_RTXS;
-      reliability_param = config.maxRetransmits;
-    } else if (config.maxRetransmitTime > -1) {
+      reliability_param = *config.maxRetransmits;
+    } else if (config.maxRetransmitTime) {
       channel_type = DCOMCT_ORDERED_PARTIAL_TIME;
-      reliability_param = config.maxRetransmitTime;
+      reliability_param = *config.maxRetransmitTime;
     } else {
       channel_type = DCOMCT_ORDERED_RELIABLE;
     }
   } else {
-    if (config.maxRetransmits > -1) {
+    if (config.maxRetransmits) {
       channel_type = DCOMCT_UNORDERED_PARTIAL_RTXS;
-      reliability_param = config.maxRetransmits;
-    } else if (config.maxRetransmitTime > -1) {
+      reliability_param = *config.maxRetransmits;
+    } else if (config.maxRetransmitTime) {
       channel_type = DCOMCT_UNORDERED_PARTIAL_TIME;
-      reliability_param = config.maxRetransmitTime;
+      reliability_param = *config.maxRetransmitTime;
     } else {
       channel_type = DCOMCT_UNORDERED_RELIABLE;
     }
@@ -187,6 +187,35 @@ bool WriteDataChannelOpenMessage(const std::string& label,
 void WriteDataChannelOpenAckMessage(rtc::CopyOnWriteBuffer* payload) {
   uint8_t data = DATA_CHANNEL_OPEN_ACK_MESSAGE_TYPE;
   payload->SetData(&data, sizeof(data));
+}
+
+cricket::DataMessageType ToCricketDataMessageType(DataMessageType type) {
+  switch (type) {
+    case DataMessageType::kText:
+      return cricket::DMT_TEXT;
+    case DataMessageType::kBinary:
+      return cricket::DMT_BINARY;
+    case DataMessageType::kControl:
+      return cricket::DMT_CONTROL;
+    default:
+      return cricket::DMT_NONE;
+  }
+  return cricket::DMT_NONE;
+}
+
+DataMessageType ToWebrtcDataMessageType(cricket::DataMessageType type) {
+  switch (type) {
+    case cricket::DMT_TEXT:
+      return DataMessageType::kText;
+    case cricket::DMT_BINARY:
+      return DataMessageType::kBinary;
+    case cricket::DMT_CONTROL:
+      return DataMessageType::kControl;
+    case cricket::DMT_NONE:
+    default:
+      RTC_NOTREACHED();
+  }
+  return DataMessageType::kControl;
 }
 
 }  // namespace webrtc

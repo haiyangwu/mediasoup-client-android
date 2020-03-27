@@ -23,7 +23,8 @@ TEST(RateControlSettingsTest, CongestionWindow) {
   EXPECT_FALSE(
       RateControlSettings::ParseFromFieldTrials().UseCongestionWindow());
 
-  test::ScopedFieldTrials field_trials("WebRTC-VideoRateControl/cwnd:100/");
+  test::ScopedFieldTrials field_trials(
+      "WebRTC-CongestionWindow/QueueSize:100/");
   const RateControlSettings settings_after =
       RateControlSettings::ParseFromFieldTrials();
   EXPECT_TRUE(settings_after.UseCongestionWindow());
@@ -35,7 +36,7 @@ TEST(RateControlSettingsTest, CongestionWindowPushback) {
                    .UseCongestionWindowPushback());
 
   test::ScopedFieldTrials field_trials(
-      "WebRTC-VideoRateControl/cwnd:100,cwnd_pushback:100000/");
+      "WebRTC-CongestionWindow/QueueSize:100,MinBitrate:100000/");
   const RateControlSettings settings_after =
       RateControlSettings::ParseFromFieldTrials();
   EXPECT_TRUE(settings_after.UseCongestionWindowPushback());
@@ -62,6 +63,37 @@ TEST(RateControlSettingsTest, AlrProbing) {
   test::ScopedFieldTrials field_trials(
       "WebRTC-VideoRateControl/alr_probing:1/");
   EXPECT_TRUE(RateControlSettings::ParseFromFieldTrials().UseAlrProbing());
+}
+
+TEST(RateControlSettingsTest, LibvpxVp8QpMax) {
+  EXPECT_FALSE(RateControlSettings::ParseFromFieldTrials().LibvpxVp8QpMax());
+
+  test::ScopedFieldTrials field_trials(
+      "WebRTC-VideoRateControl/vp8_qp_max:50/");
+  EXPECT_EQ(RateControlSettings::ParseFromFieldTrials().LibvpxVp8QpMax(), 50);
+}
+
+TEST(RateControlSettingsTest, DoesNotGetTooLargeLibvpxVp8QpMaxValue) {
+  test::ScopedFieldTrials field_trials(
+      "WebRTC-VideoRateControl/vp8_qp_max:70/");
+  EXPECT_FALSE(RateControlSettings::ParseFromFieldTrials().LibvpxVp8QpMax());
+}
+
+TEST(RateControlSettingsTest, LibvpxVp8MinPixels) {
+  EXPECT_FALSE(
+      RateControlSettings::ParseFromFieldTrials().LibvpxVp8MinPixels());
+
+  test::ScopedFieldTrials field_trials(
+      "WebRTC-VideoRateControl/vp8_min_pixels:50000/");
+  EXPECT_EQ(RateControlSettings::ParseFromFieldTrials().LibvpxVp8MinPixels(),
+            50000);
+}
+
+TEST(RateControlSettingsTest, DoesNotGetTooSmallLibvpxVp8MinPixelValue) {
+  test::ScopedFieldTrials field_trials(
+      "WebRTC-VideoRateControl/vp8_min_pixels:0/");
+  EXPECT_FALSE(
+      RateControlSettings::ParseFromFieldTrials().LibvpxVp8MinPixels());
 }
 
 TEST(RateControlSettingsTest, LibvpxTrustedRateController) {

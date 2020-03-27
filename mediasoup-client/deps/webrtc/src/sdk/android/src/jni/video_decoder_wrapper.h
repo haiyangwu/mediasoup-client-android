@@ -35,7 +35,6 @@ class VideoDecoderWrapper : public VideoDecoder {
 
   int32_t Decode(const EncodedImage& input_image,
                  bool missing_frames,
-                 const CodecSpecificInfo* codec_specific_info,
                  int64_t render_time_ms) override;
 
   int32_t RegisterDecodeCompleteCallback(
@@ -55,7 +54,6 @@ class VideoDecoderWrapper : public VideoDecoder {
 
   // Wraps the frame to a AndroidVideoBuffer and passes it to the callback.
   void OnDecodedFrame(JNIEnv* env,
-                      const JavaRef<jobject>& j_caller,
                       const JavaRef<jobject>& j_frame,
                       const JavaRef<jobject>& j_decode_time_ms,
                       const JavaRef<jobject>& j_qp);

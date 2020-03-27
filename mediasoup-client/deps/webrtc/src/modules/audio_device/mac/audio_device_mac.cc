@@ -9,18 +9,20 @@
  */
 
 #include "modules/audio_device/mac/audio_device_mac.h"
-#include "absl/memory/memory.h"
+
+#include <ApplicationServices/ApplicationServices.h>
+#include <libkern/OSAtomic.h>  // OSAtomicCompareAndSwap()
+#include <mach/mach.h>         // mach_task_self()
+#include <sys/sysctl.h>        // sysctlbyname()
+
+#include <memory>
+
 #include "modules/audio_device/audio_device_config.h"
 #include "modules/third_party/portaudio/pa_ringbuffer.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/platform_thread.h"
 #include "rtc_base/system/arch.h"
-
-#include <ApplicationServices/ApplicationServices.h>
-#include <libkern/OSAtomic.h>  // OSAtomicCompareAndSwap()
-#include <mach/mach.h>         // mach_task_self()
-#include <sys/sysctl.h>        // sysctlbyname()
 
 namespace webrtc {
 
@@ -197,7 +199,6 @@ AudioDeviceMac::~AudioDeviceMac() {
   if (kernErr != KERN_SUCCESS) {
     RTC_LOG(LS_ERROR) << "semaphore_destroy() error: " << kernErr;
   }
-
 }
 
 // ============================================================================
@@ -1295,11 +1296,10 @@ int32_t AudioDeviceMac::StartRecording() {
   }
 
   RTC_DCHECK(!capture_worker_thread_.get());
-  capture_worker_thread_.reset(
-      new rtc::PlatformThread(RunCapture, this, "CaptureWorkerThread"));
+  capture_worker_thread_.reset(new rtc::PlatformThread(
+      RunCapture, this, "CaptureWorkerThread", rtc::kRealtimePriority));
   RTC_DCHECK(capture_worker_thread_.get());
   capture_worker_thread_->Start();
-  capture_worker_thread_->SetPriority(rtc::kRealtimePriority);
 
   OSStatus err = noErr;
   if (_twoDevices) {
@@ -1431,10 +1431,9 @@ int32_t AudioDeviceMac::StartPlayout() {
   }
 
   RTC_DCHECK(!render_worker_thread_.get());
-  render_worker_thread_.reset(
-      new rtc::PlatformThread(RunRender, this, "RenderWorkerThread"));
+  render_worker_thread_.reset(new rtc::PlatformThread(
+      RunRender, this, "RenderWorkerThread", rtc::kRealtimePriority));
   render_worker_thread_->Start();
-  render_worker_thread_->SetPriority(rtc::kRealtimePriority);
 
   if (_twoDevices || !_recording) {
     OSStatus err = noErr;
@@ -1559,7 +1558,7 @@ int32_t AudioDeviceMac::GetNumberDevices(const AudioObjectPropertyScope scope,
   }
 
   UInt32 numberDevices = size / sizeof(AudioDeviceID);
-  const auto deviceIds = absl::make_unique<AudioDeviceID[]>(numberDevices);
+  const auto deviceIds = std::make_unique<AudioDeviceID[]>(numberDevices);
   AudioBufferList* bufferList = NULL;
   UInt32 numberScopedDevices = 0;
 
@@ -2361,8 +2360,10 @@ OSStatus AudioDeviceMac::implInConverterProc(UInt32* numberDataPackets,
   return 0;
 }
 
-bool AudioDeviceMac::RunRender(void* ptrThis) {
-  return static_cast<AudioDeviceMac*>(ptrThis)->RenderWorkerThread();
+void AudioDeviceMac::RunRender(void* ptrThis) {
+  AudioDeviceMac* device = static_cast<AudioDeviceMac*>(ptrThis);
+  while (device->RenderWorkerThread()) {
+  }
 }
 
 bool AudioDeviceMac::RenderWorkerThread() {
@@ -2430,8 +2431,10 @@ bool AudioDeviceMac::RenderWorkerThread() {
   return true;
 }
 
-bool AudioDeviceMac::RunCapture(void* ptrThis) {
-  return static_cast<AudioDeviceMac*>(ptrThis)->CaptureWorkerThread();
+void AudioDeviceMac::RunCapture(void* ptrThis) {
+  AudioDeviceMac* device = static_cast<AudioDeviceMac*>(ptrThis);
+  while (device->CaptureWorkerThread()) {
+  }
 }
 
 bool AudioDeviceMac::CaptureWorkerThread() {

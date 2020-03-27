@@ -16,6 +16,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -110,7 +111,7 @@ const size_t kStunHeaderSize = 20;
 const size_t kStunTransactionIdOffset = 8;
 const size_t kStunTransactionIdLength = 12;
 const uint32_t kStunMagicCookie = 0x2112A442;
-const size_t kStunMagicCookieLength = sizeof(kStunMagicCookie);
+constexpr size_t kStunMagicCookieLength = sizeof(kStunMagicCookie);
 
 // Following value corresponds to an earlier version of STUN from
 // RFC3489.
@@ -581,6 +582,9 @@ enum TurnErrorType {
   STUN_ERROR_WRONG_CREDENTIALS = 441,
   STUN_ERROR_UNSUPPORTED_PROTOCOL = 442
 };
+
+extern const int SERVER_NOT_REACHABLE_ERROR;
+
 extern const char STUN_ERROR_REASON_FORBIDDEN[];
 extern const char STUN_ERROR_REASON_ALLOCATION_MISMATCH[];
 extern const char STUN_ERROR_REASON_WRONG_CREDENTIALS[];
@@ -591,16 +595,26 @@ class TurnMessage : public StunMessage {
   StunMessage* CreateNew() const override;
 };
 
-// RFC 5245 ICE STUN attributes.
 enum IceAttributeType {
+  // RFC 5245 ICE STUN attributes.
   STUN_ATTR_PRIORITY = 0x0024,         // UInt32
   STUN_ATTR_USE_CANDIDATE = 0x0025,    // No content, Length = 0
   STUN_ATTR_ICE_CONTROLLED = 0x8029,   // UInt64
   STUN_ATTR_ICE_CONTROLLING = 0x802A,  // UInt64
-  STUN_ATTR_NOMINATION = 0xC001,       // UInt32
+  // The following attributes are in the comprehension-optional range
+  // (0xC000-0xFFFF) and are not registered with IANA. These STUN attributes are
+  // intended for ICE and should NOT be used in generic use cases of STUN
+  // messages.
+  //
+  // Note that the value 0xC001 has already been assigned by IANA to
+  // ENF-FLOW-DESCRIPTION
+  // (https://www.iana.org/assignments/stun-parameters/stun-parameters.xml).
+  STUN_ATTR_NOMINATION = 0xC001,  // UInt32
   // UInt32. The higher 16 bits are the network ID. The lower 16 bits are the
   // network cost.
-  STUN_ATTR_NETWORK_INFO = 0xC057
+  STUN_ATTR_NETWORK_INFO = 0xC057,
+  // Experimental: Transaction ID of the last connectivity check received.
+  STUN_ATTR_LAST_ICE_CHECK_RECEIVED = 0xC058,
 };
 
 // RFC 5245-defined errors.

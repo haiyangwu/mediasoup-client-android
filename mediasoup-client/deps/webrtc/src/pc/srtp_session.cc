@@ -10,6 +10,7 @@
 
 #include "pc/srtp_session.h"
 
+#include "absl/base/attributes.h"
 #include "media/base/rtp_utils.h"
 #include "pc/external_hmac.h"
 #include "rtc_base/critical_section.h"
@@ -67,7 +68,7 @@ bool SrtpSession::UpdateRecv(int cs,
 }
 
 bool SrtpSession::ProtectRtp(void* p, int in_len, int max_len, int* out_len) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!session_) {
     RTC_LOG(LS_WARNING) << "Failed to protect SRTP packet: no SRTP Session";
     return false;
@@ -106,7 +107,7 @@ bool SrtpSession::ProtectRtp(void* p,
 }
 
 bool SrtpSession::ProtectRtcp(void* p, int in_len, int max_len, int* out_len) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!session_) {
     RTC_LOG(LS_WARNING) << "Failed to protect SRTCP packet: no SRTP Session";
     return false;
@@ -129,7 +130,7 @@ bool SrtpSession::ProtectRtcp(void* p, int in_len, int max_len, int* out_len) {
 }
 
 bool SrtpSession::UnprotectRtp(void* p, int in_len, int* out_len) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!session_) {
     RTC_LOG(LS_WARNING) << "Failed to unprotect SRTP packet: no SRTP Session";
     return false;
@@ -155,7 +156,7 @@ bool SrtpSession::UnprotectRtp(void* p, int in_len, int* out_len) {
 }
 
 bool SrtpSession::UnprotectRtcp(void* p, int in_len, int* out_len) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!session_) {
     RTC_LOG(LS_WARNING) << "Failed to unprotect SRTCP packet: no SRTP Session";
     return false;
@@ -173,7 +174,7 @@ bool SrtpSession::UnprotectRtcp(void* p, int in_len, int* out_len) {
 }
 
 bool SrtpSession::GetRtpAuthParams(uint8_t** key, int* key_len, int* tag_len) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   RTC_DCHECK(IsExternalAuthActive());
   if (!IsExternalAuthActive()) {
     return false;
@@ -220,7 +221,7 @@ bool SrtpSession::IsExternalAuthActive() const {
 bool SrtpSession::GetSendStreamPacketIndex(void* p,
                                            int in_len,
                                            int64_t* index) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   srtp_hdr_t* hdr = reinterpret_cast<srtp_hdr_t*>(p);
   srtp_stream_ctx_t* stream = srtp_get_stream(session_, hdr->ssrc);
   if (!stream) {
@@ -238,7 +239,7 @@ bool SrtpSession::DoSetKey(int type,
                            const uint8_t* key,
                            size_t len,
                            const std::vector<int>& extension_ids) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
 
   srtp_policy_t policy;
   memset(&policy, 0, sizeof(policy));
@@ -330,7 +331,7 @@ bool SrtpSession::SetKey(int type,
                          const uint8_t* key,
                          size_t len,
                          const std::vector<int>& extension_ids) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (session_) {
     RTC_LOG(LS_ERROR) << "Failed to create SRTP session: "
                          "SRTP session already created";
@@ -353,7 +354,7 @@ bool SrtpSession::UpdateKey(int type,
                             const uint8_t* key,
                             size_t len,
                             const std::vector<int>& extension_ids) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!session_) {
     RTC_LOG(LS_ERROR) << "Failed to update non-existing SRTP session";
     return false;
@@ -362,8 +363,8 @@ bool SrtpSession::UpdateKey(int type,
   return DoSetKey(type, cs, key, len, extension_ids);
 }
 
-int g_libsrtp_usage_count = 0;
-rtc::GlobalLockPod g_libsrtp_lock;
+ABSL_CONST_INIT int g_libsrtp_usage_count = 0;
+ABSL_CONST_INIT rtc::GlobalLock g_libsrtp_lock;
 
 // static
 bool SrtpSession::IncrementLibsrtpUsageCountAndMaybeInit() {
@@ -408,7 +409,7 @@ void SrtpSession::DecrementLibsrtpUsageCountAndMaybeDeinit() {
 }
 
 void SrtpSession::HandleEvent(const srtp_event_data_t* ev) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   switch (ev->event) {
     case event_ssrc_collision:
       RTC_LOG(LS_INFO) << "SRTP event: SSRC collision";

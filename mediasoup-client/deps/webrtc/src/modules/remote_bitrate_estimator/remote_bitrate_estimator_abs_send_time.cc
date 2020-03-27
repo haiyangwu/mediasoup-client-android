@@ -14,6 +14,7 @@
 
 #include <algorithm>
 
+#include "api/transport/field_trial_based_config.h"
 #include "modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/constructor_magic.h"
@@ -35,9 +36,9 @@ absl::optional<DataRate> OptionalRateFromOptionalBps(
 
 enum {
   kTimestampGroupLengthMs = 5,
-  kAbsSendTimeFraction = 18,
   kAbsSendTimeInterArrivalUpshift = 8,
-  kInterArrivalShift = kAbsSendTimeFraction + kAbsSendTimeInterArrivalUpshift,
+  kInterArrivalShift = RTPHeaderExtension::kAbsSendTimeFraction +
+                       kAbsSendTimeInterArrivalUpshift,
   kInitialProbingIntervalMs = 2000,
   kMinClusterSize = 4,
   kMaxProbePackets = 15,
@@ -60,9 +61,10 @@ std::vector<K> Keys(const std::map<K, V>& map) {
 
 uint32_t ConvertMsTo24Bits(int64_t time_ms) {
   uint32_t time_24_bits =
-      static_cast<uint32_t>(
-          ((static_cast<uint64_t>(time_ms) << kAbsSendTimeFraction) + 500) /
-          1000) &
+      static_cast<uint32_t>(((static_cast<uint64_t>(time_ms)
+                              << RTPHeaderExtension::kAbsSendTimeFraction) +
+                             500) /
+                            1000) &
       0x00FFFFFF;
   return time_24_bits;
 }
@@ -95,13 +97,14 @@ RemoteBitrateEstimatorAbsSendTime::RemoteBitrateEstimatorAbsSendTime(
       observer_(observer),
       inter_arrival_(),
       estimator_(),
-      detector_(),
+      detector_(&field_trials_),
       incoming_bitrate_(kBitrateWindowMs, 8000),
       incoming_bitrate_initialized_(false),
       total_probes_received_(0),
       first_packet_time_ms_(-1),
       last_update_ms_(-1),
-      uma_recorded_(false) {
+      uma_recorded_(false),
+      remote_rate_(&field_trials_) {
   RTC_DCHECK(clock_);
   RTC_DCHECK(observer_);
   RTC_LOG(LS_INFO) << "RemoteBitrateEstimatorAbsSendTime: Instantiating.";

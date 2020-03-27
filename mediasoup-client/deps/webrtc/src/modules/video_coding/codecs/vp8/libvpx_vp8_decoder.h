@@ -15,9 +15,7 @@
 
 #include "api/video/encoded_image.h"
 #include "api/video_codecs/video_decoder.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "common_video/include/i420_buffer_pool.h"
-#include "modules/include/module_common_types.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "vpx/vp8dx.h"
@@ -34,7 +32,6 @@ class LibvpxVp8Decoder : public VideoDecoder {
 
   int Decode(const EncodedImage& input_image,
              bool missing_frames,
-             const CodecSpecificInfo* codec_specific_info,
              int64_t /*render_time_ms*/) override;
 
   int RegisterDecodeCompleteCallback(DecodedImageCallback* callback) override;
@@ -52,7 +49,6 @@ class LibvpxVp8Decoder : public VideoDecoder {
   class QpSmoother;
   int ReturnFrame(const vpx_image_t* img,
                   uint32_t timeStamp,
-                  int64_t ntp_time_ms,
                   int qp,
                   const webrtc::ColorSpace* explicit_color_space);
   const bool use_postproc_arm_;

@@ -117,6 +117,8 @@ class RtpHelper : public Base {
     }
     return RemoveStreamBySsrc(&send_streams_, ssrc);
   }
+  virtual void ResetUnsignaledRecvStream() {}
+
   virtual bool AddRecvStream(const StreamParams& sp) {
     if (absl::c_linear_search(receive_streams_, sp)) {
       return false;
@@ -230,6 +232,11 @@ class RtpHelper : public Base {
     num_network_route_changes_ = changes;
   }
 
+  void OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
+                            int64_t packet_time_us) {
+    rtcp_packets_.push_back(std::string(packet->cdata<char>(), packet->size()));
+  }
+
  protected:
   bool MuteStream(uint32_t ssrc, bool mute) {
     if (!HasSendStream(ssrc) && ssrc != 0) {
@@ -267,13 +274,9 @@ class RtpHelper : public Base {
   void set_recv_rtcp_parameters(const RtcpParameters& params) {
     recv_rtcp_parameters_ = params;
   }
-  virtual void OnPacketReceived(rtc::CopyOnWriteBuffer* packet,
+  virtual void OnPacketReceived(rtc::CopyOnWriteBuffer packet,
                                 int64_t packet_time_us) {
-    rtp_packets_.push_back(std::string(packet->data<char>(), packet->size()));
-  }
-  virtual void OnRtcpReceived(rtc::CopyOnWriteBuffer* packet,
-                              int64_t packet_time_us) {
-    rtcp_packets_.push_back(std::string(packet->data<char>(), packet->size()));
+    rtp_packets_.push_back(std::string(packet.cdata<char>(), packet.size()));
   }
   virtual void OnReadyToSend(bool ready) { ready_to_send_ = ready; }
 
@@ -523,15 +526,16 @@ class FakeVoiceEngine : public VoiceEngineInterface {
   const std::vector<AudioCodec>& send_codecs() const override;
   const std::vector<AudioCodec>& recv_codecs() const override;
   void SetCodecs(const std::vector<AudioCodec>& codecs);
+  void SetRecvCodecs(const std::vector<AudioCodec>& codecs);
+  void SetSendCodecs(const std::vector<AudioCodec>& codecs);
   int GetInputLevel();
-  bool StartAecDump(rtc::PlatformFile file, int64_t max_size_bytes) override;
+  bool StartAecDump(webrtc::FileWrapper file, int64_t max_size_bytes) override;
   void StopAecDump() override;
-  bool StartRtcEventLog(rtc::PlatformFile file, int64_t max_size_bytes);
-  void StopRtcEventLog();
 
  private:
   std::vector<FakeVoiceMediaChannel*> channels_;
-  std::vector<AudioCodec> codecs_;
+  std::vector<AudioCodec> recv_codecs_;
+  std::vector<AudioCodec> send_codecs_;
   bool fail_create_channel_;
 
   friend class FakeMediaEngine;
@@ -546,7 +550,9 @@ class FakeVideoEngine : public VideoEngineInterface {
       webrtc::Call* call,
       const MediaConfig& config,
       const VideoOptions& options,
-      const webrtc::CryptoOptions& crypto_options) override;
+      const webrtc::CryptoOptions& crypto_options,
+      webrtc::VideoBitrateAllocatorFactory* video_bitrate_allocator_factory)
+      override;
   FakeVideoMediaChannel* GetChannel(size_t index);
   void UnregisterChannel(VideoMediaChannel* channel);
   std::vector<VideoCodec> codecs() const override;
@@ -570,6 +576,8 @@ class FakeMediaEngine : public CompositeMediaEngine {
   ~FakeMediaEngine() override;
 
   void SetAudioCodecs(const std::vector<AudioCodec>& codecs);
+  void SetAudioRecvCodecs(const std::vector<AudioCodec>& codecs);
+  void SetAudioSendCodecs(const std::vector<AudioCodec>& codecs);
   void SetVideoCodecs(const std::vector<VideoCodec>& codecs);
 
   FakeVoiceMediaChannel* GetVoiceChannel(size_t index);

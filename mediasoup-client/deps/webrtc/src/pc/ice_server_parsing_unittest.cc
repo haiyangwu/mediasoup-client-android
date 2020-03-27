@@ -8,18 +8,19 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/ice_server_parsing.h"
+
 #include <string>
 #include <vector>
 
 #include "p2p/base/port_interface.h"
-#include "pc/ice_server_parsing.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/socket_address.h"
 #include "test/gtest.h"
 
 namespace webrtc {
 
-class IceServerParsingTest : public testing::Test {
+class IceServerParsingTest : public ::testing::Test {
  public:
   // Convenience functions for parsing a single URL. Result is stored in
   // |stun_servers_| and |turn_servers_|.
@@ -200,16 +201,9 @@ TEST_F(IceServerParsingTest, ParseTransport) {
   EXPECT_FALSE(ParseTurnUrl("?"));
 }
 
-// Test parsing ICE username contained in URL.
-TEST_F(IceServerParsingTest, ParseUsername) {
-  EXPECT_TRUE(ParseTurnUrl("turn:user@hostname"));
-  EXPECT_EQ(1U, turn_servers_.size());
-  EXPECT_EQ("user", turn_servers_[0].credentials.username);
-
-  EXPECT_FALSE(ParseTurnUrl("turn:@hostname"));
-  EXPECT_FALSE(ParseTurnUrl("turn:username@"));
-  EXPECT_FALSE(ParseTurnUrl("turn:@"));
-  EXPECT_FALSE(ParseTurnUrl("turn:user@name@hostname"));
+// Reject pre-RFC 7065 syntax with ICE username contained in URL.
+TEST_F(IceServerParsingTest, ParseRejectsUsername) {
+  EXPECT_FALSE(ParseTurnUrl("turn:user@hostname"));
 }
 
 // Test that username and password from IceServer is copied into the resulting

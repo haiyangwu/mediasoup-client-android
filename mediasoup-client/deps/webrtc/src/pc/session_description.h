@@ -13,10 +13,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <iosfwd>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "api/crypto_params.h"
 #include "api/media_types.h"
 #include "api/rtp_parameters.h"
@@ -25,14 +29,17 @@
 #include "media/base/stream_params.h"
 #include "p2p/base/transport_description.h"
 #include "p2p/base/transport_info.h"
+#include "pc/media_protocol_names.h"
 #include "pc/simulcast_description.h"
+#include "rtc_base/deprecation.h"
 #include "rtc_base/socket_address.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace cricket {
 
 typedef std::vector<AudioCodec> AudioCodecs;
 typedef std::vector<VideoCodec> VideoCodecs;
-typedef std::vector<DataCodec> DataCodecs;
+typedef std::vector<RtpDataCodec> RtpDataCodecs;
 typedef std::vector<CryptoParams> CryptoParamsVec;
 typedef std::vector<webrtc::RtpExtension> RtpHeaderExtensions;
 
@@ -43,19 +50,13 @@ extern const char kMediaProtocolSavpf[];
 
 extern const char kMediaProtocolDtlsSavpf[];
 
-extern const char kMediaProtocolRtpPrefix[];
-
-extern const char kMediaProtocolSctp[];
-extern const char kMediaProtocolDtlsSctp[];
-extern const char kMediaProtocolUdpDtlsSctp[];
-extern const char kMediaProtocolTcpDtlsSctp[];
-
 // Options to control how session descriptions are generated.
 const int kAutoBandwidth = -1;
 
 class AudioContentDescription;
-class DataContentDescription;
 class VideoContentDescription;
+class RtpDataContentDescription;
+class SctpDataContentDescription;
 
 // Describes a session description media section. There are subclasses for each
 // media type (audio, video, data) that will have additional information.
@@ -76,61 +77,81 @@ class MediaContentDescription {
   virtual VideoContentDescription* as_video() { return nullptr; }
   virtual const VideoContentDescription* as_video() const { return nullptr; }
 
-  // Try to cast this media description to a DataContentDescription. Returns
-  // nullptr if the cast fails.
-  virtual DataContentDescription* as_data() { return nullptr; }
-  virtual const DataContentDescription* as_data() const { return nullptr; }
+  virtual RtpDataContentDescription* as_rtp_data() { return nullptr; }
+  virtual const RtpDataContentDescription* as_rtp_data() const {
+    return nullptr;
+  }
+
+  virtual SctpDataContentDescription* as_sctp() { return nullptr; }
+  virtual const SctpDataContentDescription* as_sctp() const { return nullptr; }
 
   virtual bool has_codecs() const = 0;
 
   virtual MediaContentDescription* Copy() const = 0;
+  virtual std::unique_ptr<MediaContentDescription> Clone() const {
+    return absl::WrapUnique(Copy());
+  }
 
   // |protocol| is the expected media transport protocol, such as RTP/AVPF,
   // RTP/SAVPF or SCTP/DTLS.
-  std::string protocol() const { return protocol_; }
-  void set_protocol(const std::string& protocol) { protocol_ = protocol; }
+  virtual std::string protocol() const { return protocol_; }
+  virtual void set_protocol(const std::string& protocol) {
+    protocol_ = protocol;
+  }
 
-  webrtc::RtpTransceiverDirection direction() const { return direction_; }
-  void set_direction(webrtc::RtpTransceiverDirection direction) {
+  virtual webrtc::RtpTransceiverDirection direction() const {
+    return direction_;
+  }
+  virtual void set_direction(webrtc::RtpTransceiverDirection direction) {
     direction_ = direction;
   }
 
-  bool rtcp_mux() const { return rtcp_mux_; }
-  void set_rtcp_mux(bool mux) { rtcp_mux_ = mux; }
+  virtual bool rtcp_mux() const { return rtcp_mux_; }
+  virtual void set_rtcp_mux(bool mux) { rtcp_mux_ = mux; }
 
-  bool rtcp_reduced_size() const { return rtcp_reduced_size_; }
-  void set_rtcp_reduced_size(bool reduced_size) {
+  virtual bool rtcp_reduced_size() const { return rtcp_reduced_size_; }
+  virtual void set_rtcp_reduced_size(bool reduced_size) {
     rtcp_reduced_size_ = reduced_size;
   }
 
-  int bandwidth() const { return bandwidth_; }
-  void set_bandwidth(int bandwidth) { bandwidth_ = bandwidth; }
+  // Indicates support for the remote network estimate packet type. This
+  // functionality is experimental and subject to change without notice.
+  virtual bool remote_estimate() const { return remote_estimate_; }
+  virtual void set_remote_estimate(bool remote_estimate) {
+    remote_estimate_ = remote_estimate;
+  }
 
-  const std::vector<CryptoParams>& cryptos() const { return cryptos_; }
-  void AddCrypto(const CryptoParams& params) { cryptos_.push_back(params); }
-  void set_cryptos(const std::vector<CryptoParams>& cryptos) {
+  virtual int bandwidth() const { return bandwidth_; }
+  virtual void set_bandwidth(int bandwidth) { bandwidth_ = bandwidth; }
+
+  virtual const std::vector<CryptoParams>& cryptos() const { return cryptos_; }
+  virtual void AddCrypto(const CryptoParams& params) {
+    cryptos_.push_back(params);
+  }
+  virtual void set_cryptos(const std::vector<CryptoParams>& cryptos) {
     cryptos_ = cryptos;
   }
 
-  const RtpHeaderExtensions& rtp_header_extensions() const {
+  virtual const RtpHeaderExtensions& rtp_header_extensions() const {
     return rtp_header_extensions_;
   }
-  void set_rtp_header_extensions(const RtpHeaderExtensions& extensions) {
+  virtual void set_rtp_header_extensions(
+      const RtpHeaderExtensions& extensions) {
     rtp_header_extensions_ = extensions;
     rtp_header_extensions_set_ = true;
   }
-  void AddRtpHeaderExtension(const webrtc::RtpExtension& ext) {
+  virtual void AddRtpHeaderExtension(const webrtc::RtpExtension& ext) {
     rtp_header_extensions_.push_back(ext);
     rtp_header_extensions_set_ = true;
   }
-  void AddRtpHeaderExtension(const cricket::RtpHeaderExtension& ext) {
+  virtual void AddRtpHeaderExtension(const cricket::RtpHeaderExtension& ext) {
     webrtc::RtpExtension webrtc_extension;
     webrtc_extension.uri = ext.uri;
     webrtc_extension.id = ext.id;
     rtp_header_extensions_.push_back(webrtc_extension);
     rtp_header_extensions_set_ = true;
   }
-  void ClearRtpHeaderExtensions() {
+  virtual void ClearRtpHeaderExtensions() {
     rtp_header_extensions_.clear();
     rtp_header_extensions_set_ = true;
   }
@@ -139,62 +160,65 @@ class MediaContentDescription {
   // signal them. For now we assume an empty list means no signaling, but
   // provide the ClearRtpHeaderExtensions method to allow "no support" to be
   // clearly indicated (i.e. when derived from other information).
-  bool rtp_header_extensions_set() const { return rtp_header_extensions_set_; }
-  const StreamParamsVec& streams() const { return send_streams_; }
+  virtual bool rtp_header_extensions_set() const {
+    return rtp_header_extensions_set_;
+  }
+  virtual const StreamParamsVec& streams() const { return send_streams_; }
   // TODO(pthatcher): Remove this by giving mediamessage.cc access
   // to MediaContentDescription
-  StreamParamsVec& mutable_streams() { return send_streams_; }
-  void AddStream(const StreamParams& stream) {
+  virtual StreamParamsVec& mutable_streams() { return send_streams_; }
+  virtual void AddStream(const StreamParams& stream) {
     send_streams_.push_back(stream);
   }
   // Legacy streams have an ssrc, but nothing else.
   void AddLegacyStream(uint32_t ssrc) {
-    send_streams_.push_back(StreamParams::CreateLegacy(ssrc));
+    AddStream(StreamParams::CreateLegacy(ssrc));
   }
   void AddLegacyStream(uint32_t ssrc, uint32_t fid_ssrc) {
     StreamParams sp = StreamParams::CreateLegacy(ssrc);
     sp.AddFidSsrc(ssrc, fid_ssrc);
-    send_streams_.push_back(sp);
+    AddStream(sp);
   }
 
   // Sets the CNAME of all StreamParams if it have not been set.
-  void SetCnameIfEmpty(const std::string& cname) {
+  virtual void SetCnameIfEmpty(const std::string& cname) {
     for (cricket::StreamParamsVec::iterator it = send_streams_.begin();
          it != send_streams_.end(); ++it) {
       if (it->cname.empty())
         it->cname = cname;
     }
   }
-  uint32_t first_ssrc() const {
+  virtual uint32_t first_ssrc() const {
     if (send_streams_.empty()) {
       return 0;
     }
     return send_streams_[0].first_ssrc();
   }
-  bool has_ssrcs() const {
+  virtual bool has_ssrcs() const {
     if (send_streams_.empty()) {
       return false;
     }
     return send_streams_[0].has_ssrcs();
   }
 
-  void set_conference_mode(bool enable) { conference_mode_ = enable; }
-  bool conference_mode() const { return conference_mode_; }
+  virtual void set_conference_mode(bool enable) { conference_mode_ = enable; }
+  virtual bool conference_mode() const { return conference_mode_; }
 
   // https://tools.ietf.org/html/rfc4566#section-5.7
   // May be present at the media or session level of SDP. If present at both
   // levels, the media-level attribute overwrites the session-level one.
-  void set_connection_address(const rtc::SocketAddress& address) {
+  virtual void set_connection_address(const rtc::SocketAddress& address) {
     connection_address_ = address;
   }
-  const rtc::SocketAddress& connection_address() const {
+  virtual const rtc::SocketAddress& connection_address() const {
     return connection_address_;
   }
 
   // Determines if it's allowed to mix one- and two-byte rtp header extensions
   // within the same rtp stream.
   enum ExtmapAllowMixed { kNo, kSession, kMedia };
-  void set_extmap_allow_mixed_enum(ExtmapAllowMixed new_extmap_allow_mixed) {
+  virtual void set_extmap_allow_mixed_enum(
+      ExtmapAllowMixed new_extmap_allow_mixed) {
     if (new_extmap_allow_mixed == kMedia &&
         extmap_allow_mixed_enum_ == kSession) {
       // Do not downgrade from session level to media level.
@@ -202,10 +226,12 @@ class MediaContentDescription {
     }
     extmap_allow_mixed_enum_ = new_extmap_allow_mixed;
   }
-  ExtmapAllowMixed extmap_allow_mixed_enum() const {
+  virtual ExtmapAllowMixed extmap_allow_mixed_enum() const {
     return extmap_allow_mixed_enum_;
   }
-  bool extmap_allow_mixed() const { return extmap_allow_mixed_enum_ != kNo; }
+  virtual bool extmap_allow_mixed() const {
+    return extmap_allow_mixed_enum_ != kNo;
+  }
 
   // Simulcast functionality.
   virtual bool HasSimulcast() const { return !simulcast_.empty(); }
@@ -217,10 +243,24 @@ class MediaContentDescription {
       const SimulcastDescription& simulcast) {
     simulcast_ = simulcast;
   }
+  virtual const std::vector<RidDescription>& receive_rids() const {
+    return receive_rids_;
+  }
+  virtual void set_receive_rids(const std::vector<RidDescription>& rids) {
+    receive_rids_ = rids;
+  }
+
+  virtual const absl::optional<std::string>& alt_protocol() const {
+    return alt_protocol_;
+  }
+  virtual void set_alt_protocol(const absl::optional<std::string>& protocol) {
+    alt_protocol_ = protocol;
+  }
 
  protected:
   bool rtcp_mux_ = false;
   bool rtcp_reduced_size_ = false;
+  bool remote_estimate_ = false;
   int bandwidth_ = kAutoBandwidth;
   std::string protocol_;
   std::vector<CryptoParams> cryptos_;
@@ -237,6 +277,9 @@ class MediaContentDescription {
   ExtmapAllowMixed extmap_allow_mixed_enum_ = kNo;
 
   SimulcastDescription simulcast_;
+  std::vector<RidDescription> receive_rids_;
+
+  absl::optional<std::string> alt_protocol_;
 };
 
 // TODO(bugs.webrtc.org/8620): Remove this alias once downstream projects have
@@ -246,13 +289,18 @@ using ContentDescription = MediaContentDescription;
 template <class C>
 class MediaContentDescriptionImpl : public MediaContentDescription {
  public:
+  void set_protocol(const std::string& protocol) override {
+    RTC_DCHECK(IsRtpProtocol(protocol));
+    protocol_ = protocol;
+  }
+
   typedef C CodecType;
 
   // Codecs should be in preference order (most preferred codec first).
-  const std::vector<C>& codecs() const { return codecs_; }
-  void set_codecs(const std::vector<C>& codecs) { codecs_ = codecs; }
-  virtual bool has_codecs() const { return !codecs_.empty(); }
-  bool HasCodec(int id) {
+  virtual const std::vector<C>& codecs() const { return codecs_; }
+  virtual void set_codecs(const std::vector<C>& codecs) { codecs_ = codecs; }
+  bool has_codecs() const override { return !codecs_.empty(); }
+  virtual bool HasCodec(int id) {
     bool found = false;
     for (typename std::vector<C>::iterator iter = codecs_.begin();
          iter != codecs_.end(); ++iter) {
@@ -263,8 +311,8 @@ class MediaContentDescriptionImpl : public MediaContentDescription {
     }
     return found;
   }
-  void AddCodec(const C& codec) { codecs_.push_back(codec); }
-  void AddOrReplaceCodec(const C& codec) {
+  virtual void AddCodec(const C& codec) { codecs_.push_back(codec); }
+  virtual void AddOrReplaceCodec(const C& codec) {
     for (typename std::vector<C>::iterator iter = codecs_.begin();
          iter != codecs_.end(); ++iter) {
       if (iter->id == codec.id) {
@@ -274,7 +322,7 @@ class MediaContentDescriptionImpl : public MediaContentDescription {
     }
     AddCodec(codec);
   }
-  void AddCodecs(const std::vector<C>& codecs) {
+  virtual void AddCodecs(const std::vector<C>& codecs) {
     typename std::vector<C>::const_iterator codec;
     for (codec = codecs.begin(); codec != codecs.end(); ++codec) {
       AddCodec(*codec);
@@ -307,22 +355,54 @@ class VideoContentDescription : public MediaContentDescriptionImpl<VideoCodec> {
   virtual const VideoContentDescription* as_video() const { return this; }
 };
 
-class DataContentDescription : public MediaContentDescriptionImpl<DataCodec> {
+class RtpDataContentDescription
+    : public MediaContentDescriptionImpl<RtpDataCodec> {
  public:
-  DataContentDescription() {}
-
-  virtual DataContentDescription* Copy() const {
-    return new DataContentDescription(*this);
+  RtpDataContentDescription() {}
+  RtpDataContentDescription* Copy() const override {
+    return new RtpDataContentDescription(*this);
   }
-  virtual MediaType type() const { return MEDIA_TYPE_DATA; }
-  virtual DataContentDescription* as_data() { return this; }
-  virtual const DataContentDescription* as_data() const { return this; }
+  MediaType type() const override { return MEDIA_TYPE_DATA; }
+  RtpDataContentDescription* as_rtp_data() override { return this; }
+  const RtpDataContentDescription* as_rtp_data() const override { return this; }
+};
+
+class SctpDataContentDescription : public MediaContentDescription {
+ public:
+  SctpDataContentDescription() {}
+  SctpDataContentDescription(const SctpDataContentDescription& o)
+      : MediaContentDescription(o),
+        use_sctpmap_(o.use_sctpmap_),
+        port_(o.port_),
+        max_message_size_(o.max_message_size_) {}
+  SctpDataContentDescription* Copy() const override {
+    return new SctpDataContentDescription(*this);
+  }
+  MediaType type() const override { return MEDIA_TYPE_DATA; }
+  SctpDataContentDescription* as_sctp() override { return this; }
+  const SctpDataContentDescription* as_sctp() const override { return this; }
+
+  bool has_codecs() const override { return false; }
+  void set_protocol(const std::string& protocol) override {
+    RTC_DCHECK(IsSctpProtocol(protocol));
+    protocol_ = protocol;
+  }
 
   bool use_sctpmap() const { return use_sctpmap_; }
   void set_use_sctpmap(bool enable) { use_sctpmap_ = enable; }
+  int port() const { return port_; }
+  void set_port(int port) { port_ = port; }
+  int max_message_size() const { return max_message_size_; }
+  void set_max_message_size(int max_message_size) {
+    max_message_size_ = max_message_size;
+  }
 
  private:
-  bool use_sctpmap_ = true;
+  bool use_sctpmap_ = true;  // Note: "true" is no longer conformant.
+  // Defaults should be constants imported from SCTP. Quick hack.
+  int port_ = 5000;
+  // draft-ietf-mmusic-sdp-sctp-23: Max message size default is 64K
+  int max_message_size_ = 64 * 1024;
 };
 
 // Protocol used for encoding media. This is the "top level" protocol that may
@@ -340,22 +420,29 @@ constexpr MediaProtocolType NS_JINGLE_DRAFT_SCTP = MediaProtocolType::kSctp;
 
 // Represents a session description section. Most information about the section
 // is stored in the description, which is a subclass of MediaContentDescription.
-struct ContentInfo {
-  friend class SessionDescription;
-
+// Owns the description.
+class RTC_EXPORT ContentInfo {
+ public:
   explicit ContentInfo(MediaProtocolType type) : type(type) {}
+  ~ContentInfo();
+  // Copy
+  ContentInfo(const ContentInfo& o);
+  ContentInfo& operator=(const ContentInfo& o);
+  ContentInfo(ContentInfo&& o) = default;
+  ContentInfo& operator=(ContentInfo&& o) = default;
 
   // Alias for |name|.
   std::string mid() const { return name; }
   void set_mid(const std::string& mid) { this->name = mid; }
 
   // Alias for |description|.
-  MediaContentDescription* media_description() { return description; }
-  const MediaContentDescription* media_description() const {
-    return description;
-  }
-  void set_media_description(MediaContentDescription* desc) {
-    description = desc;
+  MediaContentDescription* media_description();
+  const MediaContentDescription* media_description() const;
+
+  void set_media_description(std::unique_ptr<MediaContentDescription> desc) {
+    description_ = std::move(desc);
+    // For backwards compatibility only.
+    description = description_.get();
   }
 
   // TODO(bugs.webrtc.org/8620): Rename this to mid.
@@ -363,8 +450,13 @@ struct ContentInfo {
   MediaProtocolType type;
   bool rejected = false;
   bool bundle_only = false;
-  // TODO(bugs.webrtc.org/8620): Switch to the getter and setter, and make this
-  // private.
+
+ private:
+  friend class SessionDescription;
+  std::unique_ptr<MediaContentDescription> description_;
+
+ public:
+  // Kept for backwards compatibility only.
   MediaContentDescription* description = nullptr;
 };
 
@@ -421,7 +513,7 @@ class SessionDescription {
   SessionDescription();
   ~SessionDescription();
 
-  SessionDescription* Copy() const;
+  std::unique_ptr<SessionDescription> Clone() const;
 
   struct MediaTransportSetting;
 
@@ -440,17 +532,40 @@ class SessionDescription {
   // Adds a content to this description. Takes ownership of ContentDescription*.
   void AddContent(const std::string& name,
                   MediaProtocolType type,
-                  MediaContentDescription* description);
+                  std::unique_ptr<MediaContentDescription> description);
   void AddContent(const std::string& name,
                   MediaProtocolType type,
                   bool rejected,
-                  MediaContentDescription* description);
+                  std::unique_ptr<MediaContentDescription> description);
   void AddContent(const std::string& name,
                   MediaProtocolType type,
                   bool rejected,
                   bool bundle_only,
-                  MediaContentDescription* description);
-  void AddContent(ContentInfo* content);
+                  std::unique_ptr<MediaContentDescription> description);
+  void AddContent(ContentInfo&& content);
+  RTC_DEPRECATED void AddContent(const std::string& name,
+                                 MediaProtocolType type,
+                                 MediaContentDescription* description) {
+    AddContent(name, type, absl::WrapUnique(description));
+  }
+  RTC_DEPRECATED void AddContent(const std::string& name,
+                                 MediaProtocolType type,
+                                 bool rejected,
+                                 MediaContentDescription* description) {
+    AddContent(name, type, rejected, absl::WrapUnique(description));
+  }
+  RTC_DEPRECATED void AddContent(const std::string& name,
+                                 MediaProtocolType type,
+                                 bool rejected,
+                                 bool bundle_only,
+                                 MediaContentDescription* description) {
+    AddContent(name, type, rejected, bundle_only,
+               absl::WrapUnique(description));
+  }
+
+  RTC_DEPRECATED void AddContent(ContentInfo* content) {
+    AddContent(std::move(*content));
+  }
 
   bool RemoveContentByName(const std::string& name);
 

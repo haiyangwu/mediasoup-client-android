@@ -14,11 +14,11 @@
 
 #include "rtc_base/task_queue_gcd.h"
 
+#include <dispatch/dispatch.h>
 #include <string.h>
 
-#include <dispatch/dispatch.h>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "api/task_queue/queued_task.h"
 #include "api/task_queue/task_queue_base.h"
@@ -147,7 +147,7 @@ class TaskQueueGcdFactory final : public TaskQueueFactory {
 }  // namespace
 
 std::unique_ptr<TaskQueueFactory> CreateTaskQueueGcdFactory() {
-  return absl::make_unique<TaskQueueGcdFactory>();
+  return std::make_unique<TaskQueueGcdFactory>();
 }
 
 }  // namespace webrtc

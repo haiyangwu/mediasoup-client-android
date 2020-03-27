@@ -54,11 +54,6 @@ VideoCodecH264 VideoEncoder::GetDefaultH264Settings() {
   h264_settings.frameDroppingOn = true;
   h264_settings.keyFrameInterval = 3000;
   h264_settings.numberOfTemporalLayers = 1;
-  h264_settings.spsData = nullptr;
-  h264_settings.spsLen = 0;
-  h264_settings.ppsData = nullptr;
-  h264_settings.ppsLen = 0;
-  h264_settings.profile = H264::kProfileConstrainedBaseline;
 
   return h264_settings;
 }
@@ -95,22 +90,78 @@ VideoEncoder::EncoderInfo::EncoderInfo()
       has_internal_source(false),
       fps_allocation{absl::InlinedVector<uint8_t, kMaxTemporalStreams>(
           1,
-          kMaxFramerateFraction)} {}
+          kMaxFramerateFraction)},
+      supports_simulcast(false) {}
 
 VideoEncoder::EncoderInfo::EncoderInfo(const EncoderInfo&) = default;
 
 VideoEncoder::EncoderInfo::~EncoderInfo() = default;
 
-int32_t VideoEncoder::SetRates(uint32_t bitrate, uint32_t framerate) {
-  RTC_NOTREACHED() << "SetRate(uint32_t, uint32_t) is deprecated.";
-  return -1;
+VideoEncoder::RateControlParameters::RateControlParameters()
+    : bitrate(VideoBitrateAllocation()),
+      framerate_fps(0.0),
+      bandwidth_allocation(DataRate::Zero()) {}
+
+VideoEncoder::RateControlParameters::RateControlParameters(
+    const VideoBitrateAllocation& bitrate,
+    double framerate_fps)
+    : bitrate(bitrate),
+      framerate_fps(framerate_fps),
+      bandwidth_allocation(DataRate::bps(bitrate.get_sum_bps())) {}
+
+VideoEncoder::RateControlParameters::RateControlParameters(
+    const VideoBitrateAllocation& bitrate,
+    double framerate_fps,
+    DataRate bandwidth_allocation)
+    : bitrate(bitrate),
+      framerate_fps(framerate_fps),
+      bandwidth_allocation(bandwidth_allocation) {}
+
+bool VideoEncoder::RateControlParameters::operator==(
+    const VideoEncoder::RateControlParameters& rhs) const {
+  return std::tie(bitrate, framerate_fps, bandwidth_allocation) ==
+         std::tie(rhs.bitrate, rhs.framerate_fps, rhs.bandwidth_allocation);
 }
 
-int32_t VideoEncoder::SetRateAllocation(
-    const VideoBitrateAllocation& allocation,
-    uint32_t framerate) {
-  return SetRates(allocation.get_sum_kbps(), framerate);
+bool VideoEncoder::RateControlParameters::operator!=(
+    const VideoEncoder::RateControlParameters& rhs) const {
+  return !(rhs == *this);
 }
+
+VideoEncoder::RateControlParameters::~RateControlParameters() = default;
+
+void VideoEncoder::SetFecControllerOverride(
+    FecControllerOverride* fec_controller_override) {}
+
+int32_t VideoEncoder::InitEncode(const VideoCodec* codec_settings,
+                                 int32_t number_of_cores,
+                                 size_t max_payload_size) {
+  const VideoEncoder::Capabilities capabilities(/* loss_notification= */ false);
+  const VideoEncoder::Settings settings(capabilities, number_of_cores,
+                                        max_payload_size);
+  // In theory, this and the other version of InitEncode() could end up calling
+  // each other in a loop until we get a stack overflow.
+  // In practice, any subclass of VideoEncoder would overload at least one
+  // of these, and we have a TODO in the header file to make this pure virtual.
+  return InitEncode(codec_settings, settings);
+}
+
+int VideoEncoder::InitEncode(const VideoCodec* codec_settings,
+                             const VideoEncoder::Settings& settings) {
+  // In theory, this and the other version of InitEncode() could end up calling
+  // each other in a loop until we get a stack overflow.
+  // In practice, any subclass of VideoEncoder would overload at least one
+  // of these, and we have a TODO in the header file to make this pure virtual.
+  return InitEncode(codec_settings, settings.number_of_cores,
+                    settings.max_payload_size);
+}
+
+void VideoEncoder::OnPacketLossRateUpdate(float packet_loss_rate) {}
+
+void VideoEncoder::OnRttUpdate(int64_t rtt_ms) {}
+
+void VideoEncoder::OnLossNotification(
+    const LossNotification& loss_notification) {}
 
 // TODO(webrtc:9722): Remove and make pure virtual.
 VideoEncoder::EncoderInfo VideoEncoder::GetEncoderInfo() const {

@@ -8,18 +8,19 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "api/jsep_session_description.h"
+
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/candidate.h"
 #include "api/jsep.h"
 #include "api/jsep_ice_candidate.h"
-#include "api/jsep_session_description.h"
 #include "media/base/codec.h"
 #include "p2p/base/p2p_constants.h"
 #include "p2p/base/port.h"
@@ -53,21 +54,22 @@ static const uint32_t kCandidateGeneration = 2;
 
 // This creates a session description with both audio and video media contents.
 // In SDP this is described by two m lines, one audio and one video.
-static cricket::SessionDescription* CreateCricketSessionDescription() {
-  cricket::SessionDescription* desc(new cricket::SessionDescription());
-  // AudioContentDescription
-  std::unique_ptr<cricket::AudioContentDescription> audio(
-      new cricket::AudioContentDescription());
+static std::unique_ptr<cricket::SessionDescription>
+CreateCricketSessionDescription() {
+  auto desc = std::make_unique<cricket::SessionDescription>();
 
+  // AudioContentDescription
+  auto audio = std::make_unique<cricket::AudioContentDescription>();
   // VideoContentDescription
-  std::unique_ptr<cricket::VideoContentDescription> video(
-      new cricket::VideoContentDescription());
+  auto video = std::make_unique<cricket::VideoContentDescription>();
 
   audio->AddCodec(cricket::AudioCodec(103, "ISAC", 16000, 0, 0));
-  desc->AddContent(cricket::CN_AUDIO, MediaProtocolType::kRtp, audio.release());
+  desc->AddContent(cricket::CN_AUDIO, MediaProtocolType::kRtp,
+                   std::move(audio));
 
   video->AddCodec(cricket::VideoCodec(120, "VP8"));
-  desc->AddContent(cricket::CN_VIDEO, MediaProtocolType::kRtp, video.release());
+  desc->AddContent(cricket::CN_VIDEO, MediaProtocolType::kRtp,
+                   std::move(video));
 
   desc->AddTransportInfo(cricket::TransportInfo(
       cricket::CN_AUDIO,
@@ -82,7 +84,7 @@ static cricket::SessionDescription* CreateCricketSessionDescription() {
   return desc;
 }
 
-class JsepSessionDescriptionTest : public testing::Test {
+class JsepSessionDescriptionTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
     int port = 1234;
@@ -92,7 +94,7 @@ class JsepSessionDescriptionTest : public testing::Test {
     candidate_ = candidate;
     const std::string session_id = rtc::ToString(rtc::CreateRandomId64());
     const std::string session_version = rtc::ToString(rtc::CreateRandomId());
-    jsep_desc_ = absl::make_unique<JsepSessionDescription>(SdpType::kOffer);
+    jsep_desc_ = std::make_unique<JsepSessionDescription>(SdpType::kOffer);
     ASSERT_TRUE(jsep_desc_->Initialize(CreateCricketSessionDescription(),
                                        session_id, session_version));
   }
@@ -106,7 +108,7 @@ class JsepSessionDescriptionTest : public testing::Test {
 
   std::unique_ptr<SessionDescriptionInterface> DeSerialize(
       const std::string& sdp) {
-    auto jsep_desc = absl::make_unique<JsepSessionDescription>(SdpType::kOffer);
+    auto jsep_desc = std::make_unique<JsepSessionDescription>(SdpType::kOffer);
     EXPECT_TRUE(webrtc::SdpDeserialize(sdp, jsep_desc.get(), nullptr));
     return std::move(jsep_desc);
   }
@@ -220,11 +222,14 @@ TEST_F(JsepSessionDescriptionTest, AddHostnameCandidate) {
   c.set_protocol(cricket::UDP_PROTOCOL_NAME);
   c.set_address(rtc::SocketAddress("example.local", 1234));
   c.set_type(cricket::LOCAL_PORT_TYPE);
-  JsepIceCandidate hostname_candidate("audio", 0, c);
+  const size_t audio_index = 0;
+  JsepIceCandidate hostname_candidate("audio", audio_index, c);
   EXPECT_TRUE(jsep_desc_->AddCandidate(&hostname_candidate));
+
   ASSERT_NE(nullptr, jsep_desc_->description());
-  const auto& content = jsep_desc_->description()->contents()[0];
-  EXPECT_EQ("example.local:1234",
+  ASSERT_EQ(2u, jsep_desc_->description()->contents().size());
+  const auto& content = jsep_desc_->description()->contents()[audio_index];
+  EXPECT_EQ("0.0.0.0:9",
             content.media_description()->connection_address().ToString());
 }
 
@@ -237,6 +242,39 @@ TEST_F(JsepSessionDescriptionTest, SerializeDeserialize) {
 
   std::string parsed_sdp = Serialize(parsed_jsep_desc.get());
   EXPECT_EQ(sdp, parsed_sdp);
+}
+
+// Test that we can serialize a JsepSessionDescription when a hostname candidate
+// is the default destination and deserialize it again. The connection address
+// in the deserialized description should be the dummy address 0.0.0.0:9.
+TEST_F(JsepSessionDescriptionTest, SerializeDeserializeWithHostnameCandidate) {
+  cricket::Candidate c;
+  c.set_component(cricket::ICE_CANDIDATE_COMPONENT_RTP);
+  c.set_protocol(cricket::UDP_PROTOCOL_NAME);
+  c.set_address(rtc::SocketAddress("example.local", 1234));
+  c.set_type(cricket::LOCAL_PORT_TYPE);
+  const size_t audio_index = 0;
+  const size_t video_index = 1;
+  JsepIceCandidate hostname_candidate_audio("audio", audio_index, c);
+  JsepIceCandidate hostname_candidate_video("video", video_index, c);
+  EXPECT_TRUE(jsep_desc_->AddCandidate(&hostname_candidate_audio));
+  EXPECT_TRUE(jsep_desc_->AddCandidate(&hostname_candidate_video));
+
+  std::string sdp = Serialize(jsep_desc_.get());
+
+  auto parsed_jsep_desc = DeSerialize(sdp);
+  EXPECT_EQ(2u, parsed_jsep_desc->number_of_mediasections());
+
+  ASSERT_NE(nullptr, parsed_jsep_desc->description());
+  ASSERT_EQ(2u, parsed_jsep_desc->description()->contents().size());
+  const auto& audio_content =
+      parsed_jsep_desc->description()->contents()[audio_index];
+  const auto& video_content =
+      parsed_jsep_desc->description()->contents()[video_index];
+  EXPECT_EQ("0.0.0.0:9",
+            audio_content.media_description()->connection_address().ToString());
+  EXPECT_EQ("0.0.0.0:9",
+            video_content.media_description()->connection_address().ToString());
 }
 
 // Tests that we can serialize and deserialize a JsepSesssionDescription

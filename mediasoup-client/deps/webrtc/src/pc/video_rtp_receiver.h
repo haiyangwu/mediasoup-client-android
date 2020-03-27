@@ -12,6 +12,7 @@
 #define PC_VIDEO_RTP_RECEIVER_H_
 
 #include <stdint.h>
+
 #include <string>
 #include <vector>
 
@@ -27,8 +28,7 @@
 #include "api/video/video_source_interface.h"
 #include "media/base/media_channel.h"
 #include "media/base/video_broadcaster.h"
-#include "pc/playout_latency.h"
-#include "pc/playout_latency_proxy.h"
+#include "pc/jitter_buffer_delay_interface.h"
 #include "pc/rtp_receiver.h"
 #include "pc/video_track_source.h"
 #include "rtc_base/ref_counted_object.h"
@@ -87,6 +87,7 @@ class VideoRtpReceiver : public rtc::RefCountedObject<RtpReceiverInternal> {
   // RtpReceiverInternal implementation.
   void Stop() override;
   void SetupMediaChannel(uint32_t ssrc) override;
+  void SetupUnsignaledMediaChannel() override;
   uint32_t ssrc() const override { return ssrc_.value_or(0); }
   void NotifyFirstPacketReceived() override;
   void set_stream_ids(std::vector<std::string> stream_ids) override;
@@ -99,48 +100,33 @@ class VideoRtpReceiver : public rtc::RefCountedObject<RtpReceiverInternal> {
 
   void SetObserver(RtpReceiverObserverInterface* observer) override;
 
+  void SetJitterBufferMinimumDelay(
+      absl::optional<double> delay_seconds) override;
+
   void SetMediaChannel(cricket::MediaChannel* media_channel) override;
 
   int AttachmentId() const override { return attachment_id_; }
 
   std::vector<RtpSource> GetSources() const override;
 
+ private:
   class VideoRtpTrackSource : public VideoTrackSource {
    public:
-    explicit VideoRtpTrackSource(rtc::Thread* worker_thread)
-        : VideoTrackSource(true /* remote */),
-          latency_(PlayoutLatencyProxy::Create(
-              rtc::Thread::Current(),
-              worker_thread,
-              new rtc::RefCountedObject<PlayoutLatency>(worker_thread))) {}
+    VideoRtpTrackSource() : VideoTrackSource(true /* remote */) {}
 
     rtc::VideoSourceInterface<VideoFrame>* source() override {
       return &broadcaster_;
     }
     rtc::VideoSinkInterface<VideoFrame>* sink() { return &broadcaster_; }
 
-    void SetLatency(double latency) override { latency_->SetLatency(latency); }
-
-    void Start(cricket::VideoMediaChannel* media_channel, uint32_t ssrc) {
-      latency_->OnStart(media_channel, ssrc);
-    }
-
-    void Stop() { latency_->OnStop(); }
-
-    double GetLatency() const override { return latency_->GetLatency(); }
-
    private:
-    // Allows to thread safely change playout latency. Handles caching cases if
-    // |SetLatency| is called before start.
-    rtc::scoped_refptr<PlayoutLatencyInterface> latency_;
-
     // |broadcaster_| is needed since the decoder can only handle one sink.
     // It might be better if the decoder can handle multiple sinks and consider
     // the VideoSinkWants.
     rtc::VideoBroadcaster broadcaster_;
   };
 
- private:
+  void RestartMediaChannel(absl::optional<uint32_t> ssrc);
   bool SetSink(rtc::VideoSinkInterface<VideoFrame>* sink);
 
   rtc::Thread* const worker_thread_;
@@ -152,12 +138,15 @@ class VideoRtpReceiver : public rtc::RefCountedObject<RtpReceiverInternal> {
   rtc::scoped_refptr<VideoRtpTrackSource> source_;
   rtc::scoped_refptr<VideoTrackInterface> track_;
   std::vector<rtc::scoped_refptr<MediaStreamInterface>> streams_;
-  bool stopped_ = false;
+  bool stopped_ = true;
   RtpReceiverObserverInterface* observer_ = nullptr;
   bool received_first_packet_ = false;
   int attachment_id_ = 0;
   rtc::scoped_refptr<FrameDecryptorInterface> frame_decryptor_;
   rtc::scoped_refptr<DtlsTransportInterface> dtls_transport_;
+  // Allows to thread safely change jitter buffer delay. Handles caching cases
+  // if |SetJitterBufferMinimumDelay| is called before start.
+  rtc::scoped_refptr<JitterBufferDelayInterface> delay_;
 };
 
 }  // namespace webrtc

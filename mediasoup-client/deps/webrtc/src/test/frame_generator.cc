@@ -10,17 +10,16 @@
 #include "test/frame_generator.h"
 
 #include <string.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "api/scoped_refptr.h"
 #include "api/video/i010_buffer.h"
 #include "api/video/i420_buffer.h"
 #include "api/video/video_frame_buffer.h"
 #include "api/video/video_rotation.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "common_video/include/video_frame_buffer.h"
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "rtc_base/bind.h"
@@ -74,12 +73,12 @@ class SquareGenerator : public FrameGenerator {
 
     rtc::scoped_refptr<VideoFrameBuffer> buffer = nullptr;
     switch (type_) {
-      case OutputType::I420:
-      case OutputType::I010: {
+      case OutputType::kI420:
+      case OutputType::kI010: {
         buffer = CreateI420Buffer(width_, height_);
         break;
       }
-      case OutputType::I420A: {
+      case OutputType::kI420A: {
         rtc::scoped_refptr<I420Buffer> yuv_buffer =
             CreateI420Buffer(width_, height_);
         rtc::scoped_refptr<I420Buffer> axx_buffer =
@@ -92,21 +91,23 @@ class SquareGenerator : public FrameGenerator {
             rtc::Bind(&KeepBufferRefs, yuv_buffer, axx_buffer));
         break;
       }
+      default:
+        RTC_NOTREACHED() << "The given output format is not supported.";
     }
 
     for (const auto& square : squares_)
       square->Draw(buffer);
 
-    if (type_ == OutputType::I010) {
+    if (type_ == OutputType::kI010) {
       buffer = I010Buffer::Copy(*buffer->ToI420());
     }
 
-    frame_ = absl::make_unique<VideoFrame>(
-        VideoFrame::Builder()
-            .set_video_frame_buffer(buffer)
-            .set_rotation(webrtc::kVideoRotation_0)
-            .set_timestamp_us(0)
-            .build());
+    frame_ =
+        std::make_unique<VideoFrame>(VideoFrame::Builder()
+                                         .set_video_frame_buffer(buffer)
+                                         .set_rotation(webrtc::kVideoRotation_0)
+                                         .set_timestamp_us(0)
+                                         .build());
     return frame_.get();
   }
 
@@ -217,7 +218,7 @@ class YuvFileGenerator : public FrameGenerator {
     if (++current_display_count_ >= frame_display_count_)
       current_display_count_ = 0;
 
-    temp_frame_ = absl::make_unique<VideoFrame>(
+    temp_frame_ = std::make_unique<VideoFrame>(
         VideoFrame::Builder()
             .set_video_frame_buffer(last_read_buffer_)
             .set_rotation(webrtc::kVideoRotation_0)
@@ -234,8 +235,7 @@ class YuvFileGenerator : public FrameGenerator {
     size_t prev_file_index = file_index_;
     last_read_buffer_ =
         test::ReadI420Buffer(static_cast<int>(width_),
-                             static_cast<int>(height_),
-                             files_[file_index_]);
+                             static_cast<int>(height_), files_[file_index_]);
     ++frame_index_;
     if (!last_read_buffer_) {
       // No more frames to read in this file, rewind and move to next file.
@@ -245,8 +245,7 @@ class YuvFileGenerator : public FrameGenerator {
       file_index_ = (file_index_ + 1) % files_.size();
       last_read_buffer_ =
           test::ReadI420Buffer(static_cast<int>(width_),
-                               static_cast<int>(height_),
-                               files_[file_index_]);
+                               static_cast<int>(height_), files_[file_index_]);
       RTC_CHECK(last_read_buffer_);
     }
     return frame_index_ != prev_frame_index || file_index_ != prev_file_index;
@@ -288,12 +287,12 @@ class SlideGenerator : public FrameGenerator {
     if (++current_display_count_ >= frame_display_count_)
       current_display_count_ = 0;
 
-    frame_ = absl::make_unique<VideoFrame>(
-        VideoFrame::Builder()
-            .set_video_frame_buffer(buffer_)
-            .set_rotation(webrtc::kVideoRotation_0)
-            .set_timestamp_us(0)
-            .build());
+    frame_ =
+        std::make_unique<VideoFrame>(VideoFrame::Builder()
+                                         .set_video_frame_buffer(buffer_)
+                                         .set_rotation(webrtc::kVideoRotation_0)
+                                         .set_timestamp_us(0)
+                                         .build());
     return frame_.get();
   }
 
@@ -302,7 +301,7 @@ class SlideGenerator : public FrameGenerator {
   void GenerateNewFrame() {
     // The squares should have a varying order of magnitude in order
     // to simulate variation in the slides' complexity.
-    const int kSquareNum =  1 << (4 + (random_generator_.Rand(0, 3) * 2));
+    const int kSquareNum = 1 << (4 + (random_generator_.Rand(0, 3) * 2));
 
     buffer_ = I420Buffer::Create(width_, height_);
     memset(buffer_->MutableDataY(), 127, height_ * buffer_->StrideY());
@@ -521,14 +520,16 @@ std::unique_ptr<FrameGenerator> FrameGenerator::CreateSquareGenerator(
     absl::optional<OutputType> type,
     absl::optional<int> num_squares) {
   return std::unique_ptr<FrameGenerator>(
-      new SquareGenerator(width, height, type.value_or(OutputType::I420),
+      new SquareGenerator(width, height, type.value_or(OutputType::kI420),
                           num_squares.value_or(10)));
 }
 
 std::unique_ptr<FrameGenerator> FrameGenerator::CreateSlideGenerator(
-    int width, int height, int frame_repeat_count) {
-  return std::unique_ptr<FrameGenerator>(new SlideGenerator(
-      width, height, frame_repeat_count));
+    int width,
+    int height,
+    int frame_repeat_count) {
+  return std::unique_ptr<FrameGenerator>(
+      new SlideGenerator(width, height, frame_repeat_count));
 }
 
 std::unique_ptr<FrameGenerator> FrameGenerator::CreateFromYuvFile(

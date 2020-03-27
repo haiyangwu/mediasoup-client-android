@@ -77,6 +77,9 @@ const int kPreferredSPropStereo = 0;
 const int kPreferredStereo = 0;
 const int kPreferredUseInbandFec = 0;
 
+const char kPacketizationParamRaw[] = "raw";
+
+const char kRtcpFbParamLntf[] = "goog-lntf";
 const char kRtcpFbParamNack[] = "nack";
 const char kRtcpFbNackParamPli[] = "pli";
 const char kRtcpFbParamRemb[] = "goog-remb";
@@ -90,6 +93,7 @@ const char kCodecParamMinBitrate[] = "x-google-min-bitrate";
 const char kCodecParamStartBitrate[] = "x-google-start-bitrate";
 const char kCodecParamMaxQuantization[] = "x-google-max-quantization";
 const char kCodecParamPort[] = "x-google-port";
+const char kCodecParamMaxMessageSize[] = "x-google-max-message-size";
 
 const int kGoogleRtpDataCodecPlType = 109;
 const char kGoogleRtpDataCodecName[] = "google-data";

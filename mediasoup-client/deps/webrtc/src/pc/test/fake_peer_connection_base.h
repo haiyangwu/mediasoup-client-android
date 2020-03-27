@@ -26,6 +26,8 @@ namespace webrtc {
 // FakePeerConnectionBase then overriding the interesting methods. This class
 // takes care of providing default implementations for all the pure virtual
 // functions specified in the interfaces.
+// TODO(nisse): Try to replace this with DummyPeerConnection, from
+// api/test/ ?
 class FakePeerConnectionBase : public PeerConnectionInternal {
  public:
   // PeerConnectionInterface implementation.
@@ -49,6 +51,11 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
   }
 
   bool RemoveTrack(RtpSenderInterface* sender) override { return false; }
+
+  RTCError RemoveTrackNew(
+      rtc::scoped_refptr<RtpSenderInterface> sender) override {
+    return RTCError(RTCErrorType::UNSUPPORTED_OPERATION);
+  }
 
   RTCErrorOr<rtc::scoped_refptr<RtpTransceiverInterface>> AddTransceiver(
       rtc::scoped_refptr<MediaStreamTrackInterface> track) override {
@@ -144,6 +151,8 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
     return nullptr;
   }
 
+  void RestartIce() override {}
+
   void CreateOffer(CreateSessionDescriptionObserver* observer,
                    const RTCOfferAnswerOptions& options) override {}
 
@@ -163,14 +172,9 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
 
   RTCConfiguration GetConfiguration() override { return RTCConfiguration(); }
 
-  bool SetConfiguration(const PeerConnectionInterface::RTCConfiguration& config,
-                        RTCError* error) override {
-    return false;
-  }
-
-  bool SetConfiguration(
+  RTCError SetConfiguration(
       const PeerConnectionInterface::RTCConfiguration& config) override {
-    return false;
+    return RTCError();
   }
 
   bool AddIceCandidate(const IceCandidateInterface* candidate) override {
@@ -185,10 +189,6 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
   RTCError SetBitrate(const BitrateSettings& bitrate) override {
     return RTCError(RTCErrorType::UNSUPPORTED_OPERATION, "Not implemented");
   }
-
-  void SetBitrateAllocationStrategy(
-      std::unique_ptr<rtc::BitrateAllocationStrategy>
-          bitrate_allocation_strategy) override {}
 
   void SetAudioPlayout(bool playout) override {}
 
@@ -205,17 +205,24 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
     return IceConnectionState::kIceConnectionNew;
   }
 
+  IceConnectionState standardized_ice_connection_state() override {
+    return IceConnectionState::kIceConnectionNew;
+  }
+
+  PeerConnectionState peer_connection_state() override {
+    return PeerConnectionState::kNew;
+  }
+
   IceGatheringState ice_gathering_state() override {
     return IceGatheringState::kIceGatheringNew;
   }
 
-  bool StartRtcEventLog(rtc::PlatformFile file,
-                        int64_t max_size_bytes) override {
+  bool StartRtcEventLog(std::unique_ptr<RtcEventLogOutput> output,
+                        int64_t output_period_ms) override {
     return false;
   }
 
-  bool StartRtcEventLog(std::unique_ptr<RtcEventLogOutput> output,
-                        int64_t output_period_ms) override {
+  bool StartRtcEventLog(std::unique_ptr<RtcEventLogOutput> output) override {
     return false;
   }
 
@@ -236,11 +243,6 @@ class FakePeerConnectionBase : public PeerConnectionInternal {
   std::vector<
       rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>>
   GetTransceiversInternal() const override {
-    return {};
-  }
-
-  absl::string_view GetLocalTrackIdBySsrc(uint32_t ssrc) override { return {}; }
-  absl::string_view GetRemoteTrackIdBySsrc(uint32_t ssrc) override {
     return {};
   }
 

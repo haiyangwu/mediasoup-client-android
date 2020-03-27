@@ -44,7 +44,8 @@ class FileWrapper final {
 
   FileWrapper() = default;
 
-  // Takes over ownership of |file|, closing it on destruction.
+  // Takes over ownership of |file|, closing it on destruction. Calling with
+  // null |file| is allowed, and results in a FileWrapper with is_open() false.
   explicit FileWrapper(FILE* file) : file_(file) {}
   ~FileWrapper() { Close(); }
 
@@ -71,10 +72,22 @@ class FileWrapper final {
 
   // Seeks to the beginning of file. Returns true on success, false on failure,
   // e.g., if the underlying file isn't seekable.
-  bool Rewind();
+  bool Rewind() { return SeekTo(0); }
+  // TODO(nisse): The seek functions are used only by the WavReader. If that
+  // code is demoted to test code, seek functions can be deleted from this
+  // utility.
+  // Seek relative to current file position.
+  bool SeekRelative(int64_t offset);
+  // Seek to given position.
+  bool SeekTo(int64_t position);
 
   // Returns number of bytes read. Short count indicates EOF or error.
   size_t Read(void* buf, size_t length);
+
+  // If the most recent Read() returned a short count, this methods returns true
+  // if the short count was due to EOF, and false it it was due to some i/o
+  // error.
+  bool ReadEof() const;
 
   // Returns true if all data was successfully written (or buffered), or false
   // if there was an error. Writing buffered data can fail later, and is

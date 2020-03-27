@@ -9,6 +9,8 @@
  */
 #include "pc/session_description.h"
 
+#include <memory>
+
 #include "test/gtest.h"
 
 namespace cricket {
@@ -64,8 +66,10 @@ TEST(SessionDescriptionTest, SetExtmapAllowMixed) {
 
 TEST(SessionDescriptionTest, SetExtmapAllowMixedPropagatesToMediaLevel) {
   SessionDescription session_desc;
-  MediaContentDescription* video_desc = new VideoContentDescription();
-  session_desc.AddContent("video", MediaProtocolType::kRtp, video_desc);
+  session_desc.AddContent("video", MediaProtocolType::kRtp,
+                          std::make_unique<VideoContentDescription>());
+  MediaContentDescription* video_desc =
+      session_desc.GetContentDescriptionByName("video");
 
   // Setting true on session level propagates to media level.
   session_desc.set_extmap_allow_mixed(true);
@@ -103,29 +107,38 @@ TEST(SessionDescriptionTest, SetExtmapAllowMixedPropagatesToMediaLevel) {
 TEST(SessionDescriptionTest, AddContentTransfersExtmapAllowMixedSetting) {
   SessionDescription session_desc;
   session_desc.set_extmap_allow_mixed(false);
-  MediaContentDescription* audio_desc = new AudioContentDescription();
+  std::unique_ptr<MediaContentDescription> audio_desc =
+      std::make_unique<AudioContentDescription>();
   audio_desc->set_extmap_allow_mixed_enum(MediaContentDescription::kMedia);
 
   // If session setting is false, media level setting is preserved when new
   // content is added.
-  session_desc.AddContent("audio", MediaProtocolType::kRtp, audio_desc);
+  session_desc.AddContent("audio", MediaProtocolType::kRtp,
+                          std::move(audio_desc));
   EXPECT_EQ(MediaContentDescription::kMedia,
-            audio_desc->extmap_allow_mixed_enum());
+            session_desc.GetContentDescriptionByName("audio")
+                ->extmap_allow_mixed_enum());
 
   // If session setting is true, it's transferred to media level when new
   // content is added.
   session_desc.set_extmap_allow_mixed(true);
-  MediaContentDescription* video_desc = new VideoContentDescription();
-  session_desc.AddContent("video", MediaProtocolType::kRtp, video_desc);
+  std::unique_ptr<MediaContentDescription> video_desc =
+      std::make_unique<VideoContentDescription>();
+  session_desc.AddContent("video", MediaProtocolType::kRtp,
+                          std::move(video_desc));
   EXPECT_EQ(MediaContentDescription::kSession,
-            video_desc->extmap_allow_mixed_enum());
+            session_desc.GetContentDescriptionByName("video")
+                ->extmap_allow_mixed_enum());
 
   // Session level setting overrides media level when new content is added.
-  MediaContentDescription* data_desc = new DataContentDescription;
+  std::unique_ptr<MediaContentDescription> data_desc =
+      std::make_unique<RtpDataContentDescription>();
   data_desc->set_extmap_allow_mixed_enum(MediaContentDescription::kMedia);
-  session_desc.AddContent("data", MediaProtocolType::kRtp, data_desc);
+  session_desc.AddContent("data", MediaProtocolType::kRtp,
+                          std::move(data_desc));
   EXPECT_EQ(MediaContentDescription::kSession,
-            data_desc->extmap_allow_mixed_enum());
+            session_desc.GetContentDescriptionByName("data")
+                ->extmap_allow_mixed_enum());
 }
 
 }  // namespace cricket

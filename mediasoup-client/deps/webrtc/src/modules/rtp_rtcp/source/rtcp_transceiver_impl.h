@@ -39,6 +39,8 @@ class RtcpTransceiverImpl {
   RtcpTransceiverImpl& operator=(const RtcpTransceiverImpl&) = delete;
   ~RtcpTransceiverImpl();
 
+  void StopPeriodicTask() { periodic_task_handle_.Stop(); }
+
   void AddMediaReceiverRtcpObserver(uint32_t remote_ssrc,
                                     MediaReceiverRtcpObserver* observer);
   void RemoveMediaReceiverRtcpObserver(uint32_t remote_ssrc,
@@ -60,6 +62,11 @@ class RtcpTransceiverImpl {
 
   void SendPictureLossIndication(uint32_t ssrc);
   void SendFullIntraRequest(rtc::ArrayView<const uint32_t> ssrcs);
+
+  // SendCombinedRtcpPacket ignores rtcp mode and does not send a compound
+  // message. https://tools.ietf.org/html/rfc4585#section-3.1
+  void SendCombinedRtcpPacket(
+      std::vector<std::unique_ptr<rtcp::RtcpPacket>> rtcp_packets);
 
  private:
   class PacketSender;

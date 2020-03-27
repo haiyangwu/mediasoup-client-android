@@ -11,12 +11,15 @@
 #include "pc/video_rtp_receiver.h"
 
 #include <stddef.h>
+
 #include <utility>
 #include <vector>
 
 #include "api/media_stream_proxy.h"
 #include "api/media_stream_track_proxy.h"
 #include "api/video_track_source_proxy.h"
+#include "pc/jitter_buffer_delay.h"
+#include "pc/jitter_buffer_delay_proxy.h"
 #include "pc/media_stream.h"
 #include "pc/video_track.h"
 #include "rtc_base/checks.h"
@@ -39,7 +42,7 @@ VideoRtpReceiver::VideoRtpReceiver(
     const std::vector<rtc::scoped_refptr<MediaStreamInterface>>& streams)
     : worker_thread_(worker_thread),
       id_(receiver_id),
-      source_(new RefCountedObject<VideoRtpTrackSource>(worker_thread_)),
+      source_(new RefCountedObject<VideoRtpTrackSource>()),
       track_(VideoTrackProxy::Create(
           rtc::Thread::Current(),
           worker_thread,
@@ -49,7 +52,11 @@ VideoRtpReceiver::VideoRtpReceiver(
                                             worker_thread,
                                             source_),
               worker_thread))),
-      attachment_id_(GenerateUniqueId()) {
+      attachment_id_(GenerateUniqueId()),
+      delay_(JitterBufferDelayProxy::Create(
+          rtc::Thread::Current(),
+          worker_thread,
+          new rtc::RefCountedObject<JitterBufferDelay>(worker_thread))) {
   RTC_DCHECK(worker_thread_);
   SetStreams(streams);
   source_->SetState(MediaSourceInterface::kLive);
@@ -70,27 +77,32 @@ std::vector<std::string> VideoRtpReceiver::stream_ids() const {
 
 bool VideoRtpReceiver::SetSink(rtc::VideoSinkInterface<VideoFrame>* sink) {
   RTC_DCHECK(media_channel_);
-  RTC_DCHECK(ssrc_);
-  return worker_thread_->Invoke<bool>(
-      RTC_FROM_HERE, [&] { return media_channel_->SetSink(*ssrc_, sink); });
+  RTC_DCHECK(!stopped_);
+  return worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
+    // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC
+    return media_channel_->SetSink(ssrc_.value_or(0), sink);
+  });
 }
 
 RtpParameters VideoRtpReceiver::GetParameters() const {
-  if (!media_channel_ || !ssrc_ || stopped_) {
+  if (!media_channel_ || stopped_) {
     return RtpParameters();
   }
   return worker_thread_->Invoke<RtpParameters>(RTC_FROM_HERE, [&] {
-    return media_channel_->GetRtpReceiveParameters(*ssrc_);
+    // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC
+    return media_channel_->GetRtpReceiveParameters(ssrc_.value_or(0));
   });
 }
 
 bool VideoRtpReceiver::SetParameters(const RtpParameters& parameters) {
   TRACE_EVENT0("webrtc", "VideoRtpReceiver::SetParameters");
-  if (!media_channel_ || !ssrc_ || stopped_) {
+  if (!media_channel_ || stopped_) {
     return false;
   }
   return worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
-    return media_channel_->SetRtpReceiveParameters(*ssrc_, parameters);
+    // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC
+    return media_channel_->SetRtpReceiveParameters(ssrc_.value_or(0),
+                                                   parameters);
   });
 }
 
@@ -116,15 +128,35 @@ void VideoRtpReceiver::Stop() {
     return;
   }
   source_->SetState(MediaSourceInterface::kEnded);
-  if (!media_channel_ || !ssrc_) {
+  if (!media_channel_) {
     RTC_LOG(LS_WARNING) << "VideoRtpReceiver::Stop: No video channel exists.";
   } else {
     // Allow that SetSink fail. This is the normal case when the underlying
     // media channel has already been deleted.
     SetSink(nullptr);
   }
-  source_->Stop();
+  delay_->OnStop();
   stopped_ = true;
+}
+
+void VideoRtpReceiver::RestartMediaChannel(absl::optional<uint32_t> ssrc) {
+  RTC_DCHECK(media_channel_);
+  if (!stopped_ && ssrc_ == ssrc) {
+    return;
+  }
+  if (!stopped_) {
+    SetSink(nullptr);
+  }
+  stopped_ = false;
+  ssrc_ = ssrc;
+  SetSink(source_->sink());
+
+  // Attach any existing frame decryptor to the media channel.
+  MaybeAttachFrameDecryptorToMediaChannel(
+      ssrc, worker_thread_, frame_decryptor_, media_channel_, stopped_);
+  // TODO(bugs.webrtc.org/8694): Stop using 0 to mean unsignalled SSRC
+  // value.
+  delay_->OnStart(media_channel_, ssrc.value_or(0));
 }
 
 void VideoRtpReceiver::SetupMediaChannel(uint32_t ssrc) {
@@ -132,19 +164,15 @@ void VideoRtpReceiver::SetupMediaChannel(uint32_t ssrc) {
     RTC_LOG(LS_ERROR)
         << "VideoRtpReceiver::SetupMediaChannel: No video channel exists.";
   }
-  if (ssrc_ == ssrc) {
-    return;
-  }
-  if (ssrc_) {
-    SetSink(nullptr);
-  }
-  ssrc_ = ssrc;
-  SetSink(source_->sink());
-  // Attach any existing frame decryptor to the media channel.
-  MaybeAttachFrameDecryptorToMediaChannel(
-      ssrc_, worker_thread_, frame_decryptor_, media_channel_, stopped_);
+  RestartMediaChannel(ssrc);
+}
 
-  source_->Start(media_channel_, ssrc);
+void VideoRtpReceiver::SetupUnsignaledMediaChannel() {
+  if (!media_channel_) {
+    RTC_LOG(LS_ERROR) << "VideoRtpReceiver::SetupUnsignaledMediaChannel: No "
+                         "video channel exists.";
+  }
+  RestartMediaChannel(absl::nullopt);
 }
 
 void VideoRtpReceiver::set_stream_ids(std::vector<std::string> stream_ids) {
@@ -190,6 +218,11 @@ void VideoRtpReceiver::SetObserver(RtpReceiverObserverInterface* observer) {
   if (received_first_packet_ && observer_) {
     observer_->OnFirstPacketReceived(media_type());
   }
+}
+
+void VideoRtpReceiver::SetJitterBufferMinimumDelay(
+    absl::optional<double> delay_seconds) {
+  delay_->Set(delay_seconds);
 }
 
 void VideoRtpReceiver::SetMediaChannel(cricket::MediaChannel* media_channel) {

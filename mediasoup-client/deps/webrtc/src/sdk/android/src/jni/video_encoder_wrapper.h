@@ -16,10 +16,11 @@
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/video_codecs/video_encoder.h"
 #include "common_video/h264/h264_bitstream_parser.h"
 #include "modules/video_coding/codecs/vp9/include/vp9_globals.h"
-#include "rtc_base/task_queue.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/video_frame.h"
 
@@ -33,8 +34,7 @@ class VideoEncoderWrapper : public VideoEncoder {
   ~VideoEncoderWrapper() override;
 
   int32_t InitEncode(const VideoCodec* codec_settings,
-                     int32_t number_of_cores,
-                     size_t max_payload_size) override;
+                     const Settings& settings) override;
 
   int32_t RegisterEncodeCompleteCallback(
       EncodedImageCallback* callback) override;
@@ -42,25 +42,15 @@ class VideoEncoderWrapper : public VideoEncoder {
   int32_t Release() override;
 
   int32_t Encode(const VideoFrame& frame,
-                 const CodecSpecificInfo* codec_specific_info,
-                 const std::vector<FrameType>* frame_types) override;
+                 const std::vector<VideoFrameType>* frame_types) override;
 
-  int32_t SetRateAllocation(const VideoBitrateAllocation& allocation,
-                            uint32_t framerate) override;
+  void SetRates(const RateControlParameters& parameters) override;
 
   EncoderInfo GetEncoderInfo() const override;
 
   // Should only be called by JNI.
   void OnEncodedFrame(JNIEnv* jni,
-                      const JavaRef<jobject>& j_caller,
-                      const JavaRef<jobject>& j_buffer,
-                      jint encoded_width,
-                      jint encoded_height,
-                      jlong capture_time_ms,
-                      jint frame_type,
-                      jint rotation,
-                      jboolean complete_frame,
-                      const JavaRef<jobject>& j_qp);
+                      const JavaRef<jobject>& j_encoded_image);
 
  private:
   struct FrameExtraInfo {
@@ -78,8 +68,8 @@ class VideoEncoderWrapper : public VideoEncoder {
                            const char* method_name);
 
   RTPFragmentationHeader ParseFragmentationHeader(
-      const std::vector<uint8_t>& buffer);
-  int ParseQp(const std::vector<uint8_t>& buffer);
+      rtc::ArrayView<const uint8_t> buffer);
+  int ParseQp(rtc::ArrayView<const uint8_t> buffer);
   CodecSpecificInfo ParseCodecSpecificInfo(const EncodedImage& frame);
   ScopedJavaLocalRef<jobject> ToJavaBitrateAllocation(
       JNIEnv* jni,
@@ -88,14 +78,19 @@ class VideoEncoderWrapper : public VideoEncoder {
 
   ScalingSettings GetScalingSettingsInternal(JNIEnv* jni) const;
 
+  std::vector<ResolutionBitrateLimits> GetResolutionBitrateLimits(
+      JNIEnv* jni) const;
+
   const ScopedJavaGlobalRef<jobject> encoder_;
   const ScopedJavaGlobalRef<jclass> int_array_class_;
 
-  rtc::TaskQueue* encoder_queue_;
+  rtc::CriticalSection encoder_queue_crit_;
+  TaskQueueBase* encoder_queue_ RTC_GUARDED_BY(encoder_queue_crit_);
   std::deque<FrameExtraInfo> frame_extra_infos_;
   EncodedImageCallback* callback_;
   bool initialized_;
   int num_resets_;
+  absl::optional<VideoEncoder::Capabilities> capabilities_;
   int number_of_cores_;
   VideoCodec codec_settings_;
   EncoderInfo encoder_info_;

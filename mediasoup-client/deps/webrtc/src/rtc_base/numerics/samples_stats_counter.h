@@ -11,16 +11,24 @@
 #ifndef RTC_BASE_NUMERICS_SAMPLES_STATS_COUNTER_H_
 #define RTC_BASE_NUMERICS_SAMPLES_STATS_COUNTER_H_
 
-#include <math.h>
-#include <limits>
 #include <vector>
 
+#include "api/array_view.h"
+#include "api/units/timestamp.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/numerics/running_statistics.h"
 
 namespace webrtc {
 
+// This class extends RunningStatistics by providing GetPercentile() method,
+// while slightly adapting the interface.
 class SamplesStatsCounter {
  public:
+  struct StatsSample {
+    double value;
+    Timestamp time;
+  };
+
   SamplesStatsCounter();
   ~SamplesStatsCounter();
   SamplesStatsCounter(const SamplesStatsCounter&);
@@ -30,6 +38,10 @@ class SamplesStatsCounter {
 
   // Adds sample to the stats in amortized O(1) time.
   void AddSample(double value);
+  void AddSample(StatsSample sample);
+
+  // Adds samples from another counter.
+  void AddSamples(const SamplesStatsCounter& other);
 
   // Returns if there are any values in O(1) time.
   bool IsEmpty() const { return samples_.empty(); }
@@ -38,31 +50,31 @@ class SamplesStatsCounter {
   // samples.
   double GetMin() const {
     RTC_DCHECK(!IsEmpty());
-    return min_;
+    return *stats_.GetMin();
   }
   // Returns max in O(1) time. This function may not be called if there are no
   // samples.
   double GetMax() const {
     RTC_DCHECK(!IsEmpty());
-    return max_;
+    return *stats_.GetMax();
   }
   // Returns average in O(1) time. This function may not be called if there are
   // no samples.
   double GetAverage() const {
     RTC_DCHECK(!IsEmpty());
-    return sum_ / samples_.size();
+    return *stats_.GetMean();
   }
   // Returns variance in O(1) time. This function may not be called if there are
   // no samples.
   double GetVariance() const {
     RTC_DCHECK(!IsEmpty());
-    return sum_squared_ / samples_.size() - GetAverage() * GetAverage();
+    return *stats_.GetVariance();
   }
   // Returns standard deviation in O(1) time. This function may not be called if
   // there are no samples.
   double GetStandardDeviation() const {
     RTC_DCHECK(!IsEmpty());
-    return sqrt(GetVariance());
+    return *stats_.GetStandardDeviation();
   }
   // Returns percentile in O(nlogn) on first call and in O(1) after, if no
   // additions were done. This function may not be called if there are no
@@ -71,15 +83,36 @@ class SamplesStatsCounter {
   // |percentile| has to be in [0; 1]. 0 percentile is the min in the array and
   // 1 percentile is the max in the array.
   double GetPercentile(double percentile);
+  // Returns array view with all samples added into counter. There are no
+  // guarantees of order, so samples can be in different order comparing to in
+  // which they were added into counter. Also return value will be invalidate
+  // after call to any non const method.
+  rtc::ArrayView<const StatsSample> GetTimedSamples() const { return samples_; }
+  std::vector<double> GetSamples() const {
+    std::vector<double> out;
+    out.reserve(samples_.size());
+    for (const auto& sample : samples_) {
+      out.push_back(sample.value);
+    }
+    return out;
+  }
 
  private:
-  std::vector<double> samples_;
-  double min_ = std::numeric_limits<double>::max();
-  double max_ = std::numeric_limits<double>::min();
-  double sum_ = 0;
-  double sum_squared_ = 0;
+  RunningStatistics<double> stats_;
+  std::vector<StatsSample> samples_;
   bool sorted_ = false;
 };
+
+// Multiply all sample values on |value| and return new SamplesStatsCounter
+// with resulted samples. Doesn't change origin SamplesStatsCounter.
+SamplesStatsCounter operator*(const SamplesStatsCounter& counter, double value);
+inline SamplesStatsCounter operator*(double value,
+                                     const SamplesStatsCounter& counter) {
+  return counter * value;
+}
+// Divide all sample values on |value| and return new SamplesStatsCounter with
+// resulted samples. Doesn't change origin SamplesStatsCounter.
+SamplesStatsCounter operator/(const SamplesStatsCounter& counter, double value);
 
 }  // namespace webrtc
 

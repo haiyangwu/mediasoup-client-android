@@ -24,57 +24,12 @@
 #include "api/proxy.h"
 #include "api/rtp_parameters.h"
 #include "api/scoped_refptr.h"
+#include "api/transport/rtp/rtp_source.h"
+#include "rtc_base/deprecation.h"
 #include "rtc_base/ref_count.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
-
-enum class RtpSourceType {
-  SSRC,
-  CSRC,
-};
-
-class RtpSource {
- public:
-  RtpSource() = delete;
-  RtpSource(int64_t timestamp_ms,
-            uint32_t source_id,
-            RtpSourceType source_type);
-  RtpSource(int64_t timestamp_ms,
-            uint32_t source_id,
-            RtpSourceType source_type,
-            uint8_t audio_level);
-  RtpSource(const RtpSource&);
-  RtpSource& operator=(const RtpSource&);
-  ~RtpSource();
-
-  int64_t timestamp_ms() const { return timestamp_ms_; }
-  void update_timestamp_ms(int64_t timestamp_ms) {
-    RTC_DCHECK_LE(timestamp_ms_, timestamp_ms);
-    timestamp_ms_ = timestamp_ms;
-  }
-
-  // The identifier of the source can be the CSRC or the SSRC.
-  uint32_t source_id() const { return source_id_; }
-
-  // The source can be either a contributing source or a synchronization source.
-  RtpSourceType source_type() const { return source_type_; }
-
-  absl::optional<uint8_t> audio_level() const { return audio_level_; }
-  void set_audio_level(const absl::optional<uint8_t>& level) {
-    audio_level_ = level;
-  }
-
-  bool operator==(const RtpSource& o) const {
-    return timestamp_ms_ == o.timestamp_ms() && source_id_ == o.source_id() &&
-           source_type_ == o.source_type() && audio_level_ == o.audio_level_;
-  }
-
- private:
-  int64_t timestamp_ms_;
-  uint32_t source_id_;
-  RtpSourceType source_type_;
-  absl::optional<uint8_t> audio_level_;
-};
 
 class RtpReceiverObserverInterface {
  public:
@@ -90,7 +45,7 @@ class RtpReceiverObserverInterface {
   virtual ~RtpReceiverObserverInterface() {}
 };
 
-class RtpReceiverInterface : public rtc::RefCountInterface {
+class RTC_EXPORT RtpReceiverInterface : public rtc::RefCountInterface {
  public:
   virtual rtc::scoped_refptr<MediaStreamTrackInterface> track() const = 0;
 
@@ -128,6 +83,13 @@ class RtpReceiverInterface : public rtc::RefCountInterface {
   // Must call SetObserver(nullptr) before the observer is destroyed.
   virtual void SetObserver(RtpReceiverObserverInterface* observer) = 0;
 
+  // Sets the jitter buffer minimum delay until media playout. Actual observed
+  // delay may differ depending on the congestion control. |delay_seconds| is a
+  // positive value including 0.0 measured in seconds. |nullopt| means default
+  // value must be used.
+  virtual void SetJitterBufferMinimumDelay(
+      absl::optional<double> delay_seconds) = 0;
+
   // TODO(zhihuang): Remove the default implementation once the subclasses
   // implement this. Currently, the only relevant subclass is the
   // content::FakeRtpReceiver in Chromium.
@@ -163,6 +125,7 @@ PROXY_CONSTMETHOD0(std::string, id)
 PROXY_CONSTMETHOD0(RtpParameters, GetParameters)
 PROXY_METHOD1(bool, SetParameters, const RtpParameters&)
 PROXY_METHOD1(void, SetObserver, RtpReceiverObserverInterface*)
+PROXY_METHOD1(void, SetJitterBufferMinimumDelay, absl::optional<double>)
 PROXY_CONSTMETHOD0(std::vector<RtpSource>, GetSources)
 PROXY_METHOD1(void,
               SetFrameDecryptor,

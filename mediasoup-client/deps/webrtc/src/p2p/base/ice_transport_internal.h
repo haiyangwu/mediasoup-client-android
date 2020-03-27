@@ -12,12 +12,14 @@
 #define P2P_BASE_ICE_TRANSPORT_INTERNAL_H_
 
 #include <stdint.h>
+
 #include <string>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "api/candidate.h"
 #include "api/transport/enums.h"
+#include "p2p/base/connection.h"
 #include "p2p/base/packet_transport_internal.h"
 #include "p2p/base/port.h"
 #include "p2p/base/transport_description.h"
@@ -27,6 +29,15 @@
 #include "rtc_base/time_utils.h"
 
 namespace cricket {
+
+struct IceTransportStats {
+  CandidateStatsList candidate_stats_list;
+  ConnectionInfos connection_infos;
+  // Number of times the selected candidate pair has changed
+  // Initially 0 and 1 once the first candidate pair has been selected.
+  // The counter is increase also when "unselecting" a connection.
+  uint32_t selected_candidate_pair_changes = 0;
+};
 
 typedef std::vector<Candidate> Candidates;
 
@@ -89,6 +100,13 @@ struct IceConfig {
   // If set to true, this means the ICE transport should presume TURN-to-TURN
   // candidate pairs will succeed, even before a binding response is received.
   bool presume_writable_when_fully_relayed = false;
+
+  // If true, after the ICE transport type (as the candidate filter used by the
+  // port allocator) is changed such that new types of ICE candidates are
+  // allowed by the new filter, e.g. from CF_RELAY to CF_ALL, candidates that
+  // have been gathered by the ICE transport but filtered out and not signaled
+  // to the upper layers, will be surfaced.
+  bool surface_ice_candidates_on_ice_transport_type_changed = false;
 
   // Interval to check on all networks and to perform ICE regathering on any
   // active network having no connection on it.
@@ -247,20 +265,28 @@ class RTC_EXPORT IceTransportInternal : public rtc::PacketTransportInternal {
   virtual IceGatheringState gathering_state() const = 0;
 
   // Returns the current stats for this connection.
-  virtual bool GetStats(ConnectionInfos* candidate_pair_stats_list,
-                        CandidateStatsList* candidate_stats_list) = 0;
+  virtual bool GetStats(IceTransportStats* ice_transport_stats) = 0;
 
   // Returns RTT estimate over the currently active connection, or an empty
   // absl::optional if there is none.
   virtual absl::optional<int> GetRttEstimate() = 0;
 
+  // TODO(qingsi): Remove this method once Chrome does not depend on it anymore.
   virtual const Connection* selected_connection() const = 0;
+
+  // Returns the selected candidate pair, or an empty absl::optional if there is
+  // none.
+  virtual absl::optional<const CandidatePair> GetSelectedCandidatePair()
+      const = 0;
 
   sigslot::signal1<IceTransportInternal*> SignalGatheringState;
 
   // Handles sending and receiving of candidates.
   sigslot::signal2<IceTransportInternal*, const Candidate&>
       SignalCandidateGathered;
+
+  sigslot::signal2<IceTransportInternal*, const IceCandidateErrorEvent&>
+      SignalCandidateError;
 
   sigslot::signal2<IceTransportInternal*, const Candidates&>
       SignalCandidatesRemoved;
@@ -272,6 +298,9 @@ class RTC_EXPORT IceTransportInternal : public rtc::PacketTransportInternal {
   // TODO(zhihuang): Update the Chrome remoting to use the new
   // SignalNetworkRouteChanged.
   sigslot::signal2<IceTransportInternal*, const Candidate&> SignalRouteChange;
+
+  sigslot::signal1<const cricket::CandidatePairChangeEvent&>
+      SignalCandidatePairChanged;
 
   // Invoked when there is conflict in the ICE role between local and remote
   // agents.

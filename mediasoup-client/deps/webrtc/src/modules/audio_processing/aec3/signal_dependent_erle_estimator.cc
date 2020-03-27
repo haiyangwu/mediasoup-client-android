@@ -14,7 +14,7 @@
 #include <functional>
 #include <numeric>
 
-#include "modules/audio_processing/aec3/vector_buffer.h"
+#include "modules/audio_processing/aec3/spectrum_buffer.h"
 #include "rtc_base/numerics/safe_minmax.h"
 
 namespace webrtc {
@@ -118,7 +118,8 @@ SetMaxErleSubbands(float max_erle_l, float max_erle_h, size_t limit_subband_l) {
 }  // namespace
 
 SignalDependentErleEstimator::SignalDependentErleEstimator(
-    const EchoCanceller3Config& config)
+    const EchoCanceller3Config& config,
+    size_t num_capture_channels)
     : min_erle_(config.erle.min),
       num_sections_(config.erle.num_sections),
       num_blocks_(config.filter.main.length_blocks),
@@ -130,6 +131,7 @@ SignalDependentErleEstimator::SignalDependentErleEstimator(
       section_boundaries_blocks_(SetSectionsBoundaries(delay_headroom_blocks_,
                                                        num_blocks_,
                                                        num_sections_)),
+      erle_(num_capture_channels),
       S2_section_accum_(num_sections_),
       erle_estimators_(num_sections_),
       correction_factors_(num_sections_) {
@@ -142,9 +144,11 @@ SignalDependentErleEstimator::SignalDependentErleEstimator(
 SignalDependentErleEstimator::~SignalDependentErleEstimator() = default;
 
 void SignalDependentErleEstimator::Reset() {
-  erle_.fill(min_erle_);
-  for (auto& erle : erle_estimators_) {
+  for (auto& erle : erle_) {
     erle.fill(min_erle_);
+  }
+  for (auto& erle_estimator : erle_estimators_) {
+    erle_estimator.fill(min_erle_);
   }
   erle_ref_.fill(min_erle_);
   for (auto& factor : correction_factors_) {
@@ -166,7 +170,7 @@ void SignalDependentErleEstimator::Update(
     rtc::ArrayView<const float> X2,
     rtc::ArrayView<const float> Y2,
     rtc::ArrayView<const float> E2,
-    rtc::ArrayView<const float> average_erle,
+    rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> average_erle,
     bool converged_filter) {
   RTC_DCHECK_GT(num_sections_, 1);
 
@@ -187,8 +191,8 @@ void SignalDependentErleEstimator::Update(
   for (size_t k = 0; k < kFftLengthBy2; ++k) {
     float correction_factor =
         correction_factors_[n_active_sections[k]][band_to_subband_[k]];
-    erle_[k] = rtc::SafeClamp(average_erle[k] * correction_factor, min_erle_,
-                              max_erle_[band_to_subband_[k]]);
+    erle_[0][k] = rtc::SafeClamp(average_erle[0][k] * correction_factor,
+                                 min_erle_, max_erle_[band_to_subband_[k]]);
   }
 }
 
@@ -314,7 +318,7 @@ void SignalDependentErleEstimator::ComputeEchoEstimatePerFilterSection(
     const RenderBuffer& render_buffer,
     const std::vector<std::array<float, kFftLengthBy2Plus1>>&
         filter_frequency_response) {
-  const VectorBuffer& spectrum_render_buffer =
+  const SpectrumBuffer& spectrum_render_buffer =
       render_buffer.GetSpectrumBuffer();
 
   RTC_DCHECK_EQ(S2_section_accum_.size() + 1,
@@ -328,11 +332,14 @@ void SignalDependentErleEstimator::ComputeEchoEstimatePerFilterSection(
     std::array<float, kFftLengthBy2Plus1> H2_section;
     X2_section.fill(0.f);
     H2_section.fill(0.f);
+    const size_t block_limit = std::min(section_boundaries_blocks_[section + 1],
+                                        filter_frequency_response.size());
     for (size_t block = section_boundaries_blocks_[section];
-         block < section_boundaries_blocks_[section + 1]; ++block) {
-      std::transform(X2_section.begin(), X2_section.end(),
-                     spectrum_render_buffer.buffer[idx_render].begin(),
-                     X2_section.begin(), std::plus<float>());
+         block < block_limit; ++block) {
+      std::transform(
+          X2_section.begin(), X2_section.end(),
+          spectrum_render_buffer.buffer[idx_render][/*channel=*/0].begin(),
+          X2_section.begin(), std::plus<float>());
       std::transform(H2_section.begin(), H2_section.end(),
                      filter_frequency_response[block].begin(),
                      H2_section.begin(), std::plus<float>());

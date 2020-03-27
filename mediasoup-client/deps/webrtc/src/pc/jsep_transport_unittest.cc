@@ -8,15 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/jsep_transport.h"
+
 #include <memory>
 #include <tuple>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "media/base/fake_rtp.h"
 #include "p2p/base/fake_dtls_transport.h"
 #include "p2p/base/fake_ice_transport.h"
-#include "pc/jsep_transport.h"
 #include "rtc_base/gunit.h"
 
 namespace cricket {
@@ -40,12 +40,12 @@ struct NegotiateRoleParams {
   SdpType remote_type;
 };
 
-class JsepTransport2Test : public testing::Test, public sigslot::has_slots<> {
+class JsepTransport2Test : public ::testing::Test, public sigslot::has_slots<> {
  protected:
   std::unique_ptr<webrtc::SrtpTransport> CreateSdesTransport(
       rtc::PacketTransportInternal* rtp_packet_transport,
       rtc::PacketTransportInternal* rtcp_packet_transport) {
-    auto srtp_transport = absl::make_unique<webrtc::SrtpTransport>(
+    auto srtp_transport = std::make_unique<webrtc::SrtpTransport>(
         rtcp_packet_transport == nullptr);
 
     srtp_transport->SetRtpPacketTransport(rtp_packet_transport);
@@ -58,7 +58,7 @@ class JsepTransport2Test : public testing::Test, public sigslot::has_slots<> {
   std::unique_ptr<webrtc::DtlsSrtpTransport> CreateDtlsSrtpTransport(
       cricket::DtlsTransportInternal* rtp_dtls_transport,
       cricket::DtlsTransportInternal* rtcp_dtls_transport) {
-    auto dtls_srtp_transport = absl::make_unique<webrtc::DtlsSrtpTransport>(
+    auto dtls_srtp_transport = std::make_unique<webrtc::DtlsSrtpTransport>(
         rtcp_dtls_transport == nullptr);
     dtls_srtp_transport->SetDtlsTransports(rtp_dtls_transport,
                                            rtcp_dtls_transport);
@@ -69,17 +69,16 @@ class JsepTransport2Test : public testing::Test, public sigslot::has_slots<> {
   // FakeIceTransport.
   std::unique_ptr<JsepTransport> CreateJsepTransport2(bool rtcp_mux_enabled,
                                                       SrtpMode srtp_mode) {
-    auto ice = absl::make_unique<FakeIceTransport>(kTransportName,
-                                                   ICE_CANDIDATE_COMPONENT_RTP);
-    auto rtp_dtls_transport =
-        absl::make_unique<FakeDtlsTransport>(std::move(ice));
+    auto ice = std::make_unique<FakeIceTransport>(kTransportName,
+                                                  ICE_CANDIDATE_COMPONENT_RTP);
+    auto rtp_dtls_transport = std::make_unique<FakeDtlsTransport>(ice.get());
 
+    std::unique_ptr<FakeIceTransport> rtcp_ice;
     std::unique_ptr<FakeDtlsTransport> rtcp_dtls_transport;
     if (!rtcp_mux_enabled) {
-      ice = absl::make_unique<FakeIceTransport>(kTransportName,
-                                                ICE_CANDIDATE_COMPONENT_RTCP);
-      rtcp_dtls_transport =
-          absl::make_unique<FakeDtlsTransport>(std::move(ice));
+      rtcp_ice = std::make_unique<FakeIceTransport>(
+          kTransportName, ICE_CANDIDATE_COMPONENT_RTCP);
+      rtcp_dtls_transport = std::make_unique<FakeDtlsTransport>(rtcp_ice.get());
     }
 
     std::unique_ptr<webrtc::RtpTransport> unencrypted_rtp_transport;
@@ -104,11 +103,16 @@ class JsepTransport2Test : public testing::Test, public sigslot::has_slots<> {
     // media_transport = nullptr. In the future we will probably add
     // more logic that require unit tests. Note that creation of media_transport
     // is covered in jseptransportcontroller_unittest.
-    auto jsep_transport = absl::make_unique<JsepTransport>(
-        kTransportName, /*local_certificate=*/nullptr,
-        std::move(unencrypted_rtp_transport), std::move(sdes_transport),
-        std::move(dtls_srtp_transport), std::move(rtp_dtls_transport),
-        std::move(rtcp_dtls_transport), /*media_transport=*/nullptr);
+    auto jsep_transport = std::make_unique<JsepTransport>(
+        kTransportName, /*local_certificate=*/nullptr, std::move(ice),
+        std::move(rtcp_ice), std::move(unencrypted_rtp_transport),
+        std::move(sdes_transport), std::move(dtls_srtp_transport),
+        /*datagram_rtp_transport=*/nullptr, std::move(rtp_dtls_transport),
+        std::move(rtcp_dtls_transport),
+        /*sctp_transport=*/nullptr,
+        /*media_transport=*/nullptr,
+        /*datagram_transport=*/nullptr,
+        /*data_channel_transport=*/nullptr);
 
     signal_rtcp_mux_active_received_ = false;
     jsep_transport->SignalRtcpMuxActive.connect(
@@ -156,7 +160,7 @@ class JsepTransport2Test : public testing::Test, public sigslot::has_slots<> {
 // The parameterized tests cover both cases when RTCP mux is enable and
 // disabled.
 class JsepTransport2WithRtcpMux : public JsepTransport2Test,
-                                  public testing::WithParamInterface<bool> {};
+                                  public ::testing::WithParamInterface<bool> {};
 
 // This test verifies the ICE parameters are properly applied to the transports.
 TEST_P(JsepTransport2WithRtcpMux, SetIceParameters) {
@@ -640,7 +644,7 @@ TEST_P(JsepTransport2WithRtcpMux, InvalidDtlsRoleNegotiation) {
 
 INSTANTIATE_TEST_SUITE_P(JsepTransport2Test,
                          JsepTransport2WithRtcpMux,
-                         testing::Bool());
+                         ::testing::Bool());
 
 // Test that a reoffer in the opposite direction is successful as long as the
 // role isn't changing. Doesn't test every possible combination like the test

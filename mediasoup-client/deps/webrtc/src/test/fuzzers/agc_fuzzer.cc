@@ -8,7 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "modules/audio_processing/audio_buffer.h"
 #include "modules/audio_processing/gain_control_impl.h"
 #include "modules/audio_processing/include/audio_processing.h"
@@ -81,7 +82,7 @@ void FuzzGainController(test::FuzzDataHelper* fuzz_data, GainControlImpl* gci) {
   const auto sample_rate_hz =
       static_cast<size_t>(fuzz_data->SelectOneOf(rate_kinds));
   const size_t samples_per_frame = sample_rate_hz / 100;
-  const bool num_channels = fuzz_data->ReadOrDefaultValue(true) ? 2 : 1;
+  const size_t num_channels = fuzz_data->ReadOrDefaultValue(true) ? 2 : 1;
 
   gci->Initialize(num_channels, sample_rate_hz);
   FuzzGainControllerConfig(fuzz_data, gci);
@@ -113,8 +114,7 @@ void FuzzOneInput(const uint8_t* data, size_t size) {
     return;
   }
   test::FuzzDataHelper fuzz_data(rtc::ArrayView<const uint8_t>(data, size));
-  rtc::CriticalSection crit_capture;
-  auto gci = absl::make_unique<GainControlImpl>(&crit_capture);
+  auto gci = std::make_unique<GainControlImpl>();
   FuzzGainController(&fuzz_data, gci.get());
 }
 }  // namespace webrtc

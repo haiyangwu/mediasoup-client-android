@@ -14,6 +14,7 @@
 #include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/composite.h>
 #include <string.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -64,7 +65,7 @@ bool WindowCapturerX11::GetSourceList(SourceList* sources) {
 }
 
 bool WindowCapturerX11::SelectSource(SourceId id) {
-  if (!x_server_pixel_buffer_.Init(display(), id))
+  if (!x_server_pixel_buffer_.Init(&atom_cache_, id))
     return false;
 
   // Tell the X server to send us window resizing events.
@@ -194,7 +195,7 @@ bool WindowCapturerX11::HandleXEvent(const XEvent& event) {
     if (xce.window == selected_window_) {
       if (!DesktopRectFromXAttributes(xce).equals(
               x_server_pixel_buffer_.window_rect())) {
-        if (!x_server_pixel_buffer_.Init(display(), selected_window_)) {
+        if (!x_server_pixel_buffer_.Init(&atom_cache_, selected_window_)) {
           RTC_LOG(LS_ERROR)
               << "Failed to initialize pixel buffer after resizing.";
         }

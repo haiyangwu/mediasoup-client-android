@@ -13,12 +13,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <list>
 #include <map>
 #include <memory>
 #include <vector>
 
 #include "api/rtp_headers.h"
+#include "api/transport/field_trial_based_config.h"
 #include "modules/remote_bitrate_estimator/aimd_rate_control.h"
 #include "modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "modules/remote_bitrate_estimator/inter_arrival.h"
@@ -121,6 +123,7 @@ class RemoteBitrateEstimatorAbsSendTime : public RemoteBitrateEstimator {
 
   rtc::RaceChecker network_race_;
   Clock* const clock_;
+  const FieldTrialBasedConfig field_trials_;
   RemoteBitrateObserver* const observer_;
   std::unique_ptr<InterArrival> inter_arrival_;
   std::unique_ptr<OveruseEstimator> estimator_;

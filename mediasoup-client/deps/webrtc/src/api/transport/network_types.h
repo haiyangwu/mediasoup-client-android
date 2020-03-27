@@ -11,6 +11,7 @@
 #ifndef API_TRANSPORT_NETWORK_TYPES_H_
 #define API_TRANSPORT_NETWORK_TYPES_H_
 #include <stdint.h>
+
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -18,10 +19,24 @@
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
+#include "rtc_base/deprecation.h"
 
 namespace webrtc {
 
 // Configuration
+
+// Represents constraints and rates related to the currently enabled streams.
+// This is used as input to the congestion controller via the StreamsConfig
+// struct.
+struct BitrateAllocationLimits {
+  // The total minimum send bitrate required by all sending streams.
+  DataRate min_allocatable_rate = DataRate::Zero();
+  // The total maximum allocatable bitrate for all currently available streams.
+  DataRate max_allocatable_rate = DataRate::Zero();
+  // The max bitrate to use for padding. The sum of the per-stream max padding
+  // rate.
+  DataRate max_padding_rate = DataRate::Zero();
+};
 
 // Use StreamsConfig for information about streams that is required for specific
 // adjustments to the algorithms in network controllers. Especially useful
@@ -33,7 +48,9 @@ struct StreamsConfig {
   Timestamp at_time = Timestamp::PlusInfinity();
   absl::optional<bool> requests_alr_probing;
   absl::optional<double> pacing_factor;
-  absl::optional<DataRate> min_pacing_rate;
+
+  // TODO(srte): Use BitrateAllocationLimits here.
+  absl::optional<DataRate> min_total_allocated_bitrate;
   absl::optional<DataRate> max_padding_rate;
   absl::optional<DataRate> max_total_allocated_bitrate;
 };
@@ -81,6 +98,7 @@ struct PacedPacketInfo {
   int probe_cluster_id = kNotAProbe;
   int probe_cluster_min_probes = -1;
   int probe_cluster_min_bytes = -1;
+  int probe_cluster_bytes_sent = 0;
 };
 
 struct SentPacket {
@@ -94,6 +112,12 @@ struct SentPacket {
   int64_t sequence_number;
   // Tracked data in flight when the packet was sent, excluding unacked data.
   DataSize data_in_flight = DataSize::Zero();
+};
+
+struct ReceivedPacket {
+  Timestamp send_time = Timestamp::MinusInfinity();
+  Timestamp receive_time = Timestamp::PlusInfinity();
+  DataSize size = DataSize::Zero();
 };
 
 // Transport level feedback
@@ -120,6 +144,11 @@ struct TransportLossReport {
 // Packet level feedback
 
 struct PacketResult {
+  class ReceiveTimeOrder {
+   public:
+    bool operator()(const PacketResult& lhs, const PacketResult& rhs);
+  };
+
   PacketResult();
   PacketResult(const PacketResult&);
   ~PacketResult();
@@ -145,12 +174,14 @@ struct TransportPacketsFeedback {
   std::vector<PacketResult> ReceivedWithSendInfo() const;
   std::vector<PacketResult> LostWithSendInfo() const;
   std::vector<PacketResult> PacketsWithFeedback() const;
+  std::vector<PacketResult> SortedByReceiveTime() const;
 };
 
 // Network estimation
 
 struct NetworkEstimate {
   Timestamp at_time = Timestamp::PlusInfinity();
+  // Deprecated, use TargetTransferRate::target_rate instead.
   DataRate bandwidth = DataRate::Infinity();
   TimeDelta round_trip_time = TimeDelta::PlusInfinity();
   TimeDelta bwe_period = TimeDelta::PlusInfinity();
@@ -184,6 +215,7 @@ struct TargetTransferRate {
   // The estimate on which the target rate is based on.
   NetworkEstimate network_estimate;
   DataRate target_rate = DataRate::Zero();
+  DataRate stable_target_rate = DataRate::Zero();
 };
 
 // Contains updates of network controller comand state. Using optionals to
@@ -206,6 +238,35 @@ struct ProcessInterval {
   ~ProcessInterval();
   Timestamp at_time = Timestamp::PlusInfinity();
   absl::optional<DataSize> pacer_queue;
+};
+
+// Under development, subject to change without notice.
+struct NetworkStateEstimate {
+  double confidence = NAN;
+  // The time the estimate was received/calculated.
+  Timestamp update_time = Timestamp::MinusInfinity();
+  Timestamp last_receive_time = Timestamp::MinusInfinity();
+  Timestamp last_send_time = Timestamp::MinusInfinity();
+
+  // Total estimated link capacity.
+  DataRate link_capacity = DataRate::MinusInfinity();
+  // Used as a safe measure of available capacity.
+  DataRate link_capacity_lower = DataRate::MinusInfinity();
+  // Used as limit for increasing bitrate.
+  DataRate link_capacity_upper = DataRate::MinusInfinity();
+
+  TimeDelta pre_link_buffer_delay = TimeDelta::MinusInfinity();
+  TimeDelta post_link_buffer_delay = TimeDelta::MinusInfinity();
+  TimeDelta propagation_delay = TimeDelta::MinusInfinity();
+
+  // Only for debugging
+  TimeDelta time_delta = TimeDelta::MinusInfinity();
+  Timestamp last_feed_time = Timestamp::MinusInfinity();
+  double cross_delay_rate = NAN;
+  double spike_delay_rate = NAN;
+  DataRate link_capacity_std_dev = DataRate::MinusInfinity();
+  DataRate link_capacity_min = DataRate::MinusInfinity();
+  double cross_traffic_ratio = NAN;
 };
 }  // namespace webrtc
 

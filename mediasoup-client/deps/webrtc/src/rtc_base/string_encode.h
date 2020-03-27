@@ -12,6 +12,7 @@
 #define RTC_BASE_STRING_ENCODE_H_
 
 #include <stddef.h>
+
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -26,33 +27,6 @@ namespace rtc {
 // String Encoding Utilities
 //////////////////////////////////////////////////////////////////////
 
-// Note: in-place decoding (buffer == source) is allowed.
-size_t url_decode(char* buffer,
-                  size_t buflen,
-                  const char* source,
-                  size_t srclen);
-
-// Convert an unsigned value from 0 to 15 to the hex character equivalent...
-char hex_encode(unsigned char val);
-// ...and vice-versa.
-bool hex_decode(char ch, unsigned char* val);
-
-// hex_encode shows the hex representation of binary data in ascii.
-size_t hex_encode(char* buffer,
-                  size_t buflen,
-                  const char* source,
-                  size_t srclen);
-
-// hex_encode, but separate each byte representation with a delimiter.
-// |delimiter| == 0 means no delimiter
-// If the buffer is too short, we return 0
-size_t hex_encode_with_delimiter(char* buffer,
-                                 size_t buflen,
-                                 const char* source,
-                                 size_t srclen,
-                                 char delimiter);
-
-// Helper functions for hex_encode.
 std::string hex_encode(const std::string& str);
 std::string hex_encode(const char* source, size_t srclen);
 std::string hex_encode_with_delimiter(const char* source,
@@ -81,26 +55,6 @@ size_t hex_decode_with_delimiter(char* buffer,
                                  size_t buflen,
                                  const std::string& source,
                                  char delimiter);
-
-// Apply any suitable string transform (including the ones above) to an STL
-// string.  Stack-allocated temporary space is used for the transformation,
-// so value and source may refer to the same string.
-typedef size_t (*Transform)(char* buffer,
-                            size_t buflen,
-                            const char* source,
-                            size_t srclen);
-size_t transform(std::string& value,
-                 size_t maxlen,
-                 const std::string& source,
-                 Transform t);
-
-// Return the result of applying transform t to source.
-std::string s_transform(const std::string& source, Transform t);
-
-// Convenience wrappers.
-inline std::string s_url_decode(const std::string& source) {
-  return s_transform(source, url_decode);
-}
 
 // Joins the source vector of strings into a single string, with each
 // field in source being separated by delimiter. No trailing delimiter is added.

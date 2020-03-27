@@ -8,6 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
+
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
@@ -24,7 +26,6 @@
 #ifdef WEBRTC_ANDROID
 #include "pc/test/android_test_initializer.h"
 #endif
-#include "absl/memory/memory.h"
 #include "pc/test/fake_audio_capture_module.h"
 #include "rtc_base/fake_network.h"
 #include "rtc_base/gunit.h"
@@ -83,14 +84,8 @@ class PeerConnectionWrapperForBundleTest : public PeerConnectionWrapper {
     return false;
   }
 
-  rtc::PacketTransportInternal* voice_rtp_transport() {
-    return (voice_channel() ? voice_channel()->rtp_packet_transport()
-                            : nullptr);
-  }
-
-  rtc::PacketTransportInternal* voice_rtcp_transport() {
-    return (voice_channel() ? voice_channel()->rtcp_packet_transport()
-                            : nullptr);
+  RtpTransportInternal* voice_rtp_transport() {
+    return (voice_channel() ? voice_channel()->rtp_transport() : nullptr);
   }
 
   cricket::VoiceChannel* voice_channel() {
@@ -104,14 +99,8 @@ class PeerConnectionWrapperForBundleTest : public PeerConnectionWrapper {
     return nullptr;
   }
 
-  rtc::PacketTransportInternal* video_rtp_transport() {
-    return (video_channel() ? video_channel()->rtp_packet_transport()
-                            : nullptr);
-  }
-
-  rtc::PacketTransportInternal* video_rtcp_transport() {
-    return (video_channel() ? video_channel()->rtcp_packet_transport()
-                            : nullptr);
+  RtpTransportInternal* video_rtp_transport() {
+    return (video_channel() ? video_channel()->rtp_transport() : nullptr);
   }
 
   cricket::VideoChannel* video_channel() {
@@ -197,11 +186,11 @@ class PeerConnectionBundleBaseTest : public ::testing::Test {
   WrapperPtr CreatePeerConnection(const RTCConfiguration& config) {
     auto* fake_network = NewFakeNetwork();
     auto port_allocator =
-        absl::make_unique<cricket::BasicPortAllocator>(fake_network);
+        std::make_unique<cricket::BasicPortAllocator>(fake_network);
     port_allocator->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
                               cricket::PORTALLOCATOR_DISABLE_RELAY);
     port_allocator->set_step_delay(cricket::kMinimumStepDelay);
-    auto observer = absl::make_unique<MockPeerConnectionObserver>();
+    auto observer = std::make_unique<MockPeerConnectionObserver>();
     RTCConfiguration modified_config = config;
     modified_config.sdp_semantics = sdp_semantics_;
     auto pc = pc_factory_->CreatePeerConnection(
@@ -210,7 +199,7 @@ class PeerConnectionBundleBaseTest : public ::testing::Test {
       return nullptr;
     }
 
-    auto wrapper = absl::make_unique<PeerConnectionWrapperForBundleTest>(
+    auto wrapper = std::make_unique<PeerConnectionWrapperForBundleTest>(
         pc_factory_, pc, std::move(observer));
     wrapper->set_network(fake_network);
     return wrapper;
@@ -552,14 +541,14 @@ TEST_P(PeerConnectionBundleTest, NeverCreateRtcpTransportWithRtcpMuxRequired) {
 
   ASSERT_TRUE(callee->SetRemoteDescription(caller->CreateOfferAndSetAsLocal()));
 
-  EXPECT_FALSE(caller->voice_rtcp_transport());
-  EXPECT_FALSE(caller->video_rtcp_transport());
+  EXPECT_FALSE(caller->voice_rtp_transport()->rtcp_mux_enabled());
+  EXPECT_FALSE(caller->video_rtp_transport()->rtcp_mux_enabled());
 
   ASSERT_TRUE(
       caller->SetRemoteDescription(callee->CreateAnswerAndSetAsLocal()));
 
-  EXPECT_FALSE(caller->voice_rtcp_transport());
-  EXPECT_FALSE(caller->video_rtcp_transport());
+  EXPECT_TRUE(caller->voice_rtp_transport()->rtcp_mux_enabled());
+  EXPECT_TRUE(caller->video_rtp_transport()->rtcp_mux_enabled());
 }
 
 // When negotiating RTCP multiplexing, the PeerConnection makes RTCP transports
@@ -573,14 +562,14 @@ TEST_P(PeerConnectionBundleTest,
 
   ASSERT_TRUE(callee->SetRemoteDescription(caller->CreateOfferAndSetAsLocal()));
 
-  EXPECT_TRUE(caller->voice_rtcp_transport());
-  EXPECT_TRUE(caller->video_rtcp_transport());
+  EXPECT_FALSE(caller->voice_rtp_transport()->rtcp_mux_enabled());
+  EXPECT_FALSE(caller->video_rtp_transport()->rtcp_mux_enabled());
 
   ASSERT_TRUE(
       caller->SetRemoteDescription(callee->CreateAnswerAndSetAsLocal()));
 
-  EXPECT_FALSE(caller->voice_rtcp_transport());
-  EXPECT_FALSE(caller->video_rtcp_transport());
+  EXPECT_TRUE(caller->voice_rtp_transport()->rtcp_mux_enabled());
+  EXPECT_TRUE(caller->video_rtp_transport()->rtcp_mux_enabled());
 }
 
 TEST_P(PeerConnectionBundleTest, FailToSetDescriptionWithBundleAndNoRtcpMux) {
@@ -699,11 +688,13 @@ TEST_P(PeerConnectionBundleTest,
   ASSERT_GE(offer->description()->contents().size(), 2U);
   offer->description()
       ->contents()[0]
-      .description->mutable_streams()[0]
+      .media_description()
+      ->mutable_streams()[0]
       .ssrcs[0] = 1111222;
   offer->description()
       ->contents()[1]
-      .description->mutable_streams()[0]
+      .media_description()
+      ->mutable_streams()[0]
       .ssrcs[0] = 1111222;
   EXPECT_TRUE(
       caller->SetLocalDescription(CloneSessionDescription(offer.get())));

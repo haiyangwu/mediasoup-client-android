@@ -12,6 +12,7 @@
 #define MODULES_AUDIO_CODING_ACM2_ACM_RECEIVER_H_
 
 #include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -137,7 +138,7 @@ class AcmReceiver {
   // Output:
   //   - statistics           : The current network statistics.
   //
-  void GetNetworkStatistics(NetworkStatistics* statistics);
+  void GetNetworkStatistics(NetworkStatistics* statistics) const;
 
   //
   // Flushes the NetEq packet and speech buffers.
@@ -174,13 +175,12 @@ class AcmReceiver {
   // Enable NACK and set the maximum size of the NACK list. If NACK is already
   // enabled then the maximum NACK list size is modified accordingly.
   //
-  // Input:
-  //    -max_nack_list_size  : maximum NACK list size
-  //                           should be positive (none zero) and less than or
-  //                           equal to |Nack::kNackListSizeLimit|
-  // Return value
-  //                         : 0 if succeeded.
-  //                          -1 if failed
+  // If the sequence number of last received packet is N, the sequence numbers
+  // of NACK list are in the range of [N - |max_nack_list_size|, N).
+  //
+  // |max_nack_list_size| should be positive (none zero) and less than or
+  // equal to |Nack::kNackListSizeLimit|. Otherwise, No change is applied and -1
+  // is returned. 0 is returned at success.
   //
   int EnableNack(size_t max_nack_list_size);
 
@@ -188,11 +188,13 @@ class AcmReceiver {
   void DisableNack();
 
   //
-  // Get a list of packets to be retransmitted.
+  // Get a list of packets to be retransmitted. |round_trip_time_ms| is an
+  // estimate of the round-trip-time (in milliseconds). Missing packets which
+  // will be playout in a shorter time than the round-trip-time (with respect
+  // to the time this API is called) will not be included in the list.
   //
-  // Input:
-  //    -round_trip_time_ms : estimate of the round-trip-time (in milliseconds).
-  // Return value           : list of packets to be retransmitted.
+  // Negative |round_trip_time_ms| results is an error message and empty list
+  // is returned.
   //
   std::vector<uint16_t> GetNackList(int64_t round_trip_time_ms) const;
 
@@ -201,11 +203,17 @@ class AcmReceiver {
   void GetDecodingCallStatistics(AudioDecodingCallStats* stats) const;
 
  private:
+  struct DecoderInfo {
+    int payload_type;
+    int sample_rate_hz;
+    int num_channels;
+    SdpAudioFormat sdp_format;
+  };
+
   uint32_t NowInTimestamp(int decoder_sampling_rate) const;
 
   rtc::CriticalSection crit_sect_;
-  absl::optional<std::pair<int, SdpAudioFormat>> last_decoder_
-      RTC_GUARDED_BY(crit_sect_);
+  absl::optional<DecoderInfo> last_decoder_ RTC_GUARDED_BY(crit_sect_);
   ACMResampler resampler_ RTC_GUARDED_BY(crit_sect_);
   std::unique_ptr<int16_t[]> last_audio_buffer_ RTC_GUARDED_BY(crit_sect_);
   CallStatistics call_stats_ RTC_GUARDED_BY(crit_sect_);

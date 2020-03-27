@@ -34,6 +34,21 @@ cc_library(
     visibility = [
         "//absl:__subpackages__",
     ],
+    deps = [
+        ":config",
+        ":core_headers",
+    ],
+)
+
+cc_library(
+    name = "errno_saver",
+    hdrs = ["internal/errno_saver.h"],
+    copts = ABSL_DEFAULT_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    visibility = [
+        "//absl:__subpackages__",
+    ],
+    deps = [":config"],
 )
 
 cc_library(
@@ -42,7 +57,10 @@ cc_library(
     hdrs = ["log_severity.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    deps = [":core_headers"],
+    deps = [
+        ":config",
+        ":core_headers",
+    ],
 )
 
 cc_library(
@@ -80,6 +98,7 @@ cc_library(
     deps = [
         ":base_internal",
         ":core_headers",
+        ":errno_saver",
     ],
 )
 
@@ -165,6 +184,7 @@ cc_library(
         "//absl:__subpackages__",
     ],
     deps = [
+        ":config",
         "//absl/meta:type_traits",
     ],
 )
@@ -192,7 +212,9 @@ cc_library(
     ],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = select({
-        "//absl:windows": [],
+        "//absl:windows": [
+            "-DEFAULTLIB:advapi32.lib",
+        ],
         "//conditions:default": ["-pthread"],
     }) + ABSL_DEFAULT_LINKOPTS,
     deps = [
@@ -273,6 +295,18 @@ cc_test(
     deps = [
         ":config",
         ":throw_delegate",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "errno_saver_test",
+    size = "small",
+    srcs = ["internal/errno_saver_test.cc"],
+    copts = ABSL_TEST_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    deps = [
+        ":errno_saver",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -543,7 +577,10 @@ cc_library(
     visibility = [
         "//absl:__subpackages__",
     ],
-    deps = [":core_headers"],
+    deps = [
+        ":config",
+        ":core_headers",
+    ],
 )
 
 cc_test(
@@ -566,7 +603,10 @@ cc_library(
     visibility = [
         "//absl:__subpackages__",
     ],
-    deps = [":core_headers"],
+    deps = [
+        ":config",
+        ":core_headers",
+    ],
 )
 
 cc_test(
@@ -584,6 +624,47 @@ cc_test(
 )
 
 cc_library(
+    name = "periodic_sampler",
+    srcs = ["internal/periodic_sampler.cc"],
+    hdrs = ["internal/periodic_sampler.h"],
+    copts = ABSL_DEFAULT_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    deps = [
+        ":core_headers",
+        ":exponential_biased",
+    ],
+)
+
+cc_test(
+    name = "periodic_sampler_test",
+    size = "small",
+    srcs = ["internal/periodic_sampler_test.cc"],
+    copts = ABSL_TEST_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":core_headers",
+        ":periodic_sampler",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "periodic_sampler_benchmark",
+    testonly = 1,
+    srcs = ["internal/periodic_sampler_benchmark.cc"],
+    copts = ABSL_TEST_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    tags = ["benchmark"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":core_headers",
+        ":periodic_sampler",
+        "@com_github_google_benchmark//:benchmark_main",
+    ],
+)
+
+cc_library(
     name = "scoped_set_env",
     testonly = 1,
     srcs = ["internal/scoped_set_env.cc"],
@@ -592,7 +673,10 @@ cc_library(
     visibility = [
         "//absl:__subpackages__",
     ],
-    deps = [":raw_logging_internal"],
+    deps = [
+        ":config",
+        ":raw_logging_internal",
+    ],
 )
 
 cc_test(
@@ -615,6 +699,7 @@ cc_test(
     linkopts = ABSL_DEFAULT_LINKOPTS,
     deps = [
         ":log_severity",
+        "//absl/flags:flag_internal",
         "//absl/flags:marshalling",
         "//absl/strings",
         "@com_google_googletest//:gtest_main",

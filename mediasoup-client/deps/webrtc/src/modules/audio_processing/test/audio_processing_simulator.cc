@@ -13,11 +13,11 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/audio/echo_canceller3_config_json.h"
 #include "api/audio/echo_canceller3_factory.h"
 #include "common_audio/include/audio_util.h"
@@ -92,9 +92,29 @@ void WriteEchoLikelihoodGraphFileFooter(std::ofstream* output_file) {
                  << "  plt.plot(x, y)" << std::endl
                  << "  plt.ylabel('Echo likelihood')" << std::endl
                  << "  plt.xlabel('Time (s)')" << std::endl
-                 << "  plt.ylim([0,1])" << std::endl
                  << "  plt.show()" << std::endl;
 }
+
+// RAII class for execution time measurement. Updates the provided
+// ApiCallStatistics based on the time between ScopedTimer creation and
+// leaving the enclosing scope.
+class ScopedTimer {
+ public:
+  ScopedTimer(ApiCallStatistics* api_call_statistics_,
+              ApiCallStatistics::CallType call_type)
+      : start_time_(rtc::TimeNanos()),
+        call_type_(call_type),
+        api_call_statistics_(api_call_statistics_) {}
+
+  ~ScopedTimer() {
+    api_call_statistics_->Add(rtc::TimeNanos() - start_time_, call_type_);
+  }
+
+ private:
+  const int64_t start_time_;
+  const ApiCallStatistics::CallType call_type_;
+  ApiCallStatistics* const api_call_statistics_;
+};
 
 }  // namespace
 
@@ -119,7 +139,7 @@ AudioProcessingSimulator::AudioProcessingSimulator(
     std::unique_ptr<AudioProcessingBuilder> ap_builder)
     : settings_(settings),
       ap_builder_(ap_builder ? std::move(ap_builder)
-                             : absl::make_unique<AudioProcessingBuilder>()),
+                             : std::make_unique<AudioProcessingBuilder>()),
       analog_mic_level_(settings.initial_mic_level),
       fake_recording_device_(
           settings.initial_mic_level,
@@ -151,13 +171,6 @@ AudioProcessingSimulator::~AudioProcessingSimulator() {
   }
 }
 
-AudioProcessingSimulator::ScopedTimer::~ScopedTimer() {
-  int64_t interval = rtc::TimeNanos() - start_time_;
-  proc_time_->sum += interval;
-  proc_time_->max = std::max(proc_time_->max, interval);
-  proc_time_->min = std::min(proc_time_->min, interval);
-}
-
 void AudioProcessingSimulator::ProcessStream(bool fixed_interface) {
   // Optionally use the fake recording device to simulate analog gain.
   if (settings_.simulate_mic_gain) {
@@ -175,26 +188,25 @@ void AudioProcessingSimulator::ProcessStream(bool fixed_interface) {
     }
 
     // Notify the current mic level to AGC.
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->gain_control()->set_stream_analog_level(
-                     fake_recording_device_.MicLevel()));
+    ap_->set_stream_analog_level(fake_recording_device_.MicLevel());
   } else {
     // Notify the current mic level to AGC.
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->gain_control()->set_stream_analog_level(
-                     settings_.aec_dump_input_filename ? aec_dump_mic_level_
-                                                       : analog_mic_level_));
+    ap_->set_stream_analog_level(settings_.aec_dump_input_filename
+                                     ? aec_dump_mic_level_
+                                     : analog_mic_level_);
   }
 
   // Process the current audio frame.
   if (fixed_interface) {
     {
-      const auto st = ScopedTimer(mutable_proc_time());
+      const auto st = ScopedTimer(&api_call_statistics_,
+                                  ApiCallStatistics::CallType::kCapture);
       RTC_CHECK_EQ(AudioProcessing::kNoError, ap_->ProcessStream(&fwd_frame_));
     }
     CopyFromAudioFrame(fwd_frame_, out_buf_.get());
   } else {
-    const auto st = ScopedTimer(mutable_proc_time());
+    const auto st = ScopedTimer(&api_call_statistics_,
+                                ApiCallStatistics::CallType::kCapture);
     RTC_CHECK_EQ(AudioProcessing::kNoError,
                  ap_->ProcessStream(in_buf_->channels(), in_config_,
                                     out_config_, out_buf_->channels()));
@@ -203,13 +215,16 @@ void AudioProcessingSimulator::ProcessStream(bool fixed_interface) {
   // Store the mic level suggested by AGC.
   // Note that when the analog gain is simulated and an AEC dump is used as
   // input, |analog_mic_level_| will not be used with set_stream_analog_level().
-  analog_mic_level_ = ap_->gain_control()->stream_analog_level();
+  analog_mic_level_ = ap_->recommended_stream_analog_level();
   if (settings_.simulate_mic_gain) {
     fake_recording_device_.SetMicLevel(analog_mic_level_);
   }
-
-  if (buffer_writer_) {
-    buffer_writer_->Write(*out_buf_);
+  if (buffer_memory_writer_) {
+    RTC_CHECK(!buffer_file_writer_);
+    buffer_memory_writer_->Write(*out_buf_);
+  } else if (buffer_file_writer_) {
+    RTC_CHECK(!buffer_memory_writer_);
+    buffer_file_writer_->Write(*out_buf_);
   }
 
   if (residual_echo_likelihood_graph_writer_.is_open()) {
@@ -223,21 +238,24 @@ void AudioProcessingSimulator::ProcessStream(bool fixed_interface) {
 
 void AudioProcessingSimulator::ProcessReverseStream(bool fixed_interface) {
   if (fixed_interface) {
-    const auto st = ScopedTimer(mutable_proc_time());
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->ProcessReverseStream(&rev_frame_));
+    {
+      const auto st = ScopedTimer(&api_call_statistics_,
+                                  ApiCallStatistics::CallType::kRender);
+      RTC_CHECK_EQ(AudioProcessing::kNoError,
+                   ap_->ProcessReverseStream(&rev_frame_));
+    }
     CopyFromAudioFrame(rev_frame_, reverse_out_buf_.get());
-
   } else {
-    const auto st = ScopedTimer(mutable_proc_time());
+    const auto st = ScopedTimer(&api_call_statistics_,
+                                ApiCallStatistics::CallType::kRender);
     RTC_CHECK_EQ(AudioProcessing::kNoError,
                  ap_->ProcessReverseStream(
                      reverse_in_buf_->channels(), reverse_in_config_,
                      reverse_out_config_, reverse_out_buf_->channels()));
   }
 
-  if (reverse_buffer_writer_) {
-    reverse_buffer_writer_->Write(*reverse_out_buf_);
+  if (reverse_buffer_file_writer_) {
+    reverse_buffer_file_writer_->Write(*reverse_out_buf_);
   }
 
   ++num_reverse_process_stream_calls_;
@@ -318,7 +336,10 @@ void AudioProcessingSimulator::SetupOutput() {
     std::unique_ptr<WavWriter> out_file(
         new WavWriter(filename, out_config_.sample_rate_hz(),
                       static_cast<size_t>(out_config_.num_channels())));
-    buffer_writer_.reset(new ChannelBufferWavWriter(std::move(out_file)));
+    buffer_file_writer_.reset(new ChannelBufferWavWriter(std::move(out_file)));
+  } else if (settings_.aec_dump_input_string.has_value()) {
+    buffer_memory_writer_ = std::make_unique<ChannelBufferVectorWriter>(
+        settings_.processed_capture_samples);
   }
 
   if (settings_.reverse_output_filename) {
@@ -333,7 +354,7 @@ void AudioProcessingSimulator::SetupOutput() {
     std::unique_ptr<WavWriter> reverse_out_file(
         new WavWriter(filename, reverse_out_config_.sample_rate_hz(),
                       static_cast<size_t>(reverse_out_config_.num_channels())));
-    reverse_buffer_writer_.reset(
+    reverse_buffer_file_writer_.reset(
         new ChannelBufferWavWriter(std::move(reverse_out_file)));
   }
 
@@ -353,10 +374,17 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
   if (settings_.use_ts) {
     config.Set<ExperimentalNs>(new ExperimentalNs(*settings_.use_ts));
   }
+  if (settings_.experimental_multi_channel) {
+    apm_config.pipeline.experimental_multi_channel =
+        *settings_.experimental_multi_channel;
+  }
+
   if (settings_.use_agc2) {
     apm_config.gain_controller2.enabled = *settings_.use_agc2;
-    apm_config.gain_controller2.fixed_digital.gain_db =
-        settings_.agc2_fixed_gain_db;
+    if (settings_.agc2_fixed_gain_db) {
+      apm_config.gain_controller2.fixed_digital.gain_db =
+          *settings_.agc2_fixed_gain_db;
+    }
     if (settings_.agc2_use_adaptive_gain) {
       apm_config.gain_controller2.adaptive_digital.enabled =
           *settings_.agc2_use_adaptive_gain;
@@ -366,8 +394,10 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
   }
   if (settings_.use_pre_amplifier) {
     apm_config.pre_amplifier.enabled = *settings_.use_pre_amplifier;
-    apm_config.pre_amplifier.fixed_gain_factor =
-        settings_.pre_amplifier_gain_factor;
+    if (settings_.pre_amplifier_gain_factor) {
+      apm_config.pre_amplifier.fixed_gain_factor =
+          *settings_.pre_amplifier_gain_factor;
+    }
   }
 
   const bool use_legacy_aec = settings_.use_aec && *settings_.use_aec &&
@@ -422,6 +452,33 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
     apm_config.high_pass_filter.enabled = *settings_.use_hpf;
   }
 
+  if (settings_.use_le) {
+    apm_config.level_estimation.enabled = *settings_.use_le;
+  }
+
+  if (settings_.use_vad) {
+    apm_config.voice_detection.enabled = *settings_.use_vad;
+  }
+
+  if (settings_.use_agc) {
+    apm_config.gain_controller1.enabled = *settings_.use_agc;
+  }
+  if (settings_.agc_mode) {
+    apm_config.gain_controller1.mode =
+        static_cast<webrtc::AudioProcessing::Config::GainController1::Mode>(
+            *settings_.agc_mode);
+  }
+  if (settings_.use_agc_limiter) {
+    apm_config.gain_controller1.enable_limiter = *settings_.use_agc_limiter;
+  }
+  if (settings_.agc_target_level) {
+    apm_config.gain_controller1.target_level_dbfs = *settings_.agc_target_level;
+  }
+  if (settings_.agc_compression_gain) {
+    apm_config.gain_controller1.compression_gain_db =
+        *settings_.agc_compression_gain;
+  }
+
   if (settings_.use_refined_adaptive_filter) {
     config.Set<RefinedAdaptiveFilter>(
         new RefinedAdaptiveFilter(*settings_.use_refined_adaptive_filter));
@@ -442,6 +499,22 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
     apm_config.residual_echo_detector.enabled = *settings_.use_ed;
   }
 
+  if (settings_.maximum_internal_processing_rate) {
+    apm_config.pipeline.maximum_internal_processing_rate =
+        *settings_.maximum_internal_processing_rate;
+  }
+
+  if (settings_.use_ns) {
+    apm_config.noise_suppression.enabled = *settings_.use_ns;
+  }
+  if (settings_.ns_level) {
+    const int level = *settings_.ns_level;
+    RTC_CHECK_GE(level, 0);
+    RTC_CHECK_LE(level, 3);
+    apm_config.noise_suppression.level =
+        static_cast<AudioProcessing::Config::NoiseSuppression::Level>(level);
+  }
+
   RTC_CHECK(ap_builder_);
   if (echo_control_factory) {
     ap_builder_->SetEchoControlFactory(std::move(echo_control_factory));
@@ -451,56 +524,6 @@ void AudioProcessingSimulator::CreateAudioProcessor() {
   RTC_CHECK(ap_);
 
   ap_->ApplyConfig(apm_config);
-
-  if (settings_.use_agc) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->gain_control()->Enable(*settings_.use_agc));
-  }
-  if (settings_.use_ns) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->noise_suppression()->Enable(*settings_.use_ns));
-  }
-  if (settings_.use_le) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->level_estimator()->Enable(*settings_.use_le));
-  }
-  if (settings_.use_vad) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->voice_detection()->Enable(*settings_.use_vad));
-  }
-  if (settings_.use_agc_limiter) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError, ap_->gain_control()->enable_limiter(
-                                                *settings_.use_agc_limiter));
-  }
-  if (settings_.agc_target_level) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->gain_control()->set_target_level_dbfs(
-                     *settings_.agc_target_level));
-  }
-  if (settings_.agc_compression_gain) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->gain_control()->set_compression_gain_db(
-                     *settings_.agc_compression_gain));
-  }
-  if (settings_.agc_mode) {
-    RTC_CHECK_EQ(
-        AudioProcessing::kNoError,
-        ap_->gain_control()->set_mode(
-            static_cast<webrtc::GainControl::Mode>(*settings_.agc_mode)));
-  }
-
-  if (settings_.vad_likelihood) {
-    RTC_CHECK_EQ(AudioProcessing::kNoError,
-                 ap_->voice_detection()->set_likelihood(
-                     static_cast<webrtc::VoiceDetection::Likelihood>(
-                         *settings_.vad_likelihood)));
-  }
-  if (settings_.ns_level) {
-    RTC_CHECK_EQ(
-        AudioProcessing::kNoError,
-        ap_->noise_suppression()->set_level(
-            static_cast<NoiseSuppression::Level>(*settings_.ns_level)));
-  }
 
   if (settings_.use_ts) {
     ap_->set_stream_key_pressed(*settings_.use_ts);

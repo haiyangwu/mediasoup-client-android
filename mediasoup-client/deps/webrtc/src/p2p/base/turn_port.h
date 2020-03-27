@@ -12,6 +12,7 @@
 #define P2P_BASE_TURN_PORT_H_
 
 #include <stdio.h>
+
 #include <list>
 #include <map>
 #include <memory>
@@ -32,6 +33,7 @@ class TurnCustomizer;
 
 namespace cricket {
 
+extern const int STUN_ATTR_TURN_LOGGING_ID;
 extern const char TURN_PORT_TYPE[];
 class TurnAllocateRequest;
 class TurnEntry;
@@ -147,6 +149,8 @@ class TurnPort : public Port {
   virtual TlsCertPolicy GetTlsCertPolicy() const;
   virtual void SetTlsCertPolicy(TlsCertPolicy tls_cert_policy);
 
+  void SetTurnLoggingId(const std::string& turn_logging_id);
+
   virtual std::vector<std::string> GetTlsAlpnProtocols() const;
   virtual std::vector<std::string> GetTlsEllipticCurves() const;
 
@@ -187,7 +191,6 @@ class TurnPort : public Port {
   void OnSocketConnect(rtc::AsyncPacketSocket* socket);
   void OnSocketClose(rtc::AsyncPacketSocket* socket, int error);
 
-
   const std::string& hash() const { return hash_; }
   const std::string& nonce() const { return nonce_; }
 
@@ -195,9 +198,7 @@ class TurnPort : public Port {
 
   void OnAllocateMismatch();
 
-  rtc::AsyncPacketSocket* socket() const {
-    return socket_;
-  }
+  rtc::AsyncPacketSocket* socket() const { return socket_; }
 
   // For testing only.
   rtc::AsyncInvoker* invoker() { return &invoker_; }
@@ -205,9 +206,9 @@ class TurnPort : public Port {
   // Signal with resolved server address.
   // Parameters are port, server address and resolved server address.
   // This signal will be sent only if server address is resolved successfully.
-  sigslot::signal3<TurnPort*,
-                   const rtc::SocketAddress&,
-                   const rtc::SocketAddress&> SignalResolvedServerAddress;
+  sigslot::
+      signal3<TurnPort*, const rtc::SocketAddress&, const rtc::SocketAddress&>
+          SignalResolvedServerAddress;
 
   // Signal when TurnPort is closed,
   // e.g remote socket closed (TCP)
@@ -263,8 +264,7 @@ class TurnPort : public Port {
 
   // NOTE: This method needs to be accessible for StacPort
   // return true if entry was created (i.e channel_number consumed).
-  bool CreateOrRefreshEntry(const rtc::SocketAddress& addr,
-                            int channel_number);
+  bool CreateOrRefreshEntry(const rtc::SocketAddress& addr, int channel_number);
 
   bool CreateOrRefreshEntry(const rtc::SocketAddress& addr,
                             int channel_number,
@@ -310,7 +310,7 @@ class TurnPort : public Port {
   void OnStunAddress(const rtc::SocketAddress& address);
   void OnAllocateSuccess(const rtc::SocketAddress& address,
                          const rtc::SocketAddress& stun_address);
-  void OnAllocateError();
+  void OnAllocateError(int error_code, const std::string& reason);
   void OnAllocateRequestTimeout();
 
   void HandleDataIndication(const char* data,
@@ -328,8 +328,7 @@ class TurnPort : public Port {
 
   bool ScheduleRefresh(uint32_t lifetime);
   void SendRequest(StunRequest* request, int delay);
-  int Send(const void* data, size_t size,
-           const rtc::PacketOptions& options);
+  int Send(const void* data, size_t size, const rtc::PacketOptions& options);
   void UpdateHash();
   bool UpdateNonce(StunMessage* response);
   void ResetNonce();
@@ -349,11 +348,14 @@ class TurnPort : public Port {
   bool FailAndPruneConnection(const rtc::SocketAddress& address);
 
   // Reconstruct the URL of the server which the candidate is gathered from.
-  std::string ReconstructedServerUrl();
+  std::string ReconstructedServerUrl(bool use_hostname);
+
+  void MaybeAddTurnLoggingId(StunMessage* message);
 
   void TurnCustomizerMaybeModifyOutgoingStunMessage(StunMessage* message);
   bool TurnCustomizerAllowChannelData(const void* data,
-                                      size_t size, bool payload);
+                                      size_t size,
+                                      bool payload);
 
   ProtocolAddress server_address_;
   TlsCertPolicy tls_cert_policy_ = TlsCertPolicy::TLS_CERT_POLICY_SECURE;
@@ -370,9 +372,9 @@ class TurnPort : public Port {
   rtc::DiffServCodePoint stun_dscp_value_;
 
   StunRequestManager request_manager_;
-  std::string realm_;       // From 401/438 response message.
-  std::string nonce_;       // From 401/438 response message.
-  std::string hash_;        // Digest of username:realm:password
+  std::string realm_;  // From 401/438 response message.
+  std::string nonce_;  // From 401/438 response message.
+  std::string hash_;   // Digest of username:realm:password
 
   int next_channel_number_;
   EntryList entries_;
@@ -389,7 +391,15 @@ class TurnPort : public Port {
 
   // Optional TurnCustomizer that can modify outgoing messages. Once set, this
   // must outlive the TurnPort's lifetime.
-  webrtc::TurnCustomizer *turn_customizer_ = nullptr;
+  webrtc::TurnCustomizer* turn_customizer_ = nullptr;
+
+  // Optional TurnLoggingId.
+  // An identifier set by application that is added to TURN_ALLOCATE_REQUEST
+  // and can be used to match client/backend logs.
+  // TODO(jonaso): This should really be initialized in constructor,
+  // but that is currently so terrible. Fix once constructor is changed
+  // to be more easy to work with.
+  std::string turn_logging_id_;
 
   friend class TurnEntry;
   friend class TurnAllocateRequest;

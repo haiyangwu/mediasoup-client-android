@@ -67,6 +67,7 @@
 #include "absl/random/zipf_distribution.h"
 
 namespace absl {
+ABSL_NAMESPACE_BEGIN
 
 ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalClosedClosedTag, IntervalClosedClosed,
                                {});
@@ -290,10 +291,10 @@ RealType Beta(URBG&& urbg,  // NOLINT(runtime/references)
 // absl::Exponential<T>(bitgen, lambda = 1)
 // -----------------------------------------------------------------------------
 //
-// `absl::Exponential` produces a floating point number for discrete
-// distributions of events occurring continuously and independently at a
-// constant average rate. `T` must be a floating point type, but may be inferred
-// from the type of `lambda`.
+// `absl::Exponential` produces a floating point number representing the
+// distance (time) between two consecutive events in a point process of events
+// occurring continuously and independently at a constant average rate. `T` must
+// be a floating point type, but may be inferred from the type of `lambda`.
 //
 // See https://en.wikipedia.org/wiki/Exponential_distribution.
 //
@@ -458,6 +459,7 @@ IntType Zipf(URBG&& urbg,  // NOLINT(runtime/references)
       distribution_t, format_t>(&urbg, hi, q, v);
 }
 
+ABSL_NAMESPACE_END
 }  // namespace absl
 
 #endif  // ABSL_RANDOM_DISTRIBUTIONS_H_

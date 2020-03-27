@@ -11,11 +11,12 @@
 #include "modules/desktop_capture/screen_drawer.h"
 
 #include <stdint.h>
-#include <atomic>
 
-#include "absl/memory/memory.h"
+#include <atomic>
+#include <memory>
+
+#include "api/function_view.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/function_view.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/platform_thread.h"
 #include "rtc_base/random.h"
@@ -153,7 +154,7 @@ TEST(ScreenDrawerTest, MAYBE_TwoScreenDrawerLocks) {
   ScreenDrawerLockPosix::Unlink(semaphore_name);
 
   TestScreenDrawerLock([semaphore_name]() {
-    return absl::make_unique<ScreenDrawerLockPosix>(semaphore_name);
+    return std::make_unique<ScreenDrawerLockPosix>(semaphore_name);
   });
 #elif defined(WEBRTC_WIN)
   TestScreenDrawerLock([]() { return ScreenDrawerLock::Create(); });

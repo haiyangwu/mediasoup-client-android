@@ -23,7 +23,7 @@
 #define WEBRTC_ARCH_X86_64
 #define WEBRTC_ARCH_64_BITS
 #define WEBRTC_ARCH_LITTLE_ENDIAN
-#elif defined(__aarch64__)
+#elif defined(_M_ARM64) || defined(__aarch64__)
 #define WEBRTC_ARCH_ARM_FAMILY
 #define WEBRTC_ARCH_64_BITS
 #define WEBRTC_ARCH_LITTLE_ENDIAN
@@ -47,8 +47,11 @@
 #elif defined(__pnacl__)
 #define WEBRTC_ARCH_32_BITS
 #define WEBRTC_ARCH_LITTLE_ENDIAN
+#elif defined(__EMSCRIPTEN__)
+#define WEBRTC_ARCH_32_BITS
+#define WEBRTC_ARCH_LITTLE_ENDIAN
 #else
-#error Please add support for your architecture in typedefs.h
+#error Please add support for your architecture in rtc_base/system/arch.h
 #endif
 
 #if !(defined(WEBRTC_ARCH_LITTLE_ENDIAN) ^ defined(WEBRTC_ARCH_BIG_ENDIAN))

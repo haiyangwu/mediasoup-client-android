@@ -10,8 +10,9 @@
 
 #include "sdk/android/src/jni/pc/media_constraints.h"
 
-#include "absl/memory/memory.h"
-#include "sdk/android/generated_peerconnection_jni/jni/MediaConstraints_jni.h"
+#include <memory>
+
+#include "sdk/android/generated_peerconnection_jni/MediaConstraints_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 
@@ -39,7 +40,7 @@ MediaConstraints::Constraints PopulateConstraintsFromJavaPairList(
 std::unique_ptr<MediaConstraints> JavaToNativeMediaConstraints(
     JNIEnv* env,
     const JavaRef<jobject>& j_constraints) {
-  return absl::make_unique<MediaConstraints>(
+  return std::make_unique<MediaConstraints>(
       PopulateConstraintsFromJavaPairList(
           env, Java_MediaConstraints_getMandatory(env, j_constraints)),
       PopulateConstraintsFromJavaPairList(

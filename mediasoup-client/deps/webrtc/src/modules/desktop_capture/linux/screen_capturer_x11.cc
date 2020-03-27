@@ -16,6 +16,7 @@
 #include <X11/extensions/damagewire.h>
 #include <stdint.h>
 #include <string.h>
+
 #include <memory>
 #include <utility>
 
@@ -51,6 +52,8 @@ bool ScreenCapturerX11::Init(const DesktopCaptureOptions& options) {
   TRACE_EVENT0("webrtc", "ScreenCapturerX11::Init");
   options_ = options;
 
+  atom_cache_ = std::make_unique<XAtomCache>(display());
+
   root_window_ = RootWindow(display(), DefaultScreen(display()));
   if (root_window_ == BadValue) {
     RTC_LOG(LS_ERROR) << "Unable to get the root window";
@@ -79,7 +82,8 @@ bool ScreenCapturerX11::Init(const DesktopCaptureOptions& options) {
   // Register for changes to the dimensions of the root window.
   XSelectInput(display(), root_window_, StructureNotifyMask);
 
-  if (!x_server_pixel_buffer_.Init(display(), DefaultRootWindow(display()))) {
+  if (!x_server_pixel_buffer_.Init(atom_cache_.get(),
+                                   DefaultRootWindow(display()))) {
     RTC_LOG(LS_ERROR) << "Failed to initialize pixel buffer.";
     return false;
   }
@@ -272,7 +276,8 @@ void ScreenCapturerX11::ScreenConfigurationChanged() {
   queue_.Reset();
 
   helper_.ClearInvalidRegion();
-  if (!x_server_pixel_buffer_.Init(display(), DefaultRootWindow(display()))) {
+  if (!x_server_pixel_buffer_.Init(atom_cache_.get(),
+                                   DefaultRootWindow(display()))) {
     RTC_LOG(LS_ERROR) << "Failed to initialize pixel buffer after screen "
                          "configuration change.";
   }

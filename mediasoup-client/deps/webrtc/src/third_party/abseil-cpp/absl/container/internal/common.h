@@ -22,6 +22,7 @@
 #include "absl/types/optional.h"
 
 namespace absl {
+ABSL_NAMESPACE_BEGIN
 namespace container_internal {
 
 template <class, class = void>
@@ -55,7 +56,7 @@ class node_handle_base {
  public:
   using allocator_type = Alloc;
 
-  constexpr node_handle_base() {}
+  constexpr node_handle_base() = default;
   node_handle_base(node_handle_base&& other) noexcept {
     *this = std::move(other);
   }
@@ -108,9 +109,8 @@ class node_handle_base {
   allocator_type* alloc() { return std::addressof(*alloc_); }
 
  private:
-  absl::optional<allocator_type> alloc_;
-  mutable absl::aligned_storage_t<sizeof(slot_type), alignof(slot_type)>
-      slot_space_;
+  absl::optional<allocator_type> alloc_ = {};
+  alignas(slot_type) mutable unsigned char slot_space_[sizeof(slot_type)] = {};
 };
 
 // For sets.
@@ -167,6 +167,11 @@ struct CommonAccess {
   }
 
   template <typename Node>
+  static void Destroy(Node* node) {
+    node->destroy();
+  }
+
+  template <typename Node>
   static void Reset(Node* node) {
     node->reset();
   }
@@ -191,6 +196,7 @@ struct InsertReturnType {
 };
 
 }  // namespace container_internal
+ABSL_NAMESPACE_END
 }  // namespace absl
 
 #endif  // ABSL_CONTAINER_INTERNAL_CONTAINER_H_

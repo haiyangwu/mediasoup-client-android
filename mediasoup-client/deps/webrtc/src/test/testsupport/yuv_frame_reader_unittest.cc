@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
 #include <memory>
 #include <string>
 
@@ -31,7 +32,7 @@ const size_t kFrameHeight = 2;
 const size_t kFrameLength = 3 * kFrameWidth * kFrameHeight / 2;  // I420.
 }  // namespace
 
-class YuvFrameReaderTest : public testing::Test {
+class YuvFrameReaderTest : public ::testing::Test {
  protected:
   YuvFrameReaderTest() = default;
   ~YuvFrameReaderTest() override = default;

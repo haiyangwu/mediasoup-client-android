@@ -11,6 +11,7 @@
 #include "pc/test/fake_audio_capture_module.h"
 
 #include <string.h>
+
 #include <algorithm>
 
 #include "api/scoped_refptr.h"
@@ -18,7 +19,7 @@
 #include "rtc_base/gunit.h"
 #include "test/gtest.h"
 
-class FakeAdmTest : public testing::Test, public webrtc::AudioTransport {
+class FakeAdmTest : public ::testing::Test, public webrtc::AudioTransport {
  protected:
   static const int kMsInSecond = 1000;
 

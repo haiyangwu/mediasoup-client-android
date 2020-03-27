@@ -12,6 +12,7 @@
 #define API_RTP_PARAMETERS_H_
 
 #include <stdint.h>
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -50,6 +51,7 @@ enum class FecMechanism {
 // Used in RtcpFeedback struct.
 enum class RtcpFeedbackType {
   CCM,
+  LNTF,  // "goog-lntf"
   NACK,
   REMB,  // "goog-remb"
   TRANSPORT_CC,
@@ -79,17 +81,17 @@ enum class DegradationPreference {
   // Don't take any actions based on over-utilization signals. Not part of the
   // web API.
   DISABLED,
-  // On over-use, request lower frame rate, possibly causing frame drops.
-  MAINTAIN_FRAMERATE,
   // On over-use, request lower resolution, possibly causing down-scaling.
+  MAINTAIN_FRAMERATE,
+  // On over-use, request lower frame rate, possibly causing frame drops.
   MAINTAIN_RESOLUTION,
   // Try to strike a "pleasing" balance between frame rate or resolution.
   BALANCED,
 };
 
-extern const double kDefaultBitratePriority;
+RTC_EXPORT extern const double kDefaultBitratePriority;
 
-struct RtcpFeedback {
+struct RTC_EXPORT RtcpFeedback {
   RtcpFeedbackType type = RtcpFeedbackType::CCM;
 
   // Equivalent to ORTC "parameter" field with slight differences:
@@ -114,7 +116,7 @@ struct RtcpFeedback {
 // RtpCodecCapability is to RtpCodecParameters as RtpCapabilities is to
 // RtpParameters. This represents the static capabilities of an endpoint's
 // implementation of a codec.
-struct RtpCodecCapability {
+struct RTC_EXPORT RtpCodecCapability {
   RtpCodecCapability();
   ~RtpCodecCapability();
 
@@ -138,8 +140,7 @@ struct RtpCodecCapability {
   // TODO(deadbeef): Not implemented.
   absl::optional<int> max_ptime;
 
-  // Preferred packetization time for an RtpReceiver or RtpSender of this
-  // codec.
+  // Preferred packetization time for an RtpReceiver or RtpSender of this codec.
   // TODO(deadbeef): Not implemented.
   absl::optional<int> ptime;
 
@@ -154,8 +155,8 @@ struct RtpCodecCapability {
   // Corresponds to "a=fmtp" parameters in SDP.
   //
   // Contrary to ORTC, these parameters are named using all lowercase strings.
-  // This helps make the mapping to SDP simpler, if an application is using
-  // SDP. Boolean values are represented by the string "1".
+  // This helps make the mapping to SDP simpler, if an application is using SDP.
+  // Boolean values are represented by the string "1".
   std::unordered_map<std::string, std::string> parameters;
 
   // Codec-specific parameters that may optionally be signaled to the remote
@@ -173,9 +174,9 @@ struct RtpCodecCapability {
   // TODO(deadbeef): Not implemented.
   int max_spatial_layer_extensions = 0;
 
-  // Whether the implementation can send/receive SVC layers with distinct
-  // SSRCs. Always false for audio codecs. True for video codecs that support
-  // scalable video coding with MRST.
+  // Whether the implementation can send/receive SVC layers with distinct SSRCs.
+  // Always false for audio codecs. True for video codecs that support scalable
+  // video coding with MRST.
   // TODO(deadbeef): Not implemented.
   bool svc_multi_stream_support = false;
 
@@ -229,7 +230,7 @@ struct RtpHeaderExtensionCapability {
 };
 
 // RTP header extension, see RFC8285.
-struct RtpExtension {
+struct RTC_EXPORT RtpExtension {
   RtpExtension();
   RtpExtension(const std::string& uri, int id);
   RtpExtension(const std::string& uri, int id, bool encrypt);
@@ -266,6 +267,10 @@ struct RtpExtension {
   // Header extension for absolute send time, see url for details:
   // http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
   static const char kAbsSendTimeUri[];
+
+  // Header extension for absolute capture time, see url for details:
+  // http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time
+  static const char kAbsoluteCaptureTimeUri[];
 
   // Header extension for coordination of video orientation, see url for
   // details:
@@ -327,7 +332,7 @@ struct RtpExtension {
 // TODO(deadbeef): This is missing the "encrypt" flag, which is unimplemented.
 typedef RtpExtension RtpHeaderExtensionParameters;
 
-struct RtpFecParameters {
+struct RTC_EXPORT RtpFecParameters {
   // If unset, a value is chosen by the implementation.
   // Works just like RtpEncodingParameters::ssrc.
   absl::optional<uint32_t> ssrc;
@@ -347,7 +352,7 @@ struct RtpFecParameters {
   bool operator!=(const RtpFecParameters& o) const { return !(*this == o); }
 };
 
-struct RtpRtxParameters {
+struct RTC_EXPORT RtpRtxParameters {
   // If unset, a value is chosen by the implementation.
   // Works just like RtpEncodingParameters::ssrc.
   absl::optional<uint32_t> ssrc;
@@ -362,7 +367,7 @@ struct RtpRtxParameters {
   bool operator!=(const RtpRtxParameters& o) const { return !(*this == o); }
 };
 
-struct RtpEncodingParameters {
+struct RTC_EXPORT RtpEncodingParameters {
   RtpEncodingParameters();
   RtpEncodingParameters(const RtpEncodingParameters&);
   ~RtpEncodingParameters();
@@ -497,7 +502,7 @@ struct RtpEncodingParameters {
   }
 };
 
-struct RtpCodecParameters {
+struct RTC_EXPORT RtpCodecParameters {
   RtpCodecParameters();
   RtpCodecParameters(const RtpCodecParameters&);
   ~RtpCodecParameters();
@@ -545,8 +550,8 @@ struct RtpCodecParameters {
   // Corresponds to "a=fmtp" parameters in SDP.
   //
   // Contrary to ORTC, these parameters are named using all lowercase strings.
-  // This helps make the mapping to SDP simpler, if an application is using
-  // SDP. Boolean values are represented by the string "1".
+  // This helps make the mapping to SDP simpler, if an application is using SDP.
+  // Boolean values are represented by the string "1".
   std::unordered_map<std::string, std::string> parameters;
 
   bool operator==(const RtpCodecParameters& o) const {
@@ -558,10 +563,9 @@ struct RtpCodecParameters {
   bool operator!=(const RtpCodecParameters& o) const { return !(*this == o); }
 };
 
-// RtpCapabilities is used to represent the static capabilities of an
-// endpoint. An application can use these capabilities to construct an
-// RtpParameters.
-struct RtpCapabilities {
+// RtpCapabilities is used to represent the static capabilities of an endpoint.
+// An application can use these capabilities to construct an RtpParameters.
+struct RTC_EXPORT RtpCapabilities {
   RtpCapabilities();
   ~RtpCapabilities();
 

@@ -12,7 +12,6 @@
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "p2p/base/port.h"
 #include "pc/media_session.h"
 #include "pc/webrtc_sdp.h"
@@ -90,7 +89,23 @@ void UpdateConnectionAddress(
   }
   rtc::SocketAddress connection_addr(ip, port);
   if (rtc::IPIsUnspec(connection_addr.ipaddr()) && !hostname.empty()) {
-    connection_addr = rtc::SocketAddress(hostname, port);
+    // When a hostname candidate becomes the (default) connection address,
+    // we use the dummy address 0.0.0.0 and port 9 in the c= and the m= lines.
+    //
+    // We have observed in deployment that with a FQDN in a c= line, SDP parsing
+    // could fail in other JSEP implementations. We note that the wildcard
+    // addresses (0.0.0.0 or ::) with port 9 are given the exception as the
+    // connection address that will not result in an ICE mismatch
+    // (draft-ietf-mmusic-ice-sip-sdp). Also, 0.0.0.0 or :: can be used as the
+    // connection address in the initial offer or answer with trickle ICE
+    // if the offerer or answerer does not want to include the host IP address
+    // (draft-ietf-mmusic-trickle-ice-sip), and in particular 0.0.0.0 has been
+    // widely deployed for this use without outstanding compatibility issues.
+    // Combining the above considerations, we use 0.0.0.0 with port 9 to
+    // populate the c= and the m= lines. See |BuildMediaDescription| in
+    // webrtc_sdp.cc for the SDP generation with
+    // |media_desc->connection_address()|.
+    connection_addr = rtc::SocketAddress(kDummyAddress, kDummyPort);
   }
   media_desc->set_connection_address(connection_addr);
 }
@@ -136,9 +151,11 @@ std::unique_ptr<SessionDescriptionInterface> CreateSessionDescription(
     SdpType type,
     const std::string& sdp,
     SdpParseError* error_out) {
-  auto jsep_desc = absl::make_unique<JsepSessionDescription>(type);
-  if (!SdpDeserialize(sdp, jsep_desc.get(), error_out)) {
-    return nullptr;
+  auto jsep_desc = std::make_unique<JsepSessionDescription>(type);
+  if (type != SdpType::kRollback) {
+    if (!SdpDeserialize(sdp, jsep_desc.get(), error_out)) {
+      return nullptr;
+    }
   }
   return std::move(jsep_desc);
 }
@@ -148,9 +165,9 @@ std::unique_ptr<SessionDescriptionInterface> CreateSessionDescription(
     const std::string& session_id,
     const std::string& session_version,
     std::unique_ptr<cricket::SessionDescription> description) {
-  auto jsep_description = absl::make_unique<JsepSessionDescription>(type);
+  auto jsep_description = std::make_unique<JsepSessionDescription>(type);
   bool initialize_success = jsep_description->Initialize(
-      description.release(), session_id, session_version);
+      std::move(description), session_id, session_version);
   RTC_DCHECK(initialize_success);
   return std::move(jsep_description);
 }
@@ -185,7 +202,7 @@ JsepSessionDescription::JsepSessionDescription(
 JsepSessionDescription::~JsepSessionDescription() {}
 
 bool JsepSessionDescription::Initialize(
-    cricket::SessionDescription* description,
+    std::unique_ptr<cricket::SessionDescription> description,
     const std::string& session_id,
     const std::string& session_version) {
   if (!description)
@@ -193,14 +210,14 @@ bool JsepSessionDescription::Initialize(
 
   session_id_ = session_id;
   session_version_ = session_version;
-  description_.reset(description);
+  description_ = std::move(description);
   candidate_collection_.resize(number_of_mediasections());
   return true;
 }
 
 bool JsepSessionDescription::AddCandidate(
     const IceCandidateInterface* candidate) {
-  if (!candidate || candidate->sdp_mline_index() < 0)
+  if (!candidate)
     return false;
   size_t mediasection_index = 0;
   if (!GetMediasectionIndex(candidate, &mediasection_index)) {
@@ -284,7 +301,18 @@ bool JsepSessionDescription::GetMediasectionIndex(
   if (!candidate || !index) {
     return false;
   }
-  *index = static_cast<size_t>(candidate->sdp_mline_index());
+
+  // If the candidate has no valid mline index or sdp_mid, it is impossible
+  // to find a match.
+  if (candidate->sdp_mid().empty() &&
+      (candidate->sdp_mline_index() < 0 ||
+       static_cast<size_t>(candidate->sdp_mline_index()) >=
+           description_->contents().size())) {
+    return false;
+  }
+
+  if (candidate->sdp_mline_index() >= 0)
+    *index = static_cast<size_t>(candidate->sdp_mline_index());
   if (description_ && !candidate->sdp_mid().empty()) {
     bool found = false;
     // Try to match the sdp_mid with content name.

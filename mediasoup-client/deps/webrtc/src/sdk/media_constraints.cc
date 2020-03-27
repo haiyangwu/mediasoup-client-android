@@ -94,9 +94,6 @@ const char MediaConstraints::kValueFalse[] = "false";
 
 // Audio constraints.
 const char MediaConstraints::kGoogEchoCancellation[] = "googEchoCancellation";
-const char MediaConstraints::kExtendedFilterEchoCancellation[] =
-    "googEchoCancellation2";
-const char MediaConstraints::kDAEchoCancellation[] = "googDAEchoCancellation";
 const char MediaConstraints::kAutoGainControl[] = "googAutoGainControl";
 const char MediaConstraints::kExperimentalAutoGainControl[] =
     "googAutoGainControl2";
@@ -133,6 +130,9 @@ const char MediaConstraints::kScreencastMinBitrate[] =
     "googScreencastMinBitrate";
 // TODO(ronghuawu): Remove once cpu overuse detection is stable.
 const char MediaConstraints::kCpuOveruseDetection[] = "googCpuOveruseDetection";
+
+const char MediaConstraints::kRawPacketizationForVideoEnabled[] =
+    "googRawPacketizationForVideoEnabled";
 
 const char MediaConstraints::kNumSimulcastLayers[] = "googNumSimulcastLayers";
 
@@ -192,11 +192,6 @@ void CopyConstraintsIntoAudioOptions(const MediaConstraints* constraints,
   ConstraintToOptional<bool>(constraints,
                              MediaConstraints::kGoogEchoCancellation,
                              &options->echo_cancellation);
-  ConstraintToOptional<bool>(constraints,
-                             MediaConstraints::kExtendedFilterEchoCancellation,
-                             &options->extended_filter_aec);
-  ConstraintToOptional<bool>(constraints, MediaConstraints::kDAEchoCancellation,
-                             &options->delay_agnostic_aec);
   ConstraintToOptional<bool>(constraints, MediaConstraints::kAutoGainControl,
                              &options->auto_gain_control);
   ConstraintToOptional<bool>(constraints,
@@ -260,6 +255,12 @@ bool CopyConstraintsIntoOfferAnswerOptions(
   if (FindConstraint(constraints, MediaConstraints::kIceRestart, &value,
                      &mandatory_constraints_satisfied)) {
     offer_answer_options->ice_restart = value;
+  }
+
+  if (FindConstraint(constraints,
+                     MediaConstraints::kRawPacketizationForVideoEnabled, &value,
+                     &mandatory_constraints_satisfied)) {
+    offer_answer_options->raw_packetization_for_video = value;
   }
 
   int layers;

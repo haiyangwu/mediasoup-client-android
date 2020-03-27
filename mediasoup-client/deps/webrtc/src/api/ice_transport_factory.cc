@@ -13,7 +13,6 @@
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/p2p_transport_channel.h"
 #include "p2p/base/port_allocator.h"
@@ -51,8 +50,17 @@ class IceTransportWithTransportChannel : public IceTransportInterface {
 
 rtc::scoped_refptr<IceTransportInterface> CreateIceTransport(
     cricket::PortAllocator* port_allocator) {
+  IceTransportInit init;
+  init.set_port_allocator(port_allocator);
+  return CreateIceTransport(std::move(init));
+}
+
+rtc::scoped_refptr<IceTransportInterface> CreateIceTransport(
+    IceTransportInit init) {
   return new rtc::RefCountedObject<IceTransportWithTransportChannel>(
-      absl::make_unique<cricket::P2PTransportChannel>("", 0, port_allocator));
+      std::make_unique<cricket::P2PTransportChannel>(
+          "", 0, init.port_allocator(), init.async_resolver_factory(),
+          init.event_log()));
 }
 
 }  // namespace webrtc

@@ -13,11 +13,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <algorithm>
+#include <memory>
 #include <numeric>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "modules/audio_coding/neteq/delay_peak_detector.h"
 #include "modules/audio_coding/neteq/histogram.h"
 #include "modules/audio_coding/neteq/statistics_calculator.h"
@@ -30,76 +31,68 @@
 
 namespace {
 
-constexpr int kLimitProbability = 1020054733;           // 19/20 in Q30.
-constexpr int kLimitProbabilityStreaming = 1073204953;  // 1999/2000 in Q30.
-constexpr int kMaxStreamingPeakPeriodMs = 600000;       // 10 minutes in ms.
-constexpr int kCumulativeSumDrift = 2;  // Drift term for cumulative sum
-                                        // |iat_cumulative_sum_|.
 constexpr int kMinBaseMinimumDelayMs = 0;
 constexpr int kMaxBaseMinimumDelayMs = 10000;
-constexpr int kIatFactor = 32745;  // 0.9993 in Q15.
-constexpr int kMaxIat = 64;        // Max inter-arrival time to register.
 constexpr int kMaxReorderedPackets =
     10;  // Max number of consecutive reordered packets.
-constexpr int kMaxHistoryPackets =
-    100;  // Max number of packets used to calculate relative packet arrival
-          // delay.
+constexpr int kMaxHistoryMs = 2000;  // Oldest packet to include in history to
+                                     // calculate relative packet arrival delay.
 constexpr int kDelayBuckets = 100;
 constexpr int kBucketSizeMs = 20;
+constexpr int kDecelerationTargetLevelOffsetMs = 85 << 8;  // In Q8.
 
 int PercentileToQuantile(double percentile) {
   return static_cast<int>((1 << 30) * percentile / 100.0 + 0.5);
 }
 
-absl::optional<int> GetForcedLimitProbability() {
-  constexpr char kForceTargetDelayPercentileFieldTrial[] =
-      "WebRTC-Audio-NetEqForceTargetDelayPercentile";
-  const bool use_forced_target_delay_percentile =
-      webrtc::field_trial::IsEnabled(kForceTargetDelayPercentileFieldTrial);
-  if (use_forced_target_delay_percentile) {
-    const std::string field_trial_string = webrtc::field_trial::FindFullName(
-        kForceTargetDelayPercentileFieldTrial);
-    double percentile = -1.0;
-    if (sscanf(field_trial_string.c_str(), "Enabled-%lf", &percentile) == 1 &&
-        percentile >= 0.0 && percentile <= 100.0) {
-      return absl::make_optional<int>(
-          PercentileToQuantile(percentile));  // in Q30.
-    } else {
-      RTC_LOG(LS_WARNING) << "Invalid parameter for "
-                          << kForceTargetDelayPercentileFieldTrial
-                          << ", ignored.";
-    }
-  }
-  return absl::nullopt;
-}
-
 struct DelayHistogramConfig {
-  int quantile = 1020054733;  // 0.95 in Q30.
+  int quantile = 1041529569;  // 0.97 in Q30.
   int forget_factor = 32745;  // 0.9993 in Q15.
+  absl::optional<double> start_forget_weight = 2;
 };
 
-absl::optional<DelayHistogramConfig> GetDelayHistogramConfig() {
+DelayHistogramConfig GetDelayHistogramConfig() {
   constexpr char kDelayHistogramFieldTrial[] =
       "WebRTC-Audio-NetEqDelayHistogram";
-  const bool use_new_delay_manager =
-      webrtc::field_trial::IsEnabled(kDelayHistogramFieldTrial);
-  if (use_new_delay_manager) {
+  DelayHistogramConfig config;
+  if (webrtc::field_trial::IsEnabled(kDelayHistogramFieldTrial)) {
     const auto field_trial_string =
         webrtc::field_trial::FindFullName(kDelayHistogramFieldTrial);
-    DelayHistogramConfig config;
     double percentile = -1.0;
     double forget_factor = -1.0;
-    if (sscanf(field_trial_string.c_str(), "Enabled-%lf-%lf", &percentile,
-               &forget_factor) == 2 &&
+    double start_forget_weight = -1.0;
+    if (sscanf(field_trial_string.c_str(), "Enabled-%lf-%lf-%lf", &percentile,
+               &forget_factor, &start_forget_weight) >= 2 &&
         percentile >= 0.0 && percentile <= 100.0 && forget_factor >= 0.0 &&
         forget_factor <= 1.0) {
       config.quantile = PercentileToQuantile(percentile);
       config.forget_factor = (1 << 15) * forget_factor;
+      config.start_forget_weight =
+          start_forget_weight >= 1 ? absl::make_optional(start_forget_weight)
+                                   : absl::nullopt;
     }
-    RTC_LOG(LS_INFO) << "Delay histogram config:"
-                     << " quantile=" << config.quantile
-                     << " forget_factor=" << config.forget_factor;
-    return absl::make_optional(config);
+  }
+  RTC_LOG(LS_INFO) << "Delay histogram config:"
+                   << " quantile=" << config.quantile
+                   << " forget_factor=" << config.forget_factor
+                   << " start_forget_weight="
+                   << config.start_forget_weight.value_or(0);
+  return config;
+}
+
+absl::optional<int> GetExtraDelayMs() {
+  constexpr char kExtraDelayFieldTrial[] = "WebRTC-Audio-NetEqExtraDelay";
+  if (!webrtc::field_trial::IsEnabled(kExtraDelayFieldTrial)) {
+    return absl::nullopt;
+  }
+
+  const auto field_trial_string =
+      webrtc::field_trial::FindFullName(kExtraDelayFieldTrial);
+  int extra_delay_ms = -1;
+  sscanf(field_trial_string.c_str(), "Enabled-%d", &extra_delay_ms);
+  if (extra_delay_ms >= 0) {
+    RTC_LOG(LS_INFO) << "NetEq extra delay in milliseconds: " << extra_delay_ms;
+    return extra_delay_ms;
   }
   return absl::nullopt;
 }
@@ -129,18 +122,16 @@ DelayManager::DelayManager(size_t max_packets_in_buffer,
       base_target_level_(4),                   // In Q0 domain.
       target_level_(base_target_level_ << 8),  // In Q8 domain.
       packet_len_ms_(0),
-      streaming_mode_(false),
       last_seq_no_(0),
       last_timestamp_(0),
       minimum_delay_ms_(0),
       maximum_delay_ms_(0),
-      iat_cumulative_sum_(0),
-      max_iat_cumulative_sum_(0),
       peak_detector_(*peak_detector),
       last_pack_cng_or_dtmf_(1),
       frame_length_change_experiment_(
           field_trial::IsEnabled("WebRTC-Audio-NetEqFramelengthExperiment")),
-      enable_rtx_handling_(enable_rtx_handling) {
+      enable_rtx_handling_(enable_rtx_handling),
+      extra_delay_ms_(GetExtraDelayMs()) {
   assert(peak_detector);  // Should never be NULL.
   RTC_CHECK(histogram_);
   RTC_DCHECK_GE(base_minimum_delay_ms_, 0);
@@ -155,22 +146,12 @@ std::unique_ptr<DelayManager> DelayManager::Create(
     DelayPeakDetector* peak_detector,
     const TickTimer* tick_timer,
     StatisticsCalculator* statistics) {
-  int quantile;
-  std::unique_ptr<Histogram> histogram;
-  HistogramMode mode;
-  auto delay_histogram_config = GetDelayHistogramConfig();
-  if (delay_histogram_config) {
-    DelayHistogramConfig config = delay_histogram_config.value();
-    quantile = config.quantile;
-    histogram =
-        absl::make_unique<Histogram>(kDelayBuckets, config.forget_factor);
-    mode = RELATIVE_ARRIVAL_DELAY;
-  } else {
-    quantile = GetForcedLimitProbability().value_or(kLimitProbability);
-    histogram = absl::make_unique<Histogram>(kMaxIat + 1, kIatFactor);
-    mode = INTER_ARRIVAL_TIME;
-  }
-  return absl::make_unique<DelayManager>(
+  const HistogramMode mode = RELATIVE_ARRIVAL_DELAY;
+  DelayHistogramConfig config = GetDelayHistogramConfig();
+  const int quantile = config.quantile;
+  std::unique_ptr<Histogram> histogram = std::make_unique<Histogram>(
+      kDelayBuckets, config.forget_factor, config.start_forget_weight);
+  return std::make_unique<DelayManager>(
       max_packets_in_buffer, base_minimum_delay_ms, quantile, mode,
       enable_rtx_handling, peak_detector, tick_timer, statistics,
       std::move(histogram));
@@ -212,9 +193,6 @@ int DelayManager::Update(uint16_t sequence_number,
   bool reordered = false;
   if (packet_len_ms > 0) {
     // Cannot update statistics unless |packet_len_ms| is valid.
-    if (streaming_mode_) {
-      UpdateCumulativeSums(packet_len_ms, sequence_number);
-    }
 
     // Inter-arrival time (IAT) in integer "packet times" (rounding down). This
     // is the value added to the inter-arrival time histogram.
@@ -241,7 +219,7 @@ int DelayManager::Update(uint16_t sequence_number,
     if (reordered) {
       relative_delay = std::max(iat_delay, 0);
     } else {
-      UpdateDelayHistory(iat_delay);
+      UpdateDelayHistory(iat_delay, timestamp, sample_rate_hz);
       relative_delay = CalculateRelativePacketArrivalDelay();
     }
     statistics_->RelativePacketArrivalDelay(relative_delay);
@@ -265,9 +243,6 @@ int DelayManager::Update(uint16_t sequence_number,
     }
     // Calculate new |target_level_| based on updated statistics.
     target_level_ = CalculateTargetLevel(iat_packets, reordered);
-    if (streaming_mode_) {
-      target_level_ = std::max(target_level_, max_iat_cumulative_sum_);
-    }
 
     LimitTargetLevel();
   }  // End if (packet_len_ms > 0).
@@ -285,9 +260,15 @@ int DelayManager::Update(uint16_t sequence_number,
   return 0;
 }
 
-void DelayManager::UpdateDelayHistory(int iat_delay) {
-  delay_history_.push_back(iat_delay);
-  if (delay_history_.size() > kMaxHistoryPackets) {
+void DelayManager::UpdateDelayHistory(int iat_delay_ms,
+                                      uint32_t timestamp,
+                                      int sample_rate_hz) {
+  PacketDelay delay;
+  delay.iat_delay_ms = iat_delay_ms;
+  delay.timestamp = timestamp;
+  delay_history_.push_back(delay);
+  while (timestamp - delay_history_.front().timestamp >
+         static_cast<uint32_t>(kMaxHistoryMs * sample_rate_hz / 1000)) {
     delay_history_.pop_front();
   }
 }
@@ -298,37 +279,11 @@ int DelayManager::CalculateRelativePacketArrivalDelay() const {
   // smaller than zero, it means the reference packet is invalid, and we
   // move the reference.
   int relative_delay = 0;
-  for (int delay : delay_history_) {
-    relative_delay += delay;
+  for (const PacketDelay& delay : delay_history_) {
+    relative_delay += delay.iat_delay_ms;
     relative_delay = std::max(relative_delay, 0);
   }
   return relative_delay;
-}
-
-void DelayManager::UpdateCumulativeSums(int packet_len_ms,
-                                        uint16_t sequence_number) {
-  // Calculate IAT in Q8, including fractions of a packet (i.e., more
-  // accurate than |iat_packets|.
-  int iat_packets_q8 =
-      (packet_iat_stopwatch_->ElapsedMs() << 8) / packet_len_ms;
-  // Calculate cumulative sum IAT with sequence number compensation. The sum
-  // is zero if there is no clock-drift.
-  iat_cumulative_sum_ +=
-      (iat_packets_q8 -
-       (static_cast<int>(sequence_number - last_seq_no_) << 8));
-  // Subtract drift term.
-  iat_cumulative_sum_ -= kCumulativeSumDrift;
-  // Ensure not negative.
-  iat_cumulative_sum_ = std::max(iat_cumulative_sum_, 0);
-  if (iat_cumulative_sum_ > max_iat_cumulative_sum_) {
-    // Found a new maximum.
-    max_iat_cumulative_sum_ = iat_cumulative_sum_;
-    max_iat_stopwatch_ = tick_timer_->GetNewStopwatch();
-  }
-  if (max_iat_stopwatch_->ElapsedMs() > kMaxStreamingPeakPeriodMs) {
-    // Too long since the last maximum was observed; decrease max value.
-    max_iat_cumulative_sum_ -= kCumulativeSumDrift;
-  }
 }
 
 // Enforces upper and lower limits for |target_level_|. The upper limit is
@@ -363,20 +318,20 @@ void DelayManager::LimitTargetLevel() {
 
 int DelayManager::CalculateTargetLevel(int iat_packets, bool reordered) {
   int limit_probability = histogram_quantile_;
-  if (streaming_mode_) {
-    limit_probability = kLimitProbabilityStreaming;
-  }
 
   int bucket_index = histogram_->Quantile(limit_probability);
   int target_level;
   switch (histogram_mode_) {
     case RELATIVE_ARRIVAL_DELAY: {
-      target_level = 1 + bucket_index * kBucketSizeMs / packet_len_ms_;
+      target_level = 1;
+      if (packet_len_ms_ > 0) {
+        target_level += bucket_index * kBucketSizeMs / packet_len_ms_;
+      }
       base_target_level_ = target_level;
       break;
     }
     case INTER_ARRIVAL_TIME: {
-      target_level = bucket_index;
+      target_level = std::max(bucket_index, 1);
       base_target_level_ = target_level;
       // Update detector for delay peaks.
       bool delay_peak_found =
@@ -392,6 +347,10 @@ int DelayManager::CalculateTargetLevel(int iat_packets, bool reordered) {
   target_level = std::max(target_level, 1);
   // Scale to Q8 and assign to member variable.
   target_level_ = target_level << 8;
+  if (extra_delay_ms_ && packet_len_ms_ > 0) {
+    int extra_delay = (extra_delay_ms_.value() << 8) / packet_len_ms_;
+    target_level_ += extra_delay;
+  }
   return target_level_;
 }
 
@@ -415,31 +374,13 @@ int DelayManager::SetPacketAudioLength(int length_ms) {
 
 void DelayManager::Reset() {
   packet_len_ms_ = 0;  // Packet size unknown.
-  streaming_mode_ = false;
   peak_detector_.Reset();
   histogram_->Reset();
+  delay_history_.clear();
   base_target_level_ = 4;
   target_level_ = base_target_level_ << 8;
   packet_iat_stopwatch_ = tick_timer_->GetNewStopwatch();
-  max_iat_stopwatch_ = tick_timer_->GetNewStopwatch();
-  iat_cumulative_sum_ = 0;
-  max_iat_cumulative_sum_ = 0;
   last_pack_cng_or_dtmf_ = 1;
-}
-
-double DelayManager::EstimatedClockDriftPpm() const {
-  double sum = 0.0;
-  // Calculate the expected value based on the probabilities in
-  // |histogram_|.
-  auto buckets = histogram_->buckets();
-  for (size_t i = 0; i < buckets.size(); ++i) {
-    sum += static_cast<double>(buckets[i]) * i;
-  }
-  // The probabilities in |histogram_| are in Q30. Divide by 1 << 30 to
-  // convert to Q0; subtract the nominal inter-arrival time (1) to make a zero
-  // clockdrift represent as 0; mulitply by 1000000 to produce parts-per-million
-  // (ppm).
-  return (sum / (1 << 30) - 1) * 1e6;
 }
 
 bool DelayManager::PeakFound() const {
@@ -450,26 +391,39 @@ void DelayManager::ResetPacketIatCount() {
   packet_iat_stopwatch_ = tick_timer_->GetNewStopwatch();
 }
 
+void DelayManager::BufferLimits(int* lower_limit, int* higher_limit) const {
+  BufferLimits(target_level_, lower_limit, higher_limit);
+}
+
 // Note that |low_limit| and |higher_limit| are not assigned to
 // |minimum_delay_ms_| and |maximum_delay_ms_| defined by the client of this
-// class. They are computed from |target_level_| and used for decision making.
-void DelayManager::BufferLimits(int* lower_limit, int* higher_limit) const {
+// class. They are computed from |target_level| in Q8 and used for decision
+// making.
+void DelayManager::BufferLimits(int target_level,
+                                int* lower_limit,
+                                int* higher_limit) const {
   if (!lower_limit || !higher_limit) {
     RTC_LOG_F(LS_ERROR) << "NULL pointers supplied as input";
     assert(false);
     return;
   }
 
+  // |target_level| is in Q8 already.
+  *lower_limit = (target_level * 3) / 4;
+
+  if (packet_len_ms_ > 0) {
+    *lower_limit =
+        std::max(*lower_limit, target_level - kDecelerationTargetLevelOffsetMs /
+                                                  packet_len_ms_);
+  }
+
   int window_20ms = 0x7FFF;  // Default large value for legacy bit-exactness.
   if (packet_len_ms_ > 0) {
     window_20ms = (20 << 8) / packet_len_ms_;
   }
-
-  // |target_level_| is in Q8 already.
-  *lower_limit = (target_level_ * 3) / 4;
-  // |higher_limit| is equal to |target_level_|, but should at
-  // least be 20 ms higher than |lower_limit_|.
-  *higher_limit = std::max(target_level_, *lower_limit + window_20ms);
+  // |higher_limit| is equal to |target_level|, but should at
+  // least be 20 ms higher than |lower_limit|.
+  *higher_limit = std::max(target_level, *lower_limit + window_20ms);
 }
 
 int DelayManager::TargetLevel() const {
@@ -538,9 +492,6 @@ int DelayManager::GetBaseMinimumDelay() const {
 int DelayManager::base_target_level() const {
   return base_target_level_;
 }
-void DelayManager::set_streaming_mode(bool value) {
-  streaming_mode_ = value;
-}
 int DelayManager::last_pack_cng_or_dtmf() const {
   return last_pack_cng_or_dtmf_;
 }
@@ -572,4 +523,5 @@ int DelayManager::MaxBufferTimeQ75() const {
   const int max_buffer_time = max_packets_in_buffer_ * packet_len_ms_;
   return rtc::dchecked_cast<int>(3 * max_buffer_time / 4);
 }
+
 }  // namespace webrtc

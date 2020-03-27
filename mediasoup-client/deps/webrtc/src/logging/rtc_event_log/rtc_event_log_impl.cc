@@ -8,19 +8,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "logging/rtc_event_log/rtc_event_log.h"
+#include "logging/rtc_event_log/rtc_event_log_impl.h"
 
-#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
-#include "api/rtc_event_log_output.h"
-#include "api/task_queue/global_task_queue_factory.h"
+#include "api/task_queue/queued_task.h"
+#include "api/task_queue/task_queue_base.h"
 #include "logging/rtc_event_log/encoder/rtc_event_log_encoder_legacy.h"
 #include "logging/rtc_event_log/encoder/rtc_event_log_encoder_new_format.h"
 #include "rtc_base/checks.h"
@@ -29,50 +27,24 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/numerics/safe_minmax.h"
-#include "rtc_base/sequenced_task_checker.h"
-#include "rtc_base/task_queue.h"
-#include "rtc_base/thread_annotations.h"
 #include "rtc_base/time_utils.h"
 
 namespace webrtc {
-
-#ifdef ENABLE_RTC_EVENT_LOG
-
 namespace {
 constexpr size_t kMaxEventsInHistory = 10000;
 // The config-history is supposed to be unbounded, but needs to have some bound
 // to prevent an attack via unreasonable memory use.
 constexpr size_t kMaxEventsInConfigHistory = 1000;
 
-// TODO(eladalon): This class exists because C++11 doesn't allow transferring a
-// unique_ptr to a lambda (a copy constructor is required). We should get
-// rid of this when we move to C++14.
-template <typename T>
-class ResourceOwningTask final : public rtc::QueuedTask {
- public:
-  ResourceOwningTask(std::unique_ptr<T> resource,
-                     std::function<void(std::unique_ptr<T>)> handler)
-      : resource_(std::move(resource)), handler_(handler) {}
-
-  bool Run() override {
-    handler_(std::move(resource_));
-    return true;
-  }
-
- private:
-  std::unique_ptr<T> resource_;
-  std::function<void(std::unique_ptr<T>)> handler_;
-};
-
 std::unique_ptr<RtcEventLogEncoder> CreateEncoder(
     RtcEventLog::EncodingType type) {
   switch (type) {
     case RtcEventLog::EncodingType::Legacy:
       RTC_LOG(LS_INFO) << "Creating legacy encoder for RTC event log.";
-      return absl::make_unique<RtcEventLogEncoderLegacy>();
+      return std::make_unique<RtcEventLogEncoderLegacy>();
     case RtcEventLog::EncodingType::NewFormat:
       RTC_LOG(LS_INFO) << "Creating new format encoder for RTC event log.";
-      return absl::make_unique<RtcEventLogEncoderNewFormat>();
+      return std::make_unique<RtcEventLogEncoderNewFormat>();
     default:
       RTC_LOG(LS_ERROR) << "Unknown RtcEventLog encoder type (" << int(type)
                         << ")";
@@ -80,87 +52,24 @@ std::unique_ptr<RtcEventLogEncoder> CreateEncoder(
       return std::unique_ptr<RtcEventLogEncoder>(nullptr);
   }
 }
+}  // namespace
 
-class RtcEventLogImpl final : public RtcEventLog {
- public:
-  RtcEventLogImpl(std::unique_ptr<RtcEventLogEncoder> event_encoder,
-                  std::unique_ptr<rtc::TaskQueue> task_queue);
-
-  ~RtcEventLogImpl() override;
-
-  // TODO(eladalon): We should change these name to reflect that what we're
-  // actually starting/stopping is the output of the log, not the log itself.
-  bool StartLogging(std::unique_ptr<RtcEventLogOutput> output,
-                    int64_t output_period_ms) override;
-  void StopLogging() override;
-
-  void Log(std::unique_ptr<RtcEvent> event) override;
-
- private:
-  void LogToMemory(std::unique_ptr<RtcEvent> event) RTC_RUN_ON(task_queue_);
-  void LogEventsFromMemoryToOutput() RTC_RUN_ON(task_queue_);
-
-  void StopOutput() RTC_RUN_ON(task_queue_);
-
-  void WriteConfigsAndHistoryToOutput(const std::string& encoded_configs,
-                                      const std::string& encoded_history)
-      RTC_RUN_ON(task_queue_);
-  void WriteToOutput(const std::string& output_string) RTC_RUN_ON(task_queue_);
-
-  void StopLoggingInternal() RTC_RUN_ON(task_queue_);
-
-  void ScheduleOutput() RTC_RUN_ON(task_queue_);
-
-  // Make sure that the event log is "managed" - created/destroyed, as well
-  // as started/stopped - from the same thread/task-queue.
-  rtc::SequencedTaskChecker owner_sequence_checker_;
-
-  // History containing all past configuration events.
-  std::deque<std::unique_ptr<RtcEvent>> config_history_
-      RTC_GUARDED_BY(*task_queue_);
-
-  // History containing the most recent (non-configuration) events (~10s).
-  std::deque<std::unique_ptr<RtcEvent>> history_ RTC_GUARDED_BY(*task_queue_);
-
-  size_t max_size_bytes_ RTC_GUARDED_BY(*task_queue_);
-  size_t written_bytes_ RTC_GUARDED_BY(*task_queue_);
-
-  std::unique_ptr<RtcEventLogEncoder> event_encoder_
-      RTC_GUARDED_BY(*task_queue_);
-  std::unique_ptr<RtcEventLogOutput> event_output_ RTC_GUARDED_BY(*task_queue_);
-
-  size_t num_config_events_written_ RTC_GUARDED_BY(*task_queue_);
-  absl::optional<int64_t> output_period_ms_ RTC_GUARDED_BY(*task_queue_);
-  int64_t last_output_ms_ RTC_GUARDED_BY(*task_queue_);
-  bool output_scheduled_ RTC_GUARDED_BY(*task_queue_);
-
-  // Since we are posting tasks bound to |this|,  it is critical that the event
-  // log and it's members outlive the |task_queue_|. Keep the "task_queue_|
-  // last to ensure it destructs first, or else tasks living on the queue might
-  // access other members after they've been torn down.
-  std::unique_ptr<rtc::TaskQueue> task_queue_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(RtcEventLogImpl);
-};
-
-RtcEventLogImpl::RtcEventLogImpl(
-    std::unique_ptr<RtcEventLogEncoder> event_encoder,
-    std::unique_ptr<rtc::TaskQueue> task_queue)
-    : max_size_bytes_(std::numeric_limits<decltype(max_size_bytes_)>::max()),
-      written_bytes_(0),
-      event_encoder_(std::move(event_encoder)),
+RtcEventLogImpl::RtcEventLogImpl(RtcEventLog::EncodingType encoding_type,
+                                 TaskQueueFactory* task_queue_factory)
+    : event_encoder_(CreateEncoder(encoding_type)),
       num_config_events_written_(0),
       last_output_ms_(rtc::TimeMillis()),
       output_scheduled_(false),
-      task_queue_(std::move(task_queue)) {
-  RTC_DCHECK(task_queue_);
-}
+      logging_state_started_(false),
+      task_queue_(
+          std::make_unique<rtc::TaskQueue>(task_queue_factory->CreateTaskQueue(
+              "rtc_event_log",
+              TaskQueueFactory::Priority::NORMAL))) {}
 
 RtcEventLogImpl::~RtcEventLogImpl() {
-  RTC_DCHECK_CALLED_SEQUENTIALLY(&owner_sequence_checker_);
-
   // If we're logging to the output, this will stop that. Blocking function.
-  StopLogging();
+  if (logging_state_started_)
+    StopLogging();
 
   // We want to block on any executing task by invoking ~TaskQueue() before
   // we set unique_ptr's internal pointer to null.
@@ -171,8 +80,6 @@ RtcEventLogImpl::~RtcEventLogImpl() {
 
 bool RtcEventLogImpl::StartLogging(std::unique_ptr<RtcEventLogOutput> output,
                                    int64_t output_period_ms) {
-  RTC_DCHECK_CALLED_SEQUENTIALLY(&owner_sequence_checker_);
-
   RTC_DCHECK(output_period_ms == kImmediateOutput || output_period_ms > 0);
 
   if (!output->IsActive()) {
@@ -186,9 +93,11 @@ bool RtcEventLogImpl::StartLogging(std::unique_ptr<RtcEventLogOutput> output,
   RTC_LOG(LS_INFO) << "Starting WebRTC event log. (Timestamp, UTC) = "
                    << "(" << timestamp_us << ", " << utc_time_us << ").";
 
+  RTC_DCHECK_RUN_ON(&logging_state_checker_);
+  logging_state_started_ = true;
   // Binding to |this| is safe because |this| outlives the |task_queue_|.
-  auto start = [this, output_period_ms, timestamp_us,
-                utc_time_us](std::unique_ptr<RtcEventLogOutput> output) {
+  task_queue_->PostTask([this, output_period_ms, timestamp_us, utc_time_us,
+                         output = std::move(output)]() mutable {
     RTC_DCHECK_RUN_ON(task_queue_.get());
     RTC_DCHECK(output->IsActive());
     output_period_ms_ = output_period_ms;
@@ -196,51 +105,51 @@ bool RtcEventLogImpl::StartLogging(std::unique_ptr<RtcEventLogOutput> output,
     num_config_events_written_ = 0;
     WriteToOutput(event_encoder_->EncodeLogStart(timestamp_us, utc_time_us));
     LogEventsFromMemoryToOutput();
-  };
-
-  task_queue_->PostTask(
-      absl::make_unique<ResourceOwningTask<RtcEventLogOutput>>(
-          std::move(output), start));
+  });
 
   return true;
 }
 
 void RtcEventLogImpl::StopLogging() {
-  RTC_DCHECK_CALLED_SEQUENTIALLY(&owner_sequence_checker_);
-
   RTC_LOG(LS_INFO) << "Stopping WebRTC event log.";
 
   rtc::Event output_stopped;
+  StopLogging([&output_stopped]() { output_stopped.Set(); });
 
-  // Binding to |this| is safe because |this| outlives the |task_queue_|.
-  task_queue_->PostTask([this, &output_stopped]() {
-    RTC_DCHECK_RUN_ON(task_queue_.get());
-    if (event_output_) {
-      RTC_DCHECK(event_output_->IsActive());
-      LogEventsFromMemoryToOutput();
-    }
-    StopLoggingInternal();
-    output_stopped.Set();
-  });
+  // By making sure StopLogging() is not executed on a task queue,
+  // we ensure it's not running on a thread that is shared with |task_queue_|,
+  // meaning the following Wait() will not block forever.
+  RTC_DCHECK(TaskQueueBase::Current() == nullptr);
 
   output_stopped.Wait(rtc::Event::kForever);
 
   RTC_LOG(LS_INFO) << "WebRTC event log successfully stopped.";
 }
 
+void RtcEventLogImpl::StopLogging(std::function<void()> callback) {
+  RTC_DCHECK_RUN_ON(&logging_state_checker_);
+  logging_state_started_ = false;
+  task_queue_->PostTask([this, callback] {
+    RTC_DCHECK_RUN_ON(task_queue_.get());
+    if (event_output_) {
+      RTC_DCHECK(event_output_->IsActive());
+      LogEventsFromMemoryToOutput();
+    }
+    StopLoggingInternal();
+    callback();
+  });
+}
+
 void RtcEventLogImpl::Log(std::unique_ptr<RtcEvent> event) {
   RTC_CHECK(event);
 
   // Binding to |this| is safe because |this| outlives the |task_queue_|.
-  auto event_handler = [this](std::unique_ptr<RtcEvent> unencoded_event) {
+  task_queue_->PostTask([this, event = std::move(event)]() mutable {
     RTC_DCHECK_RUN_ON(task_queue_.get());
-    LogToMemory(std::move(unencoded_event));
+    LogToMemory(std::move(event));
     if (event_output_)
       ScheduleOutput();
-  };
-
-  task_queue_->PostTask(absl::make_unique<ResourceOwningTask<RtcEvent>>(
-      std::move(event), event_handler));
+  });
 }
 
 void RtcEventLogImpl::ScheduleOutput() {
@@ -329,9 +238,9 @@ void RtcEventLogImpl::WriteConfigsAndHistoryToOutput(
   // This function is used to merge the strings instead of calling the output
   // object twice with small strings. The function also avoids copying any
   // strings in the typical case where there are no config events.
-  if (encoded_configs.size() == 0) {
+  if (encoded_configs.empty()) {
     WriteToOutput(encoded_history);  // Typical case.
-  } else if (encoded_history.size() == 0) {
+  } else if (encoded_history.empty()) {
     WriteToOutput(encoded_configs);  // Very unusual case.
   } else {
     WriteToOutput(encoded_configs + encoded_history);
@@ -339,8 +248,6 @@ void RtcEventLogImpl::WriteConfigsAndHistoryToOutput(
 }
 
 void RtcEventLogImpl::StopOutput() {
-  max_size_bytes_ = std::numeric_limits<decltype(max_size_bytes_)>::max();
-  written_bytes_ = 0;
   event_output_.reset();
 }
 
@@ -362,29 +269,6 @@ void RtcEventLogImpl::WriteToOutput(const std::string& output_string) {
     StopOutput();  // Clean-up.
     return;
   }
-  written_bytes_ += output_string.size();
-}
-
-}  // namespace
-
-#endif  // ENABLE_RTC_EVENT_LOG
-
-// RtcEventLog member functions.
-std::unique_ptr<RtcEventLog> RtcEventLog::Create(EncodingType encoding_type) {
-  return RtcEventLog::Create(encoding_type, &GlobalTaskQueueFactory());
-}
-
-std::unique_ptr<RtcEventLog> RtcEventLog::Create(
-    RtcEventLog::EncodingType encoding_type,
-    TaskQueueFactory* task_queue_factory) {
-#ifdef ENABLE_RTC_EVENT_LOG
-  return absl::make_unique<RtcEventLogImpl>(
-      CreateEncoder(encoding_type),
-      absl::make_unique<rtc::TaskQueue>(task_queue_factory->CreateTaskQueue(
-          "rtc_event_log", TaskQueueFactory::Priority::NORMAL)));
-#else
-  return CreateNull();
-#endif  // ENABLE_RTC_EVENT_LOG
 }
 
 }  // namespace webrtc

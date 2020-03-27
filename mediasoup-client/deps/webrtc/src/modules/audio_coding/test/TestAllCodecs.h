@@ -25,12 +25,11 @@ class TestPack : public AudioPacketizationCallback {
 
   void RegisterReceiverACM(AudioCodingModule* acm);
 
-  int32_t SendData(FrameType frame_type,
+  int32_t SendData(AudioFrameType frame_type,
                    uint8_t payload_type,
                    uint32_t timestamp,
                    const uint8_t* payload_data,
-                   size_t payload_size,
-                   const RTPFragmentationHeader* fragmentation) override;
+                   size_t payload_size) override;
 
   size_t payload_size();
   uint32_t timestamp_diff();

@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "api/units/data_rate.h"
 #include "api/video/video_bitrate_allocator.h"
 #include "api/video/video_rotation.h"
 #include "api/video/video_sink_interface.h"
@@ -27,15 +28,19 @@
 #include "api/video_codecs/video_encoder.h"
 #include "modules/video_coding/utility/frame_dropper.h"
 #include "modules/video_coding/utility/quality_scaler.h"
-#include "modules/video_coding/video_coding_impl.h"
+#include "rtc_base/critical_section.h"
 #include "rtc_base/event.h"
+#include "rtc_base/experiments/balanced_degradation_settings.h"
+#include "rtc_base/experiments/quality_scaler_settings.h"
 #include "rtc_base/experiments/rate_control_settings.h"
+#include "rtc_base/numerics/exp_filter.h"
 #include "rtc_base/race_checker.h"
 #include "rtc_base/rate_statistics.h"
-#include "rtc_base/sequenced_task_checker.h"
+#include "rtc_base/synchronization/sequence_checker.h"
 #include "rtc_base/task_queue.h"
+#include "system_wrappers/include/clock.h"
 #include "video/encoder_bitrate_adjuster.h"
-#include "video/frame_encode_timer.h"
+#include "video/frame_encode_metadata_writer.h"
 #include "video/overuse_frame_detector.h"
 
 namespace webrtc {
@@ -72,6 +77,9 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   void SetBitrateAllocationObserver(
       VideoBitrateAllocationObserver* bitrate_observer) override;
 
+  void SetFecControllerOverride(
+      FecControllerOverride* fec_controller_override) override;
+
   void ConfigureEncoder(VideoEncoderConfig config,
                         size_t max_data_payload_length) override;
 
@@ -81,7 +89,12 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   void SendKeyFrame() override;
 
-  void OnBitrateUpdated(uint32_t bitrate_bps,
+  void OnLossNotification(
+      const VideoEncoder::LossNotification& loss_notification) override;
+
+  void OnBitrateUpdated(DataRate target_bitrate,
+                        DataRate stable_target_bitrate,
+                        DataRate target_headroom,
                         uint8_t fraction_lost,
                         int64_t round_trip_time_ms) override;
 
@@ -93,7 +106,7 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // AdaptationObserverInterface implementation.
   // These methods are protected for easier testing.
   void AdaptUp(AdaptReason reason) override;
-  void AdaptDown(AdaptReason reason) override;
+  bool AdaptDown(AdaptReason reason) override;
 
  private:
   class VideoSourceProxy;
@@ -108,8 +121,27 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
     int pixel_count() const { return width * height; }
   };
 
-  void ConfigureEncoderOnTaskQueue(VideoEncoderConfig config,
-                                   size_t max_data_payload_length);
+  struct EncoderRateSettings {
+    EncoderRateSettings();
+    EncoderRateSettings(const VideoBitrateAllocation& bitrate,
+                        double framerate_fps,
+                        DataRate bandwidth_allocation,
+                        DataRate encoder_target,
+                        DataRate stable_encoder_target);
+    bool operator==(const EncoderRateSettings& rhs) const;
+    bool operator!=(const EncoderRateSettings& rhs) const;
+
+    VideoEncoder::RateControlParameters rate_control;
+    // This is the scalar target bitrate before the VideoBitrateAllocator, i.e.
+    // the |target_bitrate| argument of the OnBitrateUpdated() method. This is
+    // needed because the bitrate allocator may truncate the total bitrate and a
+    // later call to the same allocator instance, e.g.
+    // |using last_encoder_rate_setings_->bitrate.get_sum_bps()|, may trick it
+    // into thinking the available bitrate has decreased since the last call.
+    DataRate encoder_target;
+    DataRate stable_encoder_target;
+  };
+
   void ReconfigureEncoder() RTC_RUN_ON(&encoder_queue_);
 
   void ConfigureQualityScaler(const VideoEncoder::EncoderInfo& encoder_info);
@@ -139,12 +171,15 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   void TraceFrameDropStart();
   void TraceFrameDropEnd();
 
-  VideoBitrateAllocation GetBitrateAllocationAndNotifyObserver(
-      const uint32_t target_bitrate_bps,
-      uint32_t framerate_fps) RTC_RUN_ON(&encoder_queue_);
+  // Returns a copy of |rate_settings| with the |bitrate| field updated using
+  // the current VideoBitrateAllocator, and notifies any listeners of the new
+  // allocation.
+  EncoderRateSettings UpdateBitrateAllocationAndNotifyObserver(
+      const EncoderRateSettings& rate_settings) RTC_RUN_ON(&encoder_queue_);
+
   uint32_t GetInputFramerateFps() RTC_RUN_ON(&encoder_queue_);
-  void SetEncoderRates(const VideoBitrateAllocation& bitrate_allocation,
-                       uint32_t framerate_fps) RTC_RUN_ON(&encoder_queue_);
+  void SetEncoderRates(const EncoderRateSettings& rate_settings)
+      RTC_RUN_ON(&encoder_queue_);
 
   // Class holding adaptation information.
   class AdaptCounter final {
@@ -188,6 +223,8 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   void UpdateAdaptationStats(AdaptReason reason) RTC_RUN_ON(&encoder_queue_);
   VideoStreamEncoderObserver::AdaptationSteps GetActiveCounts(
       AdaptReason reason) RTC_RUN_ON(&encoder_queue_);
+  bool CanAdaptUpResolution(int pixels, uint32_t bitrate_bps) const
+      RTC_RUN_ON(&encoder_queue_);
   void RunPostEncode(EncodedImage encoded_image,
                      int64_t time_sent_us,
                      int temporal_index);
@@ -208,6 +245,7 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   EncoderSink* sink_;
   const VideoStreamEncoderSettings settings_;
   const RateControlSettings rate_control_settings_;
+  const QualityScalerSettings quality_scaler_settings_;
 
   const std::unique_ptr<OveruseFrameDetector> overuse_detector_
       RTC_PT_GUARDED_BY(&encoder_queue_);
@@ -235,14 +273,26 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // Set when configuration must create a new encoder object, e.g.,
   // because of a codec change.
   bool pending_encoder_creation_ RTC_GUARDED_BY(&encoder_queue_);
+
   absl::optional<VideoFrameInfo> last_frame_info_
       RTC_GUARDED_BY(&encoder_queue_);
   int crop_width_ RTC_GUARDED_BY(&encoder_queue_);
   int crop_height_ RTC_GUARDED_BY(&encoder_queue_);
   uint32_t encoder_start_bitrate_bps_ RTC_GUARDED_BY(&encoder_queue_);
+  int set_start_bitrate_bps_ RTC_GUARDED_BY(&encoder_queue_);
+  int64_t set_start_bitrate_time_ms_ RTC_GUARDED_BY(&encoder_queue_);
+  bool has_seen_first_bwe_drop_ RTC_GUARDED_BY(&encoder_queue_);
   size_t max_data_payload_length_ RTC_GUARDED_BY(&encoder_queue_);
-  uint32_t last_observed_bitrate_bps_ RTC_GUARDED_BY(&encoder_queue_);
+  absl::optional<EncoderRateSettings> last_encoder_rate_settings_
+      RTC_GUARDED_BY(&encoder_queue_);
   bool encoder_paused_and_dropped_frame_ RTC_GUARDED_BY(&encoder_queue_);
+
+  // Set to true if at least one frame was sent to encoder since last encoder
+  // initialization.
+  bool was_encode_called_since_last_initialization_
+      RTC_GUARDED_BY(&encoder_queue_);
+
+  bool encoder_failed_ RTC_GUARDED_BY(&encoder_queue_);
   Clock* const clock_;
   // Counters used for deciding if the video resolution or framerate is
   // currently restricted, and if so, why, on a per degradation preference
@@ -253,6 +303,8 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
       RTC_GUARDED_BY(&encoder_queue_);
   // Set depending on degradation preferences.
   DegradationPreference degradation_preference_ RTC_GUARDED_BY(&encoder_queue_);
+
+  const BalancedDegradationSettings balanced_settings_;
 
   struct AdaptationRequest {
     // The pixel count produced by the source at the time of the adaptation.
@@ -287,14 +339,16 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   VideoBitrateAllocationObserver* bitrate_observer_
       RTC_GUARDED_BY(&encoder_queue_);
+  FecControllerOverride* fec_controller_override_
+      RTC_GUARDED_BY(&encoder_queue_);
   absl::optional<int64_t> last_parameters_update_ms_
       RTC_GUARDED_BY(&encoder_queue_);
+  absl::optional<int64_t> last_encode_info_ms_ RTC_GUARDED_BY(&encoder_queue_);
 
   VideoEncoder::EncoderInfo encoder_info_ RTC_GUARDED_BY(&encoder_queue_);
-  VideoEncoderFactory::CodecInfo codec_info_ RTC_GUARDED_BY(&encoder_queue_);
-  VideoBitrateAllocation last_bitrate_allocation_
+  absl::optional<VideoEncoder::ResolutionBitrateLimits> encoder_bitrate_limits_
       RTC_GUARDED_BY(&encoder_queue_);
-  uint32_t last_framerate_fps_ RTC_GUARDED_BY(&encoder_queue_);
+  VideoEncoderFactory::CodecInfo codec_info_ RTC_GUARDED_BY(&encoder_queue_);
   VideoCodec send_codec_ RTC_GUARDED_BY(&encoder_queue_);
 
   FrameDropper frame_dropper_ RTC_GUARDED_BY(&encoder_queue_);
@@ -315,14 +369,61 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   // TODO(sprang): Change actually support keyframe per simulcast stream, or
   // turn this into a simple bool |pending_keyframe_request_|.
-  std::vector<FrameType> next_frame_types_ RTC_GUARDED_BY(&encoder_queue_);
+  std::vector<VideoFrameType> next_frame_types_ RTC_GUARDED_BY(&encoder_queue_);
 
-  FrameEncodeTimer frame_encoder_timer_;
+  FrameEncodeMetadataWriter frame_encode_metadata_writer_;
 
   // Experiment groups parsed from field trials for realtime video ([0]) and
   // screenshare ([1]). 0 means no group specified. Positive values are
   // experiment group numbers incremented by 1.
   const std::array<uint8_t, 2> experiment_groups_;
+
+  // TODO(philipel): Remove this lock and run on |encoder_queue_| instead.
+  rtc::CriticalSection encoded_image_lock_;
+
+  int64_t next_frame_id_ RTC_GUARDED_BY(encoded_image_lock_);
+
+  // This array is used as a map from simulcast id to an encoder's buffer
+  // state. For every buffer of the encoder we keep track of the last frame id
+  // that updated that buffer.
+  std::array<std::array<int64_t, kMaxEncoderBuffers>, kMaxSimulcastStreams>
+      encoder_buffer_state_ RTC_GUARDED_BY(encoded_image_lock_);
+
+  struct EncoderSwitchExperiment {
+    struct Thresholds {
+      absl::optional<DataRate> bitrate;
+      absl::optional<int> pixel_count;
+    };
+
+    // Codec --> switching thresholds
+    std::map<VideoCodecType, Thresholds> codec_thresholds;
+
+    // To smooth out the target bitrate so that we don't trigger a switch
+    // too easily.
+    rtc::ExpFilter bitrate_filter{1.0};
+
+    // Codec/implementation to switch to
+    std::string to_codec;
+    absl::optional<std::string> to_param;
+    absl::optional<std::string> to_value;
+
+    // Thresholds for the currently used codecs.
+    Thresholds current_thresholds;
+
+    // Updates the |bitrate_filter|, so not const.
+    bool IsBitrateBelowThreshold(const DataRate& target_bitrate);
+    bool IsPixelCountBelowThreshold(int pixel_count) const;
+    void SetCodec(VideoCodecType codec);
+  };
+
+  EncoderSwitchExperiment ParseEncoderSwitchFieldTrial() const;
+
+  EncoderSwitchExperiment encoder_switch_experiment_
+      RTC_GUARDED_BY(&encoder_queue_);
+
+  // An encoder switch is only requested once, this variable is used to keep
+  // track of whether a request has been made or not.
+  bool encoder_switch_requested_ RTC_GUARDED_BY(&encoder_queue_);
 
   // All public methods are proxied to |encoder_queue_|. It must must be
   // destroyed first to make sure no tasks are run that use other members.

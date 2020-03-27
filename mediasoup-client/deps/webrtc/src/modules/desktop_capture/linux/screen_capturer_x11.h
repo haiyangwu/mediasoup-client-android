@@ -15,6 +15,7 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xfixes.h>
+
 #include <memory>
 
 #include "modules/desktop_capture/desktop_capture_options.h"
@@ -22,6 +23,7 @@
 #include "modules/desktop_capture/desktop_frame.h"
 #include "modules/desktop_capture/desktop_region.h"
 #include "modules/desktop_capture/linux/shared_x_display.h"
+#include "modules/desktop_capture/linux/x_atom_cache.h"
 #include "modules/desktop_capture/linux/x_server_pixel_buffer.h"
 #include "modules/desktop_capture/screen_capture_frame_queue.h"
 #include "modules/desktop_capture/screen_capturer_helper.h"
@@ -115,6 +117,8 @@ class ScreenCapturerX11 : public DesktopCapturer,
   // Invalid region from the previous capture. This is used to synchronize the
   // current with the last buffer used.
   DesktopRegion last_invalid_region_;
+
+  std::unique_ptr<XAtomCache> atom_cache_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(ScreenCapturerX11);
 };

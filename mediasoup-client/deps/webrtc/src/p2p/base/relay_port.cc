@@ -7,11 +7,14 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include "p2p/base/relay_port.h"
+
 #include <errno.h>
 #include <string.h>
+
 #include <algorithm>
 
-#include "p2p/base/relay_port.h"
+#include "p2p/base/connection.h"
 #include "p2p/base/stun.h"
 #include "p2p/base/stun_request.h"
 #include "rtc_base/async_packet_socket.h"
@@ -453,7 +456,7 @@ void RelayConnection::OnSendPacket(const void* data,
   int sent = socket_->SendTo(data, size, GetAddress(), options);
   if (sent <= 0) {
     RTC_LOG(LS_VERBOSE) << "OnSendPacket: failed sending to "
-                        << GetAddress().ToString()
+                        << GetAddress().ToSensitiveString()
                         << strerror(socket_->GetError());
     RTC_DCHECK(sent < 0);
   }
@@ -516,9 +519,11 @@ void RelayEntry::Connect() {
     int opts = (ra->proto == PROTO_SSLTCP)
                    ? rtc::PacketSocketFactory::OPT_TLS_FAKE
                    : 0;
+    rtc::PacketSocketTcpOptions tcp_opts;
+    tcp_opts.opts = opts;
     socket = port_->socket_factory()->CreateClientTcpSocket(
         rtc::SocketAddress(port_->Network()->GetBestIP(), 0), ra->address,
-        port_->proxy(), port_->user_agent(), opts);
+        port_->proxy(), port_->user_agent(), tcp_opts);
   } else {
     RTC_LOG(LS_WARNING) << "Unknown protocol: " << ra->proto;
   }
@@ -664,7 +669,7 @@ void RelayEntry::OnMessage(rtc::Message* pmsg) {
   if (current_connection_) {
     const ProtocolAddress* ra = current_connection_->protocol_address();
     RTC_LOG(LS_WARNING) << "Relay " << ra->proto << " connection to "
-                        << ra->address.ToString() << " timed out";
+                        << ra->address.ToSensitiveString() << " timed out";
 
     // Currently we connect to each server address in sequence. If we
     // have more addresses to try, treat this is an error and move on to

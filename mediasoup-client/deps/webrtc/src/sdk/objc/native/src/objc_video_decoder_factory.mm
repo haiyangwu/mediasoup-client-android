@@ -22,7 +22,6 @@
 
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_decoder.h"
-#include "modules/include/module_common_types.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/logging.h"
@@ -38,38 +37,18 @@ class ObjCVideoDecoder : public VideoDecoder {
       : decoder_(decoder), implementation_name_([decoder implementationName].stdString) {}
 
   int32_t InitDecode(const VideoCodec *codec_settings, int32_t number_of_cores) override {
-    if ([decoder_ respondsToSelector:@selector(startDecodeWithNumberOfCores:)]) {
-      return [decoder_ startDecodeWithNumberOfCores:number_of_cores];
-    } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      RTCVideoEncoderSettings *settings = [[RTCVideoEncoderSettings alloc] init];
-      return [decoder_ startDecodeWithSettings:settings numberOfCores:number_of_cores];
-#pragma clang diagnostic pop
-    }
+    return [decoder_ startDecodeWithNumberOfCores:number_of_cores];
   }
 
   int32_t Decode(const EncodedImage &input_image,
                  bool missing_frames,
-                 const CodecSpecificInfo *codec_specific_info = NULL,
                  int64_t render_time_ms = -1) override {
     RTCEncodedImage *encodedImage =
         [[RTCEncodedImage alloc] initWithNativeEncodedImage:input_image];
 
-    // webrtc::CodecSpecificInfo only handles a hard coded list of codecs
-    id<RTCCodecSpecificInfo> rtcCodecSpecificInfo = nil;
-    if (codec_specific_info) {
-      if (codec_specific_info->codecType == kVideoCodecH264) {
-        RTCCodecSpecificInfoH264 *h264Info = [[RTCCodecSpecificInfoH264 alloc] init];
-        h264Info.packetizationMode =
-            (RTCH264PacketizationMode)codec_specific_info->codecSpecific.H264.packetization_mode;
-        rtcCodecSpecificInfo = h264Info;
-      }
-    }
-
     return [decoder_ decode:encodedImage
               missingFrames:missing_frames
-          codecSpecificInfo:rtcCodecSpecificInfo
+          codecSpecificInfo:nil
                renderTimeMs:render_time_ms];
   }
 

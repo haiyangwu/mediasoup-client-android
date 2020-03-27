@@ -11,10 +11,15 @@
 #include "video/send_statistics_proxy.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "api/video/video_codec_constants.h"
+#include "api/video/video_codec_type.h"
+#include "api/video_codecs/video_codec.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -136,8 +141,13 @@ SendStatisticsProxy::SendStatisticsProxy(
       encode_time_(kEncodeTimeWeigthFactor),
       quality_downscales_(-1),
       cpu_downscales_(-1),
+      quality_limitation_reason_tracker_(clock_),
       media_byte_rate_tracker_(kBucketSizeMs, kBucketCount),
       encoded_frame_rate_tracker_(kBucketSizeMs, kBucketCount),
+      last_num_spatial_layers_(0),
+      last_num_simulcast_streams_(0),
+      last_spatial_layer_use_{},
+      bw_limited_layers_(false),
       uma_container_(
           new UmaSamplesContainer(GetUmaPrefix(content_type_), stats_, clock)) {
 }
@@ -673,10 +683,12 @@ void SendStatisticsProxy::OnEncoderReconfigured(
 
 void SendStatisticsProxy::OnEncodedFrameTimeMeasured(int encode_time_ms,
                                                      int encode_usage_percent) {
+  RTC_DCHECK_GE(encode_time_ms, 0);
   rtc::CritScope lock(&crit_);
   uma_container_->encode_time_counter_.Add(encode_time_ms);
   encode_time_.Apply(1.0f, encode_time_ms);
-  stats_.avg_encode_time_ms = round(encode_time_.filtered());
+  stats_.avg_encode_time_ms = std::round(encode_time_.filtered());
+  stats_.total_encode_time_ms += encode_time_ms;
   stats_.encode_usage_percent = encode_usage_percent;
 }
 
@@ -726,6 +738,8 @@ VideoSendStream::Stats SendStatisticsProxy::GetStats() {
           : VideoContentType::SCREENSHARE;
   stats_.encode_frame_rate = round(encoded_frame_rate_tracker_.ComputeRate());
   stats_.media_bitrate_bps = media_byte_rate_tracker_.ComputeRate() * 8;
+  stats_.quality_limitation_durations_ms =
+      quality_limitation_reason_tracker_.DurationsMs();
   return stats_;
 }
 
@@ -749,13 +763,10 @@ VideoSendStream::StreamStats* SendStatisticsProxy::GetStatsEntry(
   if (it != stats_.substreams.end())
     return &it->second;
 
-  bool is_media = std::find(rtp_config_.ssrcs.begin(), rtp_config_.ssrcs.end(),
-                            ssrc) != rtp_config_.ssrcs.end();
+  bool is_media = absl::c_linear_search(rtp_config_.ssrcs, ssrc);
   bool is_flexfec = rtp_config_.flexfec.payload_type != -1 &&
                     ssrc == rtp_config_.flexfec.ssrc;
-  bool is_rtx =
-      std::find(rtp_config_.rtx.ssrcs.begin(), rtp_config_.rtx.ssrcs.end(),
-                ssrc) != rtp_config_.rtx.ssrcs.end();
+  bool is_rtx = absl::c_linear_search(rtp_config_.rtx.ssrcs, ssrc);
   if (!is_media && !is_flexfec && !is_rtx)
     return nullptr;
 
@@ -896,6 +907,18 @@ void SendStatisticsProxy::OnSendEncodedImage(
 
   rtc::CritScope lock(&crit_);
   ++stats_.frames_encoded;
+  // The current encode frame rate is based on previously encoded frames.
+  double encode_frame_rate = encoded_frame_rate_tracker_.ComputeRate();
+  // We assume that less than 1 FPS is not a trustworthy estimate - perhaps we
+  // just started encoding for the first time or after a pause. Assuming frame
+  // rate is at least 1 FPS is conservative to avoid too large increments.
+  if (encode_frame_rate < 1.0)
+    encode_frame_rate = 1.0;
+  double target_frame_size_bytes =
+      stats_.target_media_bitrate_bps / (8.0 * encode_frame_rate);
+  // |stats_.target_media_bitrate_bps| is set in
+  // SendStatisticsProxy::OnSetEncoderTargetRate.
+  stats_.total_encoded_bytes_target += round(target_frame_size_bytes);
   if (codec_info) {
     UpdateEncoderFallbackStats(
         codec_info, encoded_image._encodedWidth * encoded_image._encodedHeight,
@@ -927,7 +950,7 @@ void SendStatisticsProxy::OnSendEncodedImage(
   }
 
   uma_container_->key_frame_counter_.Add(encoded_image._frameType ==
-                                         kVideoFrameKey);
+                                         VideoFrameType::kVideoFrameKey);
 
   if (encoded_image.qp_ != -1) {
     if (!stats_.qp_sum)
@@ -1050,19 +1073,100 @@ void SendStatisticsProxy::OnAdaptationChanged(
       ++stats_.number_of_quality_adapt_changes;
       break;
   }
-  UpdateAdaptationStats(cpu_counts, quality_counts);
-}
 
-void SendStatisticsProxy::UpdateAdaptationStats(
-    const AdaptationSteps& cpu_counts,
-    const AdaptationSteps& quality_counts) {
   cpu_downscales_ = cpu_counts.num_resolution_reductions.value_or(-1);
   quality_downscales_ = quality_counts.num_resolution_reductions.value_or(-1);
 
-  stats_.cpu_limited_resolution = cpu_counts.num_resolution_reductions > 0;
-  stats_.cpu_limited_framerate = cpu_counts.num_framerate_reductions > 0;
-  stats_.bw_limited_resolution = quality_counts.num_resolution_reductions > 0;
-  stats_.bw_limited_framerate = quality_counts.num_framerate_reductions > 0;
+  cpu_counts_ = cpu_counts;
+  quality_counts_ = quality_counts;
+
+  UpdateAdaptationStats();
+}
+
+void SendStatisticsProxy::UpdateAdaptationStats() {
+  bool is_cpu_limited = cpu_counts_.num_resolution_reductions > 0 ||
+                        cpu_counts_.num_framerate_reductions > 0;
+  bool is_bandwidth_limited = quality_counts_.num_resolution_reductions > 0 ||
+                              quality_counts_.num_framerate_reductions > 0 ||
+                              bw_limited_layers_;
+  if (is_bandwidth_limited) {
+    // We may be both CPU limited and bandwidth limited at the same time but
+    // there is no way to express this in standardized stats. Heuristically,
+    // bandwidth is more likely to be a limiting factor than CPU, and more
+    // likely to vary over time, so only when we aren't bandwidth limited do we
+    // want to know about our CPU being the bottleneck.
+    quality_limitation_reason_tracker_.SetReason(
+        QualityLimitationReason::kBandwidth);
+  } else if (is_cpu_limited) {
+    quality_limitation_reason_tracker_.SetReason(QualityLimitationReason::kCpu);
+  } else {
+    quality_limitation_reason_tracker_.SetReason(
+        QualityLimitationReason::kNone);
+  }
+
+  stats_.cpu_limited_resolution = cpu_counts_.num_resolution_reductions > 0;
+  stats_.cpu_limited_framerate = cpu_counts_.num_framerate_reductions > 0;
+  stats_.bw_limited_resolution = quality_counts_.num_resolution_reductions > 0;
+  stats_.bw_limited_framerate = quality_counts_.num_framerate_reductions > 0;
+  // If bitrate allocator has disabled some layers frame-rate or resolution are
+  // limited depending on the encoder configuration.
+  if (bw_limited_layers_) {
+    switch (content_type_) {
+      case VideoEncoderConfig::ContentType::kRealtimeVideo: {
+        stats_.bw_limited_resolution = true;
+        break;
+      }
+      case VideoEncoderConfig::ContentType::kScreen: {
+        stats_.bw_limited_framerate = true;
+        break;
+      }
+    }
+  }
+  stats_.quality_limitation_reason =
+      quality_limitation_reason_tracker_.current_reason();
+
+  // |stats_.quality_limitation_durations_ms| depends on the current time
+  // when it is polled; it is updated in SendStatisticsProxy::GetStats().
+}
+
+void SendStatisticsProxy::OnBitrateAllocationUpdated(
+    const VideoCodec& codec,
+    const VideoBitrateAllocation& allocation) {
+  int num_spatial_layers = 0;
+  for (int i = 0; i < kMaxSpatialLayers; i++) {
+    if (codec.spatialLayers[i].active) {
+      num_spatial_layers++;
+    }
+  }
+  int num_simulcast_streams = 0;
+  for (int i = 0; i < kMaxSimulcastStreams; i++) {
+    if (codec.simulcastStream[i].active) {
+      num_simulcast_streams++;
+    }
+  }
+
+  std::array<bool, kMaxSpatialLayers> spatial_layers;
+  for (int i = 0; i < kMaxSpatialLayers; i++) {
+    spatial_layers[i] = (allocation.GetSpatialLayerSum(i) > 0);
+  }
+
+  rtc::CritScope lock(&crit_);
+
+  bw_limited_layers_ = allocation.is_bw_limited();
+  UpdateAdaptationStats();
+
+  if (spatial_layers != last_spatial_layer_use_) {
+    // If the number of spatial layers has changed, the resolution change is
+    // not due to quality limitations, it is because the configuration
+    // changed.
+    if (last_num_spatial_layers_ == num_spatial_layers &&
+        last_num_simulcast_streams_ == num_simulcast_streams) {
+      ++stats_.quality_limitation_resolution_changes;
+    }
+    last_spatial_layer_use_ = spatial_layers;
+  }
+  last_num_spatial_layers_ = num_spatial_layers;
+  last_num_simulcast_streams_ = num_simulcast_streams;
 }
 
 // TODO(asapersson): Include fps changes.
@@ -1119,10 +1223,18 @@ void SendStatisticsProxy::StatisticsUpdated(const RtcpStatistics& statistics,
     return;
 
   stats->rtcp_stats = statistics;
-  uma_container_->report_block_stats_.Store(statistics, 0, ssrc);
+  uma_container_->report_block_stats_.Store(ssrc, statistics);
 }
 
-void SendStatisticsProxy::CNameChanged(const char* cname, uint32_t ssrc) {}
+void SendStatisticsProxy::OnReportBlockDataUpdated(
+    ReportBlockData report_block_data) {
+  rtc::CritScope lock(&crit_);
+  VideoSendStream::StreamStats* stats =
+      GetStatsEntry(report_block_data.report_block().source_ssrc);
+  if (!stats)
+    return;
+  stats->report_block_data = std::move(report_block_data);
+}
 
 void SendStatisticsProxy::DataCountersUpdated(
     const StreamDataCounters& counters,
@@ -1184,6 +1296,7 @@ void SendStatisticsProxy::FrameCountUpdated(const FrameCounts& frame_counts,
 
 void SendStatisticsProxy::SendSideDelayUpdated(int avg_delay_ms,
                                                int max_delay_ms,
+                                               uint64_t total_delay_ms,
                                                uint32_t ssrc) {
   rtc::CritScope lock(&crit_);
   VideoSendStream::StreamStats* stats = GetStatsEntry(ssrc);
@@ -1191,6 +1304,7 @@ void SendStatisticsProxy::SendSideDelayUpdated(int avg_delay_ms,
     return;
   stats->avg_delay_ms = avg_delay_ms;
   stats->max_delay_ms = max_delay_ms;
+  stats->total_packet_send_delay_ms = total_delay_ms;
 
   uma_container_->delay_counter_.Add(avg_delay_ms);
   uma_container_->max_delay_counter_.Add(max_delay_ms);

@@ -21,8 +21,7 @@ using Codec = VideoStreamConfig::Encoder::Codec;
 using CodecImpl = VideoStreamConfig::Encoder::Implementation;
 }  // namespace
 
-// TODO(srte): Enable this after resolving flakiness issues.
-TEST(VideoStreamTest, DISABLED_ReceivesFramesFromFileBasedStreams) {
+TEST(VideoStreamTest, ReceivesFramesFromFileBasedStreams) {
   TimeDelta kRunTime = TimeDelta::ms(500);
   std::vector<int> kFrameRates = {15, 30};
   std::deque<std::atomic<int>> frame_counts(2);
@@ -30,15 +29,15 @@ TEST(VideoStreamTest, DISABLED_ReceivesFramesFromFileBasedStreams) {
   frame_counts[1] = 0;
   {
     Scenario s;
-    auto route = s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
-                                {s.CreateSimulationNode(NetworkNodeConfig())},
-                                s.CreateClient("callee", CallClientConfig()),
-                                {s.CreateSimulationNode(NetworkNodeConfig())});
+    auto route =
+        s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
+                       {s.CreateSimulationNode(NetworkSimulationConfig())},
+                       s.CreateClient("callee", CallClientConfig()),
+                       {s.CreateSimulationNode(NetworkSimulationConfig())});
 
     s.CreateVideoStream(route->forward(), [&](VideoStreamConfig* c) {
-      c->analyzer.frame_quality_handler = [&](const VideoFrameQualityInfo&) {
-        frame_counts[0]++;
-      };
+      c->hooks.frame_pair_handlers = {
+          [&](const VideoFramePair&) { frame_counts[0]++; }};
       c->source.capture = Capture::kVideoFile;
       c->source.video_file.name = "foreman_cif";
       c->source.video_file.width = 352;
@@ -48,9 +47,8 @@ TEST(VideoStreamTest, DISABLED_ReceivesFramesFromFileBasedStreams) {
       c->encoder.codec = Codec::kVideoCodecVP8;
     });
     s.CreateVideoStream(route->forward(), [&](VideoStreamConfig* c) {
-      c->analyzer.frame_quality_handler = [&](const VideoFrameQualityInfo&) {
-        frame_counts[1]++;
-      };
+      c->hooks.frame_pair_handlers = {
+          [&](const VideoFramePair&) { frame_counts[1]++; }};
       c->source.capture = Capture::kImageSlides;
       c->source.slides.images.crop.width = 320;
       c->source.slides.images.crop.height = 240;
@@ -69,30 +67,36 @@ TEST(VideoStreamTest, DISABLED_ReceivesFramesFromFileBasedStreams) {
   EXPECT_GE(frame_counts[1], expected_counts[1]);
 }
 
-// TODO(srte): Enable this after resolving flakiness issues.
-TEST(VideoStreamTest, DISABLED_RecievesVp8SimulcastFrames) {
+TEST(VideoStreamTest, RecievesVp8SimulcastFrames) {
   TimeDelta kRunTime = TimeDelta::ms(500);
   int kFrameRate = 30;
 
-  std::atomic<int> frame_count(0);
+  std::deque<std::atomic<int>> frame_counts(3);
+  frame_counts[0] = 0;
+  frame_counts[1] = 0;
+  frame_counts[2] = 0;
   {
     Scenario s;
-    auto route = s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
-                                {s.CreateSimulationNode(NetworkNodeConfig())},
-                                s.CreateClient("callee", CallClientConfig()),
-                                {s.CreateSimulationNode(NetworkNodeConfig())});
+    auto route =
+        s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
+                       {s.CreateSimulationNode(NetworkSimulationConfig())},
+                       s.CreateClient("callee", CallClientConfig()),
+                       {s.CreateSimulationNode(NetworkSimulationConfig())});
     s.CreateVideoStream(route->forward(), [&](VideoStreamConfig* c) {
       // TODO(srte): Replace with code checking for all simulcast streams when
       // there's a hook available for that.
-      c->analyzer.frame_quality_handler = [&](const VideoFrameQualityInfo&) {
-        frame_count++;
-      };
+      c->hooks.frame_pair_handlers = {[&](const VideoFramePair& info) {
+        frame_counts[info.layer_id]++;
+        RTC_DCHECK(info.decoded);
+        printf("%i: [%3i->%3i, %i], %i->%i, \n", info.layer_id, info.capture_id,
+               info.decode_id, info.repeated, info.captured->width(),
+               info.decoded->width());
+      }};
       c->source.framerate = kFrameRate;
       // The resolution must be high enough to allow smaller layers to be
       // created.
       c->source.generator.width = 1024;
       c->source.generator.height = 768;
-
       c->encoder.implementation = CodecImpl::kSoftware;
       c->encoder.codec = Codec::kVideoCodecVP8;
       // By enabling multiple spatial layers, simulcast will be enabled for VP8.
@@ -101,11 +105,64 @@ TEST(VideoStreamTest, DISABLED_RecievesVp8SimulcastFrames) {
     s.RunFor(kRunTime);
   }
 
-  // Using 20% error margin to avoid flakyness.
+  // Using high error margin to avoid flakyness.
   const int kExpectedCount =
-      static_cast<int>(kRunTime.seconds<double>() * kFrameRate * 0.8);
+      static_cast<int>(kRunTime.seconds<double>() * kFrameRate * 0.5);
 
-  EXPECT_GE(frame_count, kExpectedCount);
+  EXPECT_GE(frame_counts[0], kExpectedCount);
+  EXPECT_GE(frame_counts[1], kExpectedCount);
+  EXPECT_GE(frame_counts[2], kExpectedCount);
+}
+
+TEST(VideoStreamTest, SendsNacksOnLoss) {
+  Scenario s;
+  auto route =
+      s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
+                     {s.CreateSimulationNode([](NetworkSimulationConfig* c) {
+                       c->loss_rate = 0.2;
+                     })},
+                     s.CreateClient("callee", CallClientConfig()),
+                     {s.CreateSimulationNode(NetworkSimulationConfig())});
+  // NACK retransmissions are enabled by default.
+  auto video = s.CreateVideoStream(route->forward(), VideoStreamConfig());
+  s.RunFor(TimeDelta::seconds(1));
+  auto stream_stats = video->send()->GetStats().substreams.begin()->second;
+  EXPECT_GT(stream_stats.rtp_stats.retransmitted.packets, 0u);
+}
+
+TEST(VideoStreamTest, SendsFecWithUlpFec) {
+  Scenario s;
+  auto route =
+      s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
+                     {s.CreateSimulationNode([](NetworkSimulationConfig* c) {
+                       c->loss_rate = 0.1;
+                     })},
+                     s.CreateClient("callee", CallClientConfig()),
+                     {s.CreateSimulationNode(NetworkSimulationConfig())});
+  auto video = s.CreateVideoStream(route->forward(), [&](VideoStreamConfig* c) {
+    // We do not allow NACK+ULPFEC for generic codec, using VP8.
+    c->encoder.codec = VideoStreamConfig::Encoder::Codec::kVideoCodecVP8;
+    c->stream.use_ulpfec = true;
+  });
+  s.RunFor(TimeDelta::seconds(5));
+  VideoSendStream::Stats video_stats = video->send()->GetStats();
+  EXPECT_GT(video_stats.substreams.begin()->second.rtp_stats.fec.packets, 0u);
+}
+TEST(VideoStreamTest, SendsFecWithFlexFec) {
+  Scenario s;
+  auto route =
+      s.CreateRoutes(s.CreateClient("caller", CallClientConfig()),
+                     {s.CreateSimulationNode([](NetworkSimulationConfig* c) {
+                       c->loss_rate = 0.1;
+                     })},
+                     s.CreateClient("callee", CallClientConfig()),
+                     {s.CreateSimulationNode(NetworkSimulationConfig())});
+  auto video = s.CreateVideoStream(route->forward(), [&](VideoStreamConfig* c) {
+    c->stream.use_flexfec = true;
+  });
+  s.RunFor(TimeDelta::seconds(5));
+  VideoSendStream::Stats video_stats = video->send()->GetStats();
+  EXPECT_GT(video_stats.substreams.begin()->second.rtp_stats.fec.packets, 0u);
 }
 }  // namespace test
 }  // namespace webrtc

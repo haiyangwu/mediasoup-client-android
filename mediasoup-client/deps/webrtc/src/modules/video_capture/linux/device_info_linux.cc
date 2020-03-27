@@ -19,9 +19,9 @@
 #include <unistd.h>
 // v4l includes
 #include <linux/videodev2.h>
+
 #include <vector>
 
-#include "common_types.h"  // NOLINT(build/include)
 #include "modules/video_capture/video_capture.h"
 #include "modules/video_capture/video_capture_defines.h"
 #include "modules/video_capture/video_capture_impl.h"

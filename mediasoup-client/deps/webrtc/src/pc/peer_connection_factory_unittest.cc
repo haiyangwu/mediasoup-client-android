@@ -8,7 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "pc/peer_connection_factory.h"
+
 #include <stddef.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -33,7 +36,6 @@
 #include "p2p/base/fake_port_allocator.h"
 #include "p2p/base/port.h"
 #include "p2p/base/port_interface.h"
-#include "pc/peer_connection_factory.h"
 #include "pc/test/fake_audio_capture_module.h"
 #include "pc/test/fake_video_track_source.h"
 #include "rtc_base/socket_address.h"
@@ -51,20 +53,20 @@ using webrtc::MediaStreamInterface;
 using webrtc::PeerConnectionFactoryInterface;
 using webrtc::PeerConnectionInterface;
 using webrtc::PeerConnectionObserver;
-using webrtc::VideoTrackSourceInterface;
 using webrtc::VideoTrackInterface;
+using webrtc::VideoTrackSourceInterface;
 
 namespace {
 
 static const char kStunIceServer[] = "stun:stun.l.google.com:19302";
-static const char kTurnIceServer[] = "turn:test%40hello.com@test.com:1234";
+static const char kTurnIceServer[] = "turn:test.com:1234";
 static const char kTurnIceServerWithTransport[] =
-    "turn:test@hello.com?transport=tcp";
-static const char kSecureTurnIceServer[] = "turns:test@hello.com?transport=tcp";
+    "turn:hello.com?transport=tcp";
+static const char kSecureTurnIceServer[] = "turns:hello.com?transport=tcp";
 static const char kSecureTurnIceServerWithoutTransportParam[] =
-    "turns:test_no_transport@hello.com:443";
+    "turns:hello.com:443";
 static const char kSecureTurnIceServerWithoutTransportAndPortParam[] =
-    "turns:test_no_transport@hello.com";
+    "turns:hello.com";
 static const char kTurnIceServerWithNoUsernameInUri[] = "turn:test.com:1234";
 static const char kTurnPassword[] = "turnpassword";
 static const int kDefaultStunPort = 3478;
@@ -75,8 +77,7 @@ static const char kStunIceServerWithIPv4AddressWithoutPort[] = "stun:1.2.3.4";
 static const char kStunIceServerWithIPv6Address[] = "stun:[2401:fa00:4::]:1234";
 static const char kStunIceServerWithIPv6AddressWithoutPort[] =
     "stun:[2401:fa00:4::]";
-static const char kTurnIceServerWithIPv6Address[] =
-    "turn:test@[2401:fa00:4::]:1234";
+static const char kTurnIceServerWithIPv6Address[] = "turn:[2401:fa00:4::]:1234";
 
 class NullPeerConnectionObserver : public PeerConnectionObserver {
  public:
@@ -99,7 +100,7 @@ class NullPeerConnectionObserver : public PeerConnectionObserver {
 
 }  // namespace
 
-class PeerConnectionFactoryTest : public testing::Test {
+class PeerConnectionFactoryTest : public ::testing::Test {
   void SetUp() {
 #ifdef WEBRTC_ANDROID
     webrtc::InitializeAndroidObjects();
@@ -272,9 +273,11 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServers) {
   ice_server.uri = kStunIceServer;
   config.servers.push_back(ice_server);
   ice_server.uri = kTurnIceServer;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   ice_server.uri = kTurnIceServerWithTransport;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   std::unique_ptr<FakeRTCCertificateGenerator> cert_generator(
@@ -288,10 +291,10 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServers) {
   stun_servers.insert(stun1);
   VerifyStunServers(stun_servers);
   std::vector<cricket::RelayServerConfig> turn_servers;
-  cricket::RelayServerConfig turn1("test.com", 1234, "test@hello.com",
+  cricket::RelayServerConfig turn1("test.com", 1234, kTurnUsername,
                                    kTurnPassword, cricket::PROTO_UDP);
   turn_servers.push_back(turn1);
-  cricket::RelayServerConfig turn2("hello.com", kDefaultStunPort, "test",
+  cricket::RelayServerConfig turn2("hello.com", kDefaultStunPort, kTurnUsername,
                                    kTurnPassword, cricket::PROTO_TCP);
   turn_servers.push_back(turn2);
   VerifyTurnServers(turn_servers);
@@ -305,6 +308,7 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServersUrls) {
   ice_server.urls.push_back(kStunIceServer);
   ice_server.urls.push_back(kTurnIceServer);
   ice_server.urls.push_back(kTurnIceServerWithTransport);
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   std::unique_ptr<FakeRTCCertificateGenerator> cert_generator(
@@ -318,10 +322,10 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServersUrls) {
   stun_servers.insert(stun1);
   VerifyStunServers(stun_servers);
   std::vector<cricket::RelayServerConfig> turn_servers;
-  cricket::RelayServerConfig turn1("test.com", 1234, "test@hello.com",
+  cricket::RelayServerConfig turn1("test.com", 1234, kTurnUsername,
                                    kTurnPassword, cricket::PROTO_UDP);
   turn_servers.push_back(turn1);
-  cricket::RelayServerConfig turn2("hello.com", kDefaultStunPort, "test",
+  cricket::RelayServerConfig turn2("hello.com", kDefaultStunPort, kTurnUsername,
                                    kTurnPassword, cricket::PROTO_TCP);
   turn_servers.push_back(turn2);
   VerifyTurnServers(turn_servers);
@@ -355,6 +359,7 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingTurnUrlWithTransportParam) {
   PeerConnectionInterface::RTCConfiguration config;
   webrtc::PeerConnectionInterface::IceServer ice_server;
   ice_server.uri = kTurnIceServerWithTransport;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   std::unique_ptr<FakeRTCCertificateGenerator> cert_generator(
@@ -364,7 +369,7 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingTurnUrlWithTransportParam) {
                                      std::move(cert_generator), &observer_));
   ASSERT_TRUE(pc.get() != NULL);
   std::vector<cricket::RelayServerConfig> turn_servers;
-  cricket::RelayServerConfig turn("hello.com", kDefaultStunPort, "test",
+  cricket::RelayServerConfig turn("hello.com", kDefaultStunPort, kTurnUsername,
                                   kTurnPassword, cricket::PROTO_TCP);
   turn_servers.push_back(turn);
   VerifyTurnServers(turn_servers);
@@ -374,12 +379,15 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingSecureTurnUrl) {
   PeerConnectionInterface::RTCConfiguration config;
   webrtc::PeerConnectionInterface::IceServer ice_server;
   ice_server.uri = kSecureTurnIceServer;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   ice_server.uri = kSecureTurnIceServerWithoutTransportParam;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   ice_server.uri = kSecureTurnIceServerWithoutTransportAndPortParam;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   std::unique_ptr<FakeRTCCertificateGenerator> cert_generator(
@@ -389,15 +397,16 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingSecureTurnUrl) {
                                      std::move(cert_generator), &observer_));
   ASSERT_TRUE(pc.get() != NULL);
   std::vector<cricket::RelayServerConfig> turn_servers;
-  cricket::RelayServerConfig turn1("hello.com", kDefaultStunTlsPort, "test",
-                                   kTurnPassword, cricket::PROTO_TLS);
+  cricket::RelayServerConfig turn1("hello.com", kDefaultStunTlsPort,
+                                   kTurnUsername, kTurnPassword,
+                                   cricket::PROTO_TLS);
   turn_servers.push_back(turn1);
   // TURNS with transport param should be default to tcp.
-  cricket::RelayServerConfig turn2("hello.com", 443, "test_no_transport",
+  cricket::RelayServerConfig turn2("hello.com", 443, kTurnUsername,
                                    kTurnPassword, cricket::PROTO_TLS);
   turn_servers.push_back(turn2);
   cricket::RelayServerConfig turn3("hello.com", kDefaultStunTlsPort,
-                                   "test_no_transport", kTurnPassword,
+                                   kTurnUsername, kTurnPassword,
                                    cricket::PROTO_TLS);
   turn_servers.push_back(turn3);
   VerifyTurnServers(turn_servers);
@@ -415,6 +424,7 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIPLiteralAddress) {
   ice_server.uri = kStunIceServerWithIPv6AddressWithoutPort;
   config.servers.push_back(ice_server);
   ice_server.uri = kTurnIceServerWithIPv6Address;
+  ice_server.username = kTurnUsername;
   ice_server.password = kTurnPassword;
   config.servers.push_back(ice_server);
   std::unique_ptr<FakeRTCCertificateGenerator> cert_generator(
@@ -435,8 +445,8 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIPLiteralAddress) {
   VerifyStunServers(stun_servers);
 
   std::vector<cricket::RelayServerConfig> turn_servers;
-  cricket::RelayServerConfig turn1("2401:fa00:4::", 1234, "test", kTurnPassword,
-                                   cricket::PROTO_UDP);
+  cricket::RelayServerConfig turn1("2401:fa00:4::", 1234, kTurnUsername,
+                                   kTurnPassword, cricket::PROTO_UDP);
   turn_servers.push_back(turn1);
   VerifyTurnServers(turn_servers);
 }

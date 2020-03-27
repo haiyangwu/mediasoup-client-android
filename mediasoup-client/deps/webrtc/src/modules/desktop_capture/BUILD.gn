@@ -33,11 +33,10 @@ rtc_static_library("primitives") {
     "../../api:scoped_refptr",
     "../../rtc_base:checks",
     "../../rtc_base/system:rtc_export",
-    "//third_party/abseil-cpp/absl/memory",
   ]
 
   if (!build_with_mozilla) {
-    deps += [ "../../rtc_base:rtc_base" ]  # TODO(kjellander): Cleanup in bugs.webrtc.org/3806.
+    deps += [ "../../rtc_base" ]  # TODO(kjellander): Cleanup in bugs.webrtc.org/3806.
   }
 }
 
@@ -47,16 +46,16 @@ if (rtc_include_tests) {
 
     sources = []
     deps = [
+      "../../api:function_view",
       "../../api:scoped_refptr",
       "../../rtc_base:checks",
-      "//third_party/abseil-cpp/absl/memory",
     ]
     if (rtc_desktop_capture_supported) {
       deps += [
         ":desktop_capture_mock",
         ":primitives",
         ":screen_drawer",
-        "../../rtc_base:rtc_base",
+        "../../rtc_base",
         "../../rtc_base:rtc_base_approved",
         "../../rtc_base/third_party/base64",
         "../../system_wrappers",
@@ -80,6 +79,7 @@ if (rtc_include_tests) {
       "desktop_and_cursor_composer_unittest.cc",
       "desktop_capturer_differ_wrapper_unittest.cc",
       "desktop_frame_rotation_unittest.cc",
+      "desktop_frame_unittest.cc",
       "desktop_geometry_unittest.cc",
       "desktop_region_unittest.cc",
       "differ_block_unittest.cc",
@@ -103,7 +103,6 @@ if (rtc_include_tests) {
       "../../rtc_base:rtc_base_approved",
       "../../system_wrappers:cpu_features_api",
       "../../test:test_support",
-      "//third_party/abseil-cpp/absl/memory",
     ]
     if (rtc_desktop_capture_supported) {
       sources += [
@@ -137,7 +136,6 @@ if (rtc_include_tests) {
       "../../rtc_base:checks",
       "../../rtc_base:rtc_base_approved",
       "../../system_wrappers",
-      "//third_party/abseil-cpp/absl/memory",
     ]
 
     if (is_posix || is_fuchsia) {
@@ -240,12 +238,11 @@ if (is_mac) {
       ":desktop_capture_generic",
       ":primitives",
       "../../api:scoped_refptr",
+      "../../rtc_base",
       "../../rtc_base:checks",
-      "../../rtc_base:rtc_base",
       "../../rtc_base:rtc_base_approved",
       "../../rtc_base/synchronization:rw_lock_wrapper",
       "../../sdk:helpers_objc",
-      "//third_party/abseil-cpp/absl/memory",
     ]
     libs = [
       "AppKit.framework",
@@ -346,6 +343,8 @@ rtc_static_library("desktop_capture_generic") {
     "win/screen_capturer_win_gdi.h",
     "win/screen_capturer_win_magnifier.cc",
     "win/screen_capturer_win_magnifier.h",
+    "win/selected_window_context.cc",
+    "win/selected_window_context.h",
     "win/window_capture_utils.cc",
     "win/window_capture_utils.h",
     "window_capturer_win.cc",
@@ -365,7 +364,7 @@ rtc_static_library("desktop_capture_generic") {
     ]
   }
 
-  if (rtc_use_x11 || rtc_use_pipewire) {
+  if (rtc_use_x11_extensions || rtc_use_pipewire) {
     sources += [
       "mouse_cursor_monitor_linux.cc",
       "screen_capturer_linux.cc",
@@ -377,7 +376,7 @@ rtc_static_library("desktop_capture_generic") {
     }
   }
 
-  if (rtc_use_x11) {
+  if (rtc_use_x11_extensions) {
     sources += [
       "linux/mouse_cursor_monitor_x11.cc",
       "linux/mouse_cursor_monitor_x11.h",
@@ -397,8 +396,17 @@ rtc_static_library("desktop_capture_generic") {
       "linux/x_error_trap.h",
       "linux/x_server_pixel_buffer.cc",
       "linux/x_server_pixel_buffer.h",
+      "linux/x_window_property.cc",
+      "linux/x_window_property.h",
     ]
-    configs += [ "//build/config/linux:x11" ]
+    libs = [
+      "X11",
+      "Xcomposite",
+      "Xdamage",
+      "Xext",
+      "Xfixes",
+      "Xrender",
+    ]
 
     if (build_with_mozilla) {
       sources += [
@@ -411,7 +419,7 @@ rtc_static_library("desktop_capture_generic") {
     }
   }
 
-  if (!is_win && !is_mac && !rtc_use_x11 && !rtc_use_pipewire) {
+  if (!is_win && !is_mac && !rtc_use_x11_extensions && !rtc_use_pipewire) {
     sources += [
       "mouse_cursor_monitor_null.cc",
       "screen_capturer_null.cc",
@@ -428,10 +436,11 @@ rtc_static_library("desktop_capture_generic") {
 
   deps = [
     ":primitives",
+    "../../api:function_view",
     "../../api:refcountedbase",
     "../../api:scoped_refptr",
+    "../../rtc_base",  # TODO(kjellander): Cleanup in bugs.webrtc.org/3806.
     "../../rtc_base:checks",
-    "../../rtc_base:rtc_base",  # TODO(kjellander): Cleanup in bugs.webrtc.org/3806.
     "../../rtc_base/synchronization:rw_lock_wrapper",
     "../../rtc_base/system:arch",
     "../../rtc_base/system:rtc_export",

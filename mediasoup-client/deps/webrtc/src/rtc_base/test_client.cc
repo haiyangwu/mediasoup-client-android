@@ -11,9 +11,10 @@
 #include "rtc_base/test_client.h"
 
 #include <string.h>
+
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"
@@ -28,7 +29,7 @@ TestClient::TestClient(std::unique_ptr<AsyncPacketSocket> socket)
     : TestClient(std::move(socket), nullptr) {}
 
 TestClient::TestClient(std::unique_ptr<AsyncPacketSocket> socket,
-                       FakeClock* fake_clock)
+                       ThreadProcessingFakeClock* fake_clock)
     : fake_clock_(fake_clock),
       socket_(std::move(socket)),
       prev_packet_timestamp_(-1) {
@@ -150,7 +151,7 @@ void TestClient::OnPacket(AsyncPacketSocket* socket,
                           const int64_t& packet_time_us) {
   CritScope cs(&crit_);
   packets_.push_back(
-      absl::make_unique<Packet>(remote_addr, buf, size, packet_time_us));
+      std::make_unique<Packet>(remote_addr, buf, size, packet_time_us));
 }
 
 void TestClient::OnReadyToSend(AsyncPacketSocket* socket) {

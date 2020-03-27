@@ -31,15 +31,15 @@ extern const char CN_OTHER[];
 // GN stands for group name
 extern const char GROUP_TYPE_BUNDLE[];
 
-extern const int ICE_UFRAG_LENGTH;
+RTC_EXPORT extern const int ICE_UFRAG_LENGTH;
 RTC_EXPORT extern const int ICE_PWD_LENGTH;
 extern const size_t ICE_UFRAG_MIN_LENGTH;
 extern const size_t ICE_PWD_MIN_LENGTH;
 extern const size_t ICE_UFRAG_MAX_LENGTH;
 extern const size_t ICE_PWD_MAX_LENGTH;
 
-extern const int ICE_CANDIDATE_COMPONENT_RTP;
-extern const int ICE_CANDIDATE_COMPONENT_RTCP;
+RTC_EXPORT extern const int ICE_CANDIDATE_COMPONENT_RTP;
+RTC_EXPORT extern const int ICE_CANDIDATE_COMPONENT_RTCP;
 extern const int ICE_CANDIDATE_COMPONENT_DEFAULT;
 
 // RFC 4145, SDP setup attribute values.
@@ -47,6 +47,9 @@ extern const char CONNECTIONROLE_ACTIVE_STR[];
 extern const char CONNECTIONROLE_PASSIVE_STR[];
 extern const char CONNECTIONROLE_ACTPASS_STR[];
 extern const char CONNECTIONROLE_HOLDCONN_STR[];
+
+// RFC 6762, the .local pseudo-top-level domain used for mDNS names.
+extern const char LOCAL_TLD[];
 
 // Constants for time intervals are in milliseconds unless otherwise stated.
 //

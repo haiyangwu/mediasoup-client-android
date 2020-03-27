@@ -11,7 +11,7 @@
 #include "modules/video_coding/decoding_state.h"
 
 #include "common_video/h264/h264_common.h"
-#include "modules/include/module_common_types.h"
+#include "modules/include/module_common_types_public.h"
 #include "modules/video_coding/frame_buffer.h"
 #include "modules/video_coding/jitter_buffer_common.h"
 #include "modules/video_coding/packet.h"
@@ -100,7 +100,7 @@ void VCMDecodingState::SetState(const VCMFrameBuffer* frame) {
     uint16_t frame_index = picture_id_ % kFrameDecodedLength;
     if (in_initial_state_) {
       frame_decoded_cleared_to_ = frame_index;
-    } else if (frame->FrameType() == kVideoFrameKey) {
+    } else if (frame->FrameType() == VideoFrameType::kVideoFrameKey) {
       memset(frame_decoded_, 0, sizeof(frame_decoded_));
       frame_decoded_cleared_to_ = frame_index;
     } else {
@@ -176,7 +176,8 @@ void VCMDecodingState::UpdateSyncState(const VCMFrameBuffer* frame) {
   if (frame->TemporalId() == kNoTemporalIdx ||
       frame->Tl0PicId() == kNoTl0PicIdx) {
     full_sync_ = true;
-  } else if (frame->FrameType() == kVideoFrameKey || frame->LayerSync()) {
+  } else if (frame->FrameType() == VideoFrameType::kVideoFrameKey ||
+             frame->LayerSync()) {
     full_sync_ = true;
   } else if (full_sync_) {
     // Verify that we are still in sync.
@@ -207,7 +208,7 @@ bool VCMDecodingState::ContinuousFrame(const VCMFrameBuffer* frame) const {
   // A key frame is always considered continuous as it doesn't refer to any
   // frames and therefore won't introduce any errors even if prior frames are
   // missing.
-  if (frame->FrameType() == kVideoFrameKey &&
+  if (frame->FrameType() == VideoFrameType::kVideoFrameKey &&
       HaveSpsAndPps(frame->GetNaluInfos())) {
     return true;
   }

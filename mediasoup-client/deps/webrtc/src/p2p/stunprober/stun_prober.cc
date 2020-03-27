@@ -8,15 +8,16 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/stunprober/stun_prober.h"
+
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <utility>
 
-#include "p2p/base/packet_socket_factory.h"
+#include "api/packet_socket_factory.h"
 #include "p2p/base/stun.h"
-#include "p2p/stunprober/stun_prober.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/async_resolver_interface.h"
 #include "rtc_base/bind.h"
@@ -133,7 +134,7 @@ StunProber::Requester::~Requester() {
 }
 
 void StunProber::Requester::SendStunRequest() {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   requests_.push_back(new Request());
   Request& request = *(requests_.back());
   cricket::StunMessage message;
@@ -205,7 +206,7 @@ void StunProber::Requester::OnStunResponseReceived(
     size_t size,
     const rtc::SocketAddress& addr,
     const int64_t& /* packet_time_us */) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   RTC_DCHECK(socket_);
   Request* request = GetRequestByAddress(addr.ipaddr());
   if (!request) {
@@ -220,7 +221,7 @@ void StunProber::Requester::OnStunResponseReceived(
 
 StunProber::Requester::Request* StunProber::Requester::GetRequestByAddress(
     const rtc::IPAddress& ipaddr) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   for (auto* request : requests_) {
     if (request->server_addr == ipaddr) {
       return request;
@@ -290,7 +291,7 @@ bool StunProber::Prepare(const std::vector<rtc::SocketAddress>& servers,
                          int num_request_per_ip,
                          int timeout_ms,
                          StunProber::Observer* observer) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   interval_ms_ = interval_ms;
   shared_socket_mode_ = shared_socket_mode;
 
@@ -347,7 +348,7 @@ void StunProber::OnSocketReady(rtc::AsyncPacketSocket* socket,
 }
 
 void StunProber::OnServerResolved(rtc::AsyncResolverInterface* resolver) {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
 
   if (resolver->GetError() == 0) {
     rtc::SocketAddress addr(resolver->address().ipaddr(),
@@ -404,7 +405,7 @@ void StunProber::CreateSockets() {
 }
 
 StunProber::Requester* StunProber::CreateRequester() {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!sockets_.size()) {
     return nullptr;
   }
@@ -452,7 +453,7 @@ int StunProber::get_wake_up_interval_ms() {
 }
 
 void StunProber::MaybeScheduleStunRequests() {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   int64_t now = rtc::TimeMillis();
 
   if (Done()) {

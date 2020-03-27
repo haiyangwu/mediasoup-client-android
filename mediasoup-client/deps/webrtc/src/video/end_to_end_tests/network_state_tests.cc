@@ -8,8 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "api/test/simulated_network.h"
+#include "api/video_codecs/video_encoder.h"
 #include "call/fake_network_pipe.h"
 #include "call/simulated_network.h"
 #include "system_wrappers/include/sleep.h"
@@ -117,11 +119,11 @@ void NetworkStateEndToEndTest::VerifyNewVideoReceiveStreamsRespectNetworkState(
                         transport]() {
     CreateCalls();
     receiver_call_->SignalChannelNetworkState(network_to_bring_up, kNetworkUp);
-    sender_transport = absl::make_unique<test::DirectTransport>(
+    sender_transport = std::make_unique<test::DirectTransport>(
         &task_queue_,
-        absl::make_unique<FakeNetworkPipe>(Clock::GetRealTimeClock(),
-                                           absl::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
+        std::make_unique<FakeNetworkPipe>(
+            Clock::GetRealTimeClock(),
+            std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig())),
         sender_call_.get(), payload_type_map_);
     sender_transport->SetReceiver(receiver_call_->Receiver());
     CreateSendConfig(1, 0, 0, sender_transport.get());
@@ -155,7 +157,7 @@ TEST_F(NetworkStateEndToEndTest, RespectsNetworkState) {
   class NetworkStateTest : public test::EndToEndTest, public test::FakeEncoder {
    public:
     explicit NetworkStateTest(
-        test::SingleThreadedTaskQueueForTesting* task_queue)
+        test::DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue)
         : EndToEndTest(kDefaultTimeoutMs),
           FakeEncoder(Clock::GetRealTimeClock()),
           task_queue_(task_queue),
@@ -268,8 +270,7 @@ TEST_F(NetworkStateEndToEndTest, RespectsNetworkState) {
     }
 
     int32_t Encode(const VideoFrame& input_image,
-                   const CodecSpecificInfo* codec_specific_info,
-                   const std::vector<FrameType>* frame_types) override {
+                   const std::vector<VideoFrameType>* frame_types) override {
       {
         rtc::CritScope lock(&test_crit_);
         if (sender_state_ == kNetworkDown) {
@@ -282,8 +283,7 @@ TEST_F(NetworkStateEndToEndTest, RespectsNetworkState) {
           encoded_frames_.Set();
         }
       }
-      return test::FakeEncoder::Encode(input_image, codec_specific_info,
-                                       frame_types);
+      return test::FakeEncoder::Encode(input_image, frame_types);
     }
 
    private:
@@ -334,7 +334,7 @@ TEST_F(NetworkStateEndToEndTest, RespectsNetworkState) {
       }
     }
 
-    test::SingleThreadedTaskQueueForTesting* const task_queue_;
+    test::DEPRECATED_SingleThreadedTaskQueueForTesting* const task_queue_;
     rtc::CriticalSection test_crit_;
     rtc::Event encoded_frames_;
     rtc::Event packet_event_;
@@ -358,17 +358,14 @@ TEST_F(NetworkStateEndToEndTest, NewVideoSendStreamsRespectVideoNetworkDown) {
     UnusedEncoder() : FakeEncoder(Clock::GetRealTimeClock()) {}
 
     int32_t InitEncode(const VideoCodec* config,
-                       int32_t number_of_cores,
-                       size_t max_payload_size) override {
+                       const Settings& settings) override {
       EXPECT_GT(config->startBitrate, 0u);
       return 0;
     }
     int32_t Encode(const VideoFrame& input_image,
-                   const CodecSpecificInfo* codec_specific_info,
-                   const std::vector<FrameType>* frame_types) override {
+                   const std::vector<VideoFrameType>* frame_types) override {
       ADD_FAILURE() << "Unexpected frame encode.";
-      return test::FakeEncoder::Encode(input_image, codec_specific_info,
-                                       frame_types);
+      return test::FakeEncoder::Encode(input_image, frame_types);
     }
   };
 
@@ -389,11 +386,9 @@ TEST_F(NetworkStateEndToEndTest, NewVideoSendStreamsIgnoreAudioNetworkDown) {
       }
     }
     int32_t Encode(const VideoFrame& input_image,
-                   const CodecSpecificInfo* codec_specific_info,
-                   const std::vector<FrameType>* frame_types) override {
+                   const std::vector<VideoFrameType>* frame_types) override {
       encoded_frame_ = true;
-      return test::FakeEncoder::Encode(input_image, codec_specific_info,
-                                       frame_types);
+      return test::FakeEncoder::Encode(input_image, frame_types);
     }
 
    private:

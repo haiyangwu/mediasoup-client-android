@@ -13,10 +13,12 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "api/fec_controller_override.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_bitrate_allocation.h"
 #include "api/video/video_frame.h"
@@ -26,7 +28,6 @@
 #include "api/video_codecs/video_decoder_factory.h"
 #include "api/video_codecs/video_encoder.h"
 #include "api/video_codecs/video_encoder_factory.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "rtc_base/critical_section.h"
 #include "rtc_base/event.h"
@@ -44,10 +45,7 @@ class FakeWebRtcVideoDecoder : public webrtc::VideoDecoder {
   ~FakeWebRtcVideoDecoder();
 
   int32_t InitDecode(const webrtc::VideoCodec*, int32_t) override;
-  int32_t Decode(const webrtc::EncodedImage&,
-                 bool,
-                 const webrtc::CodecSpecificInfo*,
-                 int64_t) override;
+  int32_t Decode(const webrtc::EncodedImage&, bool, int64_t) override;
   int32_t RegisterDecodeCompleteCallback(
       webrtc::DecodedImageCallback*) override;
   int32_t Release() override;
@@ -85,17 +83,17 @@ class FakeWebRtcVideoEncoder : public webrtc::VideoEncoder {
   explicit FakeWebRtcVideoEncoder(FakeWebRtcVideoEncoderFactory* factory);
   ~FakeWebRtcVideoEncoder();
 
+  void SetFecControllerOverride(
+      webrtc::FecControllerOverride* fec_controller_override) override;
   int32_t InitEncode(const webrtc::VideoCodec* codecSettings,
-                     int32_t numberOfCores,
-                     size_t maxPayloadSize) override;
-  int32_t Encode(const webrtc::VideoFrame& inputImage,
-                 const webrtc::CodecSpecificInfo* codecSpecificInfo,
-                 const std::vector<webrtc::FrameType>* frame_types) override;
+                     const VideoEncoder::Settings& settings) override;
+  int32_t Encode(
+      const webrtc::VideoFrame& inputImage,
+      const std::vector<webrtc::VideoFrameType>* frame_types) override;
   int32_t RegisterEncodeCompleteCallback(
       webrtc::EncodedImageCallback* callback) override;
   int32_t Release() override;
-  int32_t SetRateAllocation(const webrtc::VideoBitrateAllocation& allocation,
-                            uint32_t framerate) override;
+  void SetRates(const RateControlParameters& parameters) override;
   webrtc::VideoEncoder::EncoderInfo GetEncoderInfo() const override;
 
   bool WaitForInitEncode();

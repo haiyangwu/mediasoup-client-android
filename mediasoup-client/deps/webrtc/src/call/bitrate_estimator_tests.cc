@@ -12,7 +12,6 @@
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "call/call.h"
 #include "call/fake_network_pipe.h"
 #include "call/simulated_network.h"
@@ -66,7 +65,7 @@ class LogObserver {
         num_popped++;
         EXPECT_TRUE(a.find(b) != std::string::npos) << a << " != " << b;
       }
-      if (expected_log_lines_.size() <= 0) {
+      if (expected_log_lines_.empty()) {
         if (num_popped > 0) {
           done_.Set();
         }
@@ -108,15 +107,15 @@ class BitrateEstimatorTest : public test::CallTest {
 
       send_transport_.reset(new test::DirectTransport(
           &task_queue_,
-          absl::make_unique<FakeNetworkPipe>(
-              Clock::GetRealTimeClock(), absl::make_unique<SimulatedNetwork>(
+          std::make_unique<FakeNetworkPipe>(
+              Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
                                              BuiltInNetworkBehaviorConfig())),
           sender_call_.get(), payload_type_map_));
       send_transport_->SetReceiver(receiver_call_->Receiver());
       receive_transport_.reset(new test::DirectTransport(
           &task_queue_,
-          absl::make_unique<FakeNetworkPipe>(
-              Clock::GetRealTimeClock(), absl::make_unique<SimulatedNetwork>(
+          std::make_unique<FakeNetworkPipe>(
+              Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
                                              BuiltInNetworkBehaviorConfig())),
           receiver_call_.get(), payload_type_map_));
       receive_transport_->SetReceiver(sender_call_->Receiver());
@@ -138,7 +137,6 @@ class BitrateEstimatorTest : public test::CallTest {
       // receive_config_.decoders will be set by every stream separately.
       receive_config_.rtp.remote_ssrc = GetVideoSendConfig()->rtp.ssrcs[0];
       receive_config_.rtp.local_ssrc = kReceiverLocalVideoSsrc;
-      receive_config_.rtp.remb = true;
       receive_config_.rtp.extensions.push_back(
           RtpExtension(RtpExtension::kTimestampOffsetUri, kTOFExtensionId));
       receive_config_.rtp.extensions.push_back(
@@ -172,15 +170,19 @@ class BitrateEstimatorTest : public test::CallTest {
           send_stream_(nullptr),
           frame_generator_capturer_(),
           decoder_factory_(
-              []() { return absl::make_unique<test::FakeDecoder>(); }) {
+              []() { return std::make_unique<test::FakeDecoder>(); }) {
       test_->GetVideoSendConfig()->rtp.ssrcs[0]++;
       send_stream_ = test_->sender_call_->CreateVideoSendStream(
           test_->GetVideoSendConfig()->Copy(),
           test_->GetVideoEncoderConfig()->Copy());
       RTC_DCHECK_EQ(1, test_->GetVideoEncoderConfig()->number_of_streams);
-      frame_generator_capturer_.reset(test::FrameGeneratorCapturer::Create(
-          kDefaultWidth, kDefaultHeight, absl::nullopt, absl::nullopt,
-          kDefaultFramerate, Clock::GetRealTimeClock()));
+      frame_generator_capturer_ =
+          std::make_unique<test::FrameGeneratorCapturer>(
+              test->clock_,
+              test::FrameGenerator::CreateSquareGenerator(
+                  kDefaultWidth, kDefaultHeight, absl::nullopt, absl::nullopt),
+              kDefaultFramerate, *test->task_queue_factory_);
+      frame_generator_capturer_->Init();
       send_stream_->SetSource(frame_generator_capturer_.get(),
                               DegradationPreference::MAINTAIN_FRAMERATE);
       send_stream_->Start();

@@ -15,17 +15,20 @@
 #define API_JSEP_ICE_CANDIDATE_H_
 
 #include <stddef.h>
+
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "api/candidate.h"
 #include "api/jsep.h"
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
 // Implementation of IceCandidateInterface.
-class JsepIceCandidate : public IceCandidateInterface {
+class RTC_EXPORT JsepIceCandidate : public IceCandidateInterface {
  public:
   JsepIceCandidate(const std::string& sdp_mid, int sdp_mline_index);
   JsepIceCandidate(const std::string& sdp_mid,
@@ -61,7 +64,6 @@ class JsepCandidateCollection : public IceCandidateCollection {
   // Move constructor is defined so that a vector of JsepCandidateCollections
   // can be resized.
   JsepCandidateCollection(JsepCandidateCollection&& o);
-  ~JsepCandidateCollection() override;
   size_t count() const override;
   bool HasCandidate(const IceCandidateInterface* candidate) const override;
   // Adds and takes ownership of the JsepIceCandidate.
@@ -75,7 +77,7 @@ class JsepCandidateCollection : public IceCandidateCollection {
   size_t remove(const cricket::Candidate& candidate);
 
  private:
-  std::vector<JsepIceCandidate*> candidates_;
+  std::vector<std::unique_ptr<JsepIceCandidate>> candidates_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(JsepCandidateCollection);
 };

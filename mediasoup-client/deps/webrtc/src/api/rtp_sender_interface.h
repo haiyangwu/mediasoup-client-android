@@ -27,10 +27,11 @@
 #include "api/rtp_parameters.h"
 #include "api/scoped_refptr.h"
 #include "rtc_base/ref_count.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
-class RtpSenderInterface : public rtc::RefCountInterface {
+class RTC_EXPORT RtpSenderInterface : public rtc::RefCountInterface {
  public:
   // Returns true if successful in setting the track.
   // Fails if an audio track is set on a video RtpSender, or vice-versa.
@@ -60,6 +61,11 @@ class RtpSenderInterface : public rtc::RefCountInterface {
   // These are signalled in the SDP so that the remote side can associate
   // tracks.
   virtual std::vector<std::string> stream_ids() const = 0;
+
+  // Sets the IDs of the media streams associated with this sender's track.
+  // These are signalled in the SDP so that the remote side can associate
+  // tracks.
+  virtual void SetStreams(const std::vector<std::string>& stream_ids) {}
 
   // Returns the list of encoding parameters that will be applied when the SDP
   // local description is set. These initial encoding parameters can be set by
@@ -112,6 +118,7 @@ PROXY_METHOD1(void,
               rtc::scoped_refptr<FrameEncryptorInterface>)
 PROXY_CONSTMETHOD0(rtc::scoped_refptr<FrameEncryptorInterface>,
                    GetFrameEncryptor)
+PROXY_METHOD1(void, SetStreams, const std::vector<std::string>&)
 END_PROXY_MAP()
 
 }  // namespace webrtc

@@ -74,7 +74,8 @@ void FuzzAudioProcessing(test::FuzzDataHelper* fuzz_data,
   std::array<float, 480> float_frame1;
   std::array<float, 480> float_frame2;
   std::array<float* const, 2> float_frame_ptrs = {
-      &float_frame1[0], &float_frame2[0],
+      &float_frame1[0],
+      &float_frame2[0],
   };
   float* const* ptr_to_float_frames = &float_frame_ptrs[0];
 
@@ -132,7 +133,6 @@ void FuzzAudioProcessing(test::FuzzDataHelper* fuzz_data,
 
     // Cover stats gathering code paths.
     static_cast<void>(apm->GetStatistics(true /*has_remote_tracks*/));
-    static_cast<void>(apm->UpdateHistogramsOnCallEnd());
 
     RTC_DCHECK_NE(apm_return_code, AudioProcessing::kBadDataLengthError);
   }

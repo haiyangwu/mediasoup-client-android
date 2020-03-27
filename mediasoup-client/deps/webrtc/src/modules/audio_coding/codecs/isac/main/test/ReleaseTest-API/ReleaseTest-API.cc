@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
 #include <iostream>
 
 /* include API */
@@ -90,7 +91,6 @@ int main(int argc, char* argv[]) {
   size_t maxStreamLen60 = 0;
   short sampFreqKHz = 32;
   short samplesIn10Ms;
-  short useAssign = 0;
   // FILE logFile;
   bool doTransCoding = false;
   int32_t rateTransCoding = 0;
@@ -185,7 +185,6 @@ int main(int argc, char* argv[]) {
   /* Loop over all command line arguments */
   CodingMode = 0;
   testNum = 0;
-  useAssign = 0;
   // logFile = NULL;
   char transCodingFileName[500];
   int16_t totFileLoop = 0;
@@ -207,11 +206,6 @@ int main(int argc, char* argv[]) {
       rateTransCoding = atoi(argv[i]);
       i++;
       strcpy(transCodingFileName, argv[i]);
-    }
-
-    /*Should we use assign API*/
-    if (!strcmp("-assign", argv[i])) {
-      useAssign = 1;
     }
 
     /* Set Sampling Rate */
@@ -451,22 +445,10 @@ int main(int argc, char* argv[]) {
 
   /* Initialize the ISAC and BN structs */
   if (testNum != 8) {
-    if (!useAssign) {
-      err = WebRtcIsac_Create(&ISAC_main_inst);
-      WebRtcIsac_SetEncSampRate(ISAC_main_inst, sampFreqKHz * 1000);
-      WebRtcIsac_SetDecSampRate(ISAC_main_inst,
-                                sampFreqKHz >= 32 ? 32000 : 16000);
-    } else {
-      /* Test the Assign functions */
-      int sss;
-      void* ppp;
-      err = WebRtcIsac_AssignSize(&sss);
-      ppp = malloc(sss);
-      err = WebRtcIsac_Assign(&ISAC_main_inst, ppp);
-      WebRtcIsac_SetEncSampRate(ISAC_main_inst, sampFreqKHz * 1000);
-      WebRtcIsac_SetDecSampRate(ISAC_main_inst,
-                                sampFreqKHz >= 32 ? 32000 : 16000);
-    }
+    err = WebRtcIsac_Create(&ISAC_main_inst);
+    WebRtcIsac_SetEncSampRate(ISAC_main_inst, sampFreqKHz * 1000);
+    WebRtcIsac_SetDecSampRate(ISAC_main_inst,
+                              sampFreqKHz >= 32 ? 32000 : 16000);
     /* Error check */
     if (err < 0) {
       printf("\n\n Error in create.\n\n");
@@ -905,7 +887,7 @@ int main(int argc, char* argv[]) {
 #endif
   }
   printf("\n");
-  printf("total bits               = %" PRIuS " bits\n", totalbits);
+  printf("total bits               = %" RTC_PRIuS " bits\n", totalbits);
   printf("measured average bitrate = %0.3f kbits/s\n",
          (double)totalbits * (sampFreqKHz) / totalsmpls);
   if (doTransCoding) {
@@ -924,11 +906,13 @@ int main(int argc, char* argv[]) {
          (100 * runtime / length_file));
 
   if (maxStreamLen30 != 0) {
-    printf("Maximum payload size 30ms Frames %" PRIuS " bytes (%0.3f kbps)\n",
+    printf("Maximum payload size 30ms Frames %" RTC_PRIuS
+           " bytes (%0.3f kbps)\n",
            maxStreamLen30, maxStreamLen30 * 8 / 30.);
   }
   if (maxStreamLen60 != 0) {
-    printf("Maximum payload size 60ms Frames %" PRIuS " bytes (%0.3f kbps)\n",
+    printf("Maximum payload size 60ms Frames %" RTC_PRIuS
+           " bytes (%0.3f kbps)\n",
            maxStreamLen60, maxStreamLen60 * 8 / 60.);
   }
   // fprintf(stderr, "\n");
@@ -937,11 +921,11 @@ int main(int argc, char* argv[]) {
   fprintf(stderr, "   %0.1f kbps",
           (double)totalbits * (sampFreqKHz) / totalsmpls);
   if (maxStreamLen30 != 0) {
-    fprintf(stderr, "   plmax-30ms %" PRIuS " bytes (%0.0f kbps)",
+    fprintf(stderr, "   plmax-30ms %" RTC_PRIuS " bytes (%0.0f kbps)",
             maxStreamLen30, maxStreamLen30 * 8 / 30.);
   }
   if (maxStreamLen60 != 0) {
-    fprintf(stderr, "   plmax-60ms %" PRIuS " bytes (%0.0f kbps)",
+    fprintf(stderr, "   plmax-60ms %" RTC_PRIuS " bytes (%0.0f kbps)",
             maxStreamLen60, maxStreamLen60 * 8 / 60.);
   }
   if (doTransCoding) {

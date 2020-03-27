@@ -8,10 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <algorithm>
 #include <list>
 #include <memory>
 
+#include "absl/algorithm/container.h"
 #include "modules/rtp_rtcp/source/byte_io.h"
 #include "modules/rtp_rtcp/source/fec_test_helper.h"
 #include "modules/rtp_rtcp/source/flexfec_header_reader_writer.h"
@@ -120,8 +120,7 @@ void RtpFecTest<ForwardErrorCorrectionType>::ReceivedPackets(
       std::unique_ptr<ForwardErrorCorrection::ReceivedPacket> received_packet(
           new ForwardErrorCorrection::ReceivedPacket());
       received_packet->pkt = new ForwardErrorCorrection::Packet();
-      received_packet->pkt->length = packet->length;
-      memcpy(received_packet->pkt->data, packet->data, packet->length);
+      received_packet->pkt->data = packet->data;
       received_packet->is_fec = is_fec;
       if (!is_fec) {
         received_packet->ssrc = kMediaSsrc;
@@ -148,28 +147,23 @@ void RtpFecTest<ForwardErrorCorrectionType>::ReceivedPackets(
 
 template <typename ForwardErrorCorrectionType>
 bool RtpFecTest<ForwardErrorCorrectionType>::IsRecoveryComplete() {
-  // We must have equally many recovered packets as original packets.
-  if (recovered_packets_.size() != media_packets_.size()) {
-    return false;
-  }
-
-  // All recovered packets must be identical to the corresponding
-  // original packets.
-  auto cmp =
+  // We must have equally many recovered packets as original packets and all
+  // recovered packets must be identical to the corresponding original packets.
+  return absl::c_equal(
+      media_packets_, recovered_packets_,
       [](const std::unique_ptr<ForwardErrorCorrection::Packet>& media_packet,
          const std::unique_ptr<ForwardErrorCorrection::RecoveredPacket>&
              recovered_packet) {
-        if (media_packet->length != recovered_packet->pkt->length) {
+        if (media_packet->data.size() != recovered_packet->pkt->data.size()) {
           return false;
         }
-        if (memcmp(media_packet->data, recovered_packet->pkt->data,
-                   media_packet->length) != 0) {
+        if (memcmp(media_packet->data.cdata(),
+                   recovered_packet->pkt->data.cdata(),
+                   media_packet->data.size()) != 0) {
           return false;
         }
         return true;
-      };
-  return std::equal(media_packets_.cbegin(), media_packets_.cend(),
-                    recovered_packets_.cbegin(), cmp);
+      });
 }
 
 // Define gTest typed test to loop over both ULPFEC and FlexFEC.

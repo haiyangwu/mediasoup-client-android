@@ -26,7 +26,7 @@
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"
-#include "sdk/android/generated_video_jni/jni/MediaCodecVideoDecoder_jni.h"
+#include "sdk/android/generated_video_jni/MediaCodecVideoDecoder_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/android_media_codec_common.h"
 #include "sdk/android/src/jni/video_frame.h"
@@ -65,7 +65,6 @@ class MediaCodecVideoDecoder : public VideoDecoder, public rtc::MessageHandler {
 
   int32_t Decode(const EncodedImage& inputImage,
                  bool missingFrames,
-                 const CodecSpecificInfo* codecSpecificInfo = NULL,
                  int64_t renderTimeMs = -1) override;
 
   int32_t RegisterDecodeCompleteCallback(
@@ -350,7 +349,6 @@ int32_t MediaCodecVideoDecoder::ProcessHWErrorOnCodecThread() {
 int32_t MediaCodecVideoDecoder::Decode(
     const EncodedImage& inputImage,
     bool missingFrames,
-    const CodecSpecificInfo* codecSpecificInfo,
     int64_t renderTimeMs) {
   if (sw_fallback_required_) {
     ALOGE << "Decode() - fallback to SW codec";
@@ -398,7 +396,7 @@ int32_t MediaCodecVideoDecoder::Decode(
 
   // Always start with a complete key frame.
   if (key_frame_required_) {
-    if (inputImage._frameType != kVideoFrameKey) {
+    if (inputImage._frameType != VideoFrameType::kVideoFrameKey) {
       ALOGE << "Decode() - key frame is required";
       return WEBRTC_VIDEO_CODEC_ERROR;
     }
@@ -487,8 +485,8 @@ int32_t MediaCodecVideoDecoder::DecodeOnCodecThread(
 
   if (frames_decoded_ < frames_decoded_logged_) {
     ALOGD << "Decoder frame in # " << frames_received_
-          << ". Type: " << inputImage._frameType << ". Buffer # "
-          << j_input_buffer_index
+          << ". Type: " << static_cast<int>(inputImage._frameType)
+          << ". Buffer # " << j_input_buffer_index
           << ". TS: " << presentation_timestamp_us / 1000
           << ". Size: " << inputImage.size();
   }

@@ -14,7 +14,6 @@
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/video_codecs/video_decoder.h"
 #include "api/video_codecs/video_decoder_factory.h"
 
@@ -37,7 +36,7 @@ class VideoDecoderProxyFactory final : public VideoDecoderFactory {
 
   std::unique_ptr<VideoDecoder> CreateVideoDecoder(
       const SdpVideoFormat& format) override {
-    return absl::make_unique<DecoderProxy>(decoder_);
+    return std::make_unique<DecoderProxy>(decoder_);
   }
 
  private:
@@ -50,10 +49,8 @@ class VideoDecoderProxyFactory final : public VideoDecoderFactory {
    private:
     int32_t Decode(const EncodedImage& input_image,
                    bool missing_frames,
-                   const CodecSpecificInfo* codec_specific_info,
                    int64_t render_time_ms) override {
-      return decoder_->Decode(input_image, missing_frames, codec_specific_info,
-                              render_time_ms);
+      return decoder_->Decode(input_image, missing_frames, render_time_ms);
     }
     int32_t InitDecode(const VideoCodec* config,
                        int32_t number_of_cores) override {

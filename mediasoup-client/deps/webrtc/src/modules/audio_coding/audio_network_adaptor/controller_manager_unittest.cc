@@ -8,10 +8,11 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/audio_coding/audio_network_adaptor/controller_manager.h"
+
 #include <string>
 #include <utility>
 
-#include "modules/audio_coding/audio_network_adaptor/controller_manager.h"
 #include "modules/audio_coding/audio_network_adaptor/mock/mock_controller.h"
 #include "modules/audio_coding/audio_network_adaptor/mock/mock_debug_dump_writer.h"
 #include "rtc_base/fake_clock.h"
@@ -129,8 +130,7 @@ TEST(ControllerManagerTest, ControllersInDefaultOrderOnEmptyNetworkMetrics) {
 
 TEST(ControllerManagerTest, ControllersWithoutCharPointAtEndAndInDefaultOrder) {
   auto states = CreateControllerManager();
-  CheckControllersOrder(&states, 0,
-                        0.0,
+  CheckControllersOrder(&states, 0, 0.0,
                         {kNumControllers - 2, kNumControllers - 1, -1, -1});
 }
 
@@ -249,8 +249,10 @@ void AddFrameLengthControllerConfig(
       controller_config_ext->mutable_frame_length_controller();
   controller_config->set_fl_decreasing_packet_loss_fraction(0.05f);
   controller_config->set_fl_increasing_packet_loss_fraction(0.04f);
-  controller_config->set_fl_20ms_to_60ms_bandwidth_bps(72000);
-  controller_config->set_fl_60ms_to_20ms_bandwidth_bps(88000);
+  controller_config->set_fl_20ms_to_40ms_bandwidth_bps(80000);
+  controller_config->set_fl_40ms_to_20ms_bandwidth_bps(88000);
+  controller_config->set_fl_40ms_to_60ms_bandwidth_bps(72000);
+  controller_config->set_fl_60ms_to_40ms_bandwidth_bps(80000);
 
   auto scoring_point = controller_config_ext->mutable_scoring_point();
   scoring_point->set_uplink_bandwidth_bps(kChracteristicBandwithBps[1]);

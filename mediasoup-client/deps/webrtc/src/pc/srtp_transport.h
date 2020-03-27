@@ -12,6 +12,7 @@
 #define PC_SRTP_TRANSPORT_H_
 
 #include <stddef.h>
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -40,8 +41,8 @@ class SrtpTransport : public RtpTransport {
   virtual ~SrtpTransport() = default;
 
   // SrtpTransportInterface specific implementation.
-  RTCError SetSrtpSendKey(const cricket::CryptoParams& params) override;
-  RTCError SetSrtpReceiveKey(const cricket::CryptoParams& params) override;
+  virtual RTCError SetSrtpSendKey(const cricket::CryptoParams& params);
+  virtual RTCError SetSrtpReceiveKey(const cricket::CryptoParams& params);
 
   bool SendRtpPacket(rtc::CopyOnWriteBuffer* packet,
                      const rtc::PacketOptions& options,
@@ -116,9 +117,9 @@ class SrtpTransport : public RtpTransport {
   void ConnectToRtpTransport();
   void CreateSrtpSessions();
 
-  void OnRtpPacketReceived(rtc::CopyOnWriteBuffer* packet,
+  void OnRtpPacketReceived(rtc::CopyOnWriteBuffer packet,
                            int64_t packet_time_us) override;
-  void OnRtcpPacketReceived(rtc::CopyOnWriteBuffer* packet,
+  void OnRtcpPacketReceived(rtc::CopyOnWriteBuffer packet,
                             int64_t packet_time_us) override;
   void OnNetworkRouteChanged(
       absl::optional<rtc::NetworkRoute> network_route) override;

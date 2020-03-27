@@ -11,8 +11,6 @@
 #ifndef MODULES_VIDEO_CODING_VIDEO_CODING_IMPL_H_
 #define MODULES_VIDEO_CODING_VIDEO_CODING_IMPL_H_
 
-#include "modules/video_coding/include/video_coding.h"
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,11 +19,12 @@
 #include "modules/video_coding/decoder_database.h"
 #include "modules/video_coding/frame_buffer.h"
 #include "modules/video_coding/generic_decoder.h"
+#include "modules/video_coding/include/video_coding.h"
 #include "modules/video_coding/jitter_buffer.h"
 #include "modules/video_coding/receiver.h"
 #include "modules/video_coding/timing.h"
 #include "rtc_base/one_time_event.h"
-#include "rtc_base/sequenced_task_checker.h"
+#include "rtc_base/synchronization/sequence_checker.h"
 #include "rtc_base/thread_annotations.h"
 #include "rtc_base/thread_checker.h"
 #include "system_wrappers/include/clock.h"
@@ -57,10 +56,7 @@ class VCMProcessTimer {
 
 class VideoReceiver : public Module {
  public:
-  VideoReceiver(Clock* clock,
-                VCMTiming* timing,
-                NackSender* nack_sender = nullptr,
-                KeyFrameRequestSender* keyframe_request_sender = nullptr);
+  VideoReceiver(Clock* clock, VCMTiming* timing);
   ~VideoReceiver() override;
 
   int32_t RegisterReceiveCodec(const VideoCodec* receiveCodec,
@@ -70,44 +66,23 @@ class VideoReceiver : public Module {
   void RegisterExternalDecoder(VideoDecoder* externalDecoder,
                                uint8_t payloadType);
   int32_t RegisterReceiveCallback(VCMReceiveCallback* receiveCallback);
-  int32_t RegisterReceiveStatisticsCallback(
-      VCMReceiveStatisticsCallback* receiveStats);
   int32_t RegisterFrameTypeCallback(VCMFrameTypeCallback* frameTypeCallback);
   int32_t RegisterPacketRequestCallback(VCMPacketRequestCallback* callback);
 
   int32_t Decode(uint16_t maxWaitTimeMs);
 
-  int32_t Decode(const webrtc::VCMEncodedFrame* frame);
-
   int32_t IncomingPacket(const uint8_t* incomingPayload,
                          size_t payloadLength,
-                         const WebRtcRTPHeader& rtpInfo);
-  int32_t SetMinimumPlayoutDelay(uint32_t minPlayoutDelayMs);
-  int32_t SetRenderDelay(uint32_t timeMS);
-  int32_t Delay() const;
-
-  // DEPRECATED.
-  int SetReceiverRobustnessMode(
-      VideoCodingModule::ReceiverRobustness robustnessMode);
+                         const RTPHeader& rtp_header,
+                         const RTPVideoHeader& video_header);
 
   void SetNackSettings(size_t max_nack_list_size,
                        int max_packet_age_to_nack,
                        int max_incomplete_time_ms);
 
-  int32_t SetReceiveChannelParameters(int64_t rtt);
-  int32_t SetVideoProtection(VCMVideoProtection videoProtection, bool enable);
-
   int64_t TimeUntilNextProcess() override;
   void Process() override;
   void ProcessThreadAttached(ProcessThread* process_thread) override;
-
-  void TriggerDecoderShutdown();
-
-  // Notification methods that are used to check our internal state and validate
-  // threading assumptions. These are called by VideoReceiveStream.
-  // See |IsDecoderThreadRunning()| for more details.
-  void DecoderThreadStarting();
-  void DecoderThreadStopped();
 
  protected:
   int32_t Decode(const webrtc::VCMEncodedFrame& frame);
@@ -133,7 +108,6 @@ class VideoReceiver : public Module {
   // These callbacks are set on the construction thread before being attached
   // to the module thread or decoding started, so a lock is not required.
   VCMFrameTypeCallback* _frameTypeCallback;
-  VCMReceiveStatisticsCallback* _receiveStatsCallback;
   VCMPacketRequestCallback* _packetRequestCallback;
 
   // Used on both the module and decoder thread.
@@ -160,9 +134,6 @@ class VideoReceiver : public Module {
   ProcessThread* process_thread_ = nullptr;
   bool is_attached_to_process_thread_
       RTC_GUARDED_BY(construction_thread_checker_) = false;
-#if RTC_DCHECK_IS_ON
-  bool decoder_thread_is_running_ = false;
-#endif
 };
 
 }  // namespace vcm

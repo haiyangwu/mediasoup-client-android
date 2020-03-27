@@ -11,9 +11,9 @@
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <string.h>
+
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "api/scoped_refptr.h"
 #include "modules/desktop_capture/desktop_capture_types.h"
 #include "modules/desktop_capture/desktop_geometry.h"
@@ -171,13 +171,13 @@ void ScreenDrawerLinux::BringToFront() {
 
 // static
 std::unique_ptr<ScreenDrawerLock> ScreenDrawerLock::Create() {
-  return absl::make_unique<ScreenDrawerLockPosix>();
+  return std::make_unique<ScreenDrawerLockPosix>();
 }
 
 // static
 std::unique_ptr<ScreenDrawer> ScreenDrawer::Create() {
   if (SharedXDisplay::CreateDefault().get()) {
-    return absl::make_unique<ScreenDrawerLinux>();
+    return std::make_unique<ScreenDrawerLinux>();
   }
   return nullptr;
 }

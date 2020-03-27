@@ -11,6 +11,7 @@
 #include "pc/dtmf_sender.h"
 
 #include <stddef.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -114,7 +115,7 @@ class FakeDtmfProvider : public DtmfProviderInterface {
   sigslot::signal0<> SignalDestroyed;
 };
 
-class DtmfSenderTest : public testing::Test {
+class DtmfSenderTest : public ::testing::Test {
  protected:
   DtmfSenderTest()
       : observer_(new rtc::RefCountedObject<FakeDtmfObserver>()),

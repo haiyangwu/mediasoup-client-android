@@ -193,20 +193,23 @@ class FakeIceTransport : public IceTransportInternal {
 
   void RemoveAllRemoteCandidates() override { remote_candidates_.clear(); }
 
-  bool GetStats(ConnectionInfos* candidate_pair_stats_list,
-                CandidateStatsList* candidate_stats_list) override {
+  bool GetStats(IceTransportStats* ice_transport_stats) override {
     CandidateStats candidate_stats;
     ConnectionInfo candidate_pair_stats;
-    candidate_stats_list->clear();
-    candidate_stats_list->push_back(candidate_stats);
-    candidate_pair_stats_list->clear();
-    candidate_pair_stats_list->push_back(candidate_pair_stats);
+    ice_transport_stats->candidate_stats_list.clear();
+    ice_transport_stats->candidate_stats_list.push_back(candidate_stats);
+    ice_transport_stats->connection_infos.clear();
+    ice_transport_stats->connection_infos.push_back(candidate_pair_stats);
     return true;
   }
 
   absl::optional<int> GetRttEstimate() override { return absl::nullopt; }
 
   const Connection* selected_connection() const override { return nullptr; }
+  absl::optional<const CandidatePair> GetSelectedCandidatePair()
+      const override {
+    return absl::nullopt;
+  }
 
   // Fake PacketTransportInternal implementation.
   bool writable() const override { return writable_; }

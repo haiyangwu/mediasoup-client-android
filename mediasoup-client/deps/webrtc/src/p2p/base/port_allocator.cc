@@ -83,27 +83,6 @@ bool PortAllocatorSession::IsStopped() const {
   return false;
 }
 
-void PortAllocatorSession::GetCandidateStatsFromReadyPorts(
-    CandidateStatsList* candidate_stats_list) const {
-  auto ports = ReadyPorts();
-  for (auto* port : ports) {
-    auto candidates = port->Candidates();
-    for (const auto& candidate : candidates) {
-      CandidateStats candidate_stats(candidate);
-      port->GetStunStats(&candidate_stats.stun_stats);
-      bool mdns_obfuscation_enabled =
-          port->Network()->GetMdnsResponder() != nullptr;
-      if (mdns_obfuscation_enabled) {
-        bool use_hostname_address = candidate.type() == LOCAL_PORT_TYPE;
-        bool filter_related_address = candidate.type() == STUN_PORT_TYPE;
-        candidate_stats.candidate = candidate_stats.candidate.ToSanitizedCopy(
-            use_hostname_address, filter_related_address);
-      }
-      candidate_stats_list->push_back(std::move(candidate_stats));
-    }
-  }
-}
-
 uint32_t PortAllocatorSession::generation() {
   return generation_;
 }
@@ -121,11 +100,11 @@ PortAllocator::PortAllocator()
       allow_tcp_listen_(true),
       candidate_filter_(CF_ALL) {
   // The allocator will be attached to a thread in Initialize.
-  thread_checker_.DetachFromThread();
+  thread_checker_.Detach();
 }
 
 void PortAllocator::Initialize() {
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   initialized_ = true;
 }
 
@@ -137,6 +116,7 @@ void PortAllocator::set_restrict_ice_credentials_change(bool value) {
   restrict_ice_credentials_change_ = value;
 }
 
+// Deprecated
 bool PortAllocator::SetConfiguration(
     const ServerAddresses& stun_servers,
     const std::vector<RelayServerConfig>& turn_servers,
@@ -144,16 +124,30 @@ bool PortAllocator::SetConfiguration(
     bool prune_turn_ports,
     webrtc::TurnCustomizer* turn_customizer,
     const absl::optional<int>& stun_candidate_keepalive_interval) {
+  webrtc::PortPrunePolicy turn_port_prune_policy =
+      prune_turn_ports ? webrtc::PRUNE_BASED_ON_PRIORITY : webrtc::NO_PRUNE;
+  return SetConfiguration(stun_servers, turn_servers, candidate_pool_size,
+                          turn_port_prune_policy, turn_customizer,
+                          stun_candidate_keepalive_interval);
+}
+
+bool PortAllocator::SetConfiguration(
+    const ServerAddresses& stun_servers,
+    const std::vector<RelayServerConfig>& turn_servers,
+    int candidate_pool_size,
+    webrtc::PortPrunePolicy turn_port_prune_policy,
+    webrtc::TurnCustomizer* turn_customizer,
+    const absl::optional<int>& stun_candidate_keepalive_interval) {
   CheckRunOnValidThreadIfInitialized();
   // A positive candidate pool size would lead to the creation of a pooled
   // allocator session and starting getting ports, which we should only do on
   // the network thread.
-  RTC_DCHECK(candidate_pool_size == 0 || thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(candidate_pool_size == 0 || thread_checker_.IsCurrent());
   bool ice_servers_changed =
       (stun_servers != stun_servers_ || turn_servers != turn_servers_);
   stun_servers_ = stun_servers;
   turn_servers_ = turn_servers;
-  prune_turn_ports_ = prune_turn_ports;
+  turn_port_prune_policy_ = turn_port_prune_policy;
 
   if (candidate_pool_frozen_) {
     if (candidate_pool_size != candidate_pool_size_) {
@@ -290,6 +284,16 @@ void PortAllocator::DiscardCandidatePool() {
   pooled_sessions_.clear();
 }
 
+void PortAllocator::SetCandidateFilter(uint32_t filter) {
+  CheckRunOnValidThreadIfInitialized();
+  if (candidate_filter_ == filter) {
+    return;
+  }
+  uint32_t prev_filter = candidate_filter_;
+  candidate_filter_ = filter;
+  SignalCandidateFilterChanged(prev_filter, filter);
+}
+
 void PortAllocator::GetCandidateStatsFromPooledSessions(
     CandidateStatsList* candidate_stats_list) {
   CheckRunOnValidThreadAndInitialized();
@@ -306,6 +310,27 @@ std::vector<IceParameters> PortAllocator::GetPooledIceCredentials() {
         IceParameters(session->ice_ufrag(), session->ice_pwd(), false));
   }
   return list;
+}
+
+Candidate PortAllocator::SanitizeCandidate(const Candidate& c) const {
+  CheckRunOnValidThreadAndInitialized();
+  // For a local host candidate, we need to conceal its IP address candidate if
+  // the mDNS obfuscation is enabled.
+  bool use_hostname_address =
+      c.type() == LOCAL_PORT_TYPE && MdnsObfuscationEnabled();
+  // If adapter enumeration is disabled or host candidates are disabled,
+  // clear the raddr of STUN candidates to avoid local address leakage.
+  bool filter_stun_related_address =
+      ((flags() & PORTALLOCATOR_DISABLE_ADAPTER_ENUMERATION) &&
+       (flags() & PORTALLOCATOR_DISABLE_DEFAULT_LOCAL_CANDIDATE)) ||
+      !(candidate_filter_ & CF_HOST) || MdnsObfuscationEnabled();
+  // If the candidate filter doesn't allow reflexive addresses, empty TURN raddr
+  // to avoid reflexive address leakage.
+  bool filter_turn_related_address = !(candidate_filter_ & CF_REFLEXIVE);
+  bool filter_related_address =
+      ((c.type() == STUN_PORT_TYPE && filter_stun_related_address) ||
+       (c.type() == RELAY_PORT_TYPE && filter_turn_related_address));
+  return c.ToSanitizedCopy(use_hostname_address, filter_related_address);
 }
 
 }  // namespace cricket

@@ -10,6 +10,7 @@
 
 #include "examples/objcnativeapi/objc/objc_call_client.h"
 
+#include <memory>
 #include <utility>
 
 #import "sdk/objc/base/RTCVideoRenderer.h"
@@ -17,12 +18,11 @@
 #import "sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.h"
 #import "sdk/objc/helpers/RTCCameraPreviewView.h"
 
-#include "absl/memory/memory.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/peer_connection_interface.h"
-#include "api/video/builtin_video_bitrate_allocator_factory.h"
-#include "logging/rtc_event_log/rtc_event_log_factory.h"
+#include "api/rtc_event_log/rtc_event_log_factory.h"
+#include "api/task_queue/default_task_queue_factory.h"
 #include "media/engine/webrtc_media_engine.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "sdk/objc/native/api/video_capturer.h"
@@ -59,8 +59,8 @@ class SetLocalSessionDescriptionObserver : public webrtc::SetSessionDescriptionO
 }  // namespace
 
 ObjCCallClient::ObjCCallClient()
-    : call_started_(false), pc_observer_(absl::make_unique<PCObserver>(this)) {
-  thread_checker_.DetachFromThread();
+    : call_started_(false), pc_observer_(std::make_unique<PCObserver>(this)) {
+  thread_checker_.Detach();
   CreatePeerConnectionFactory();
 }
 
@@ -113,31 +113,26 @@ void ObjCCallClient::CreatePeerConnectionFactory() {
   signaling_thread_->SetName("signaling_thread", nullptr);
   RTC_CHECK(signaling_thread_->Start()) << "Failed to start thread";
 
-  std::unique_ptr<webrtc::VideoDecoderFactory> videoDecoderFactory =
-      webrtc::ObjCToNativeVideoDecoderFactory([[RTCDefaultVideoDecoderFactory alloc] init]);
-  std::unique_ptr<webrtc::VideoEncoderFactory> videoEncoderFactory =
+  webrtc::PeerConnectionFactoryDependencies dependencies;
+  dependencies.network_thread = network_thread_.get();
+  dependencies.worker_thread = worker_thread_.get();
+  dependencies.signaling_thread = signaling_thread_.get();
+  dependencies.task_queue_factory = webrtc::CreateDefaultTaskQueueFactory();
+  cricket::MediaEngineDependencies media_deps;
+  media_deps.task_queue_factory = dependencies.task_queue_factory.get();
+  media_deps.audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
+  media_deps.audio_decoder_factory = webrtc::CreateBuiltinAudioDecoderFactory();
+  media_deps.video_encoder_factory =
       webrtc::ObjCToNativeVideoEncoderFactory([[RTCDefaultVideoEncoderFactory alloc] init]);
-
-  std::unique_ptr<webrtc::VideoBitrateAllocatorFactory> videoBitrateAllocatorFactory =
-      webrtc::CreateBuiltinVideoBitrateAllocatorFactory();
-
-  std::unique_ptr<cricket::MediaEngineInterface> media_engine =
-      cricket::WebRtcMediaEngineFactory::Create(nullptr /* adm */,
-                                                webrtc::CreateBuiltinAudioEncoderFactory(),
-                                                webrtc::CreateBuiltinAudioDecoderFactory(),
-                                                std::move(videoEncoderFactory),
-                                                std::move(videoDecoderFactory),
-                                                std::move(videoBitrateAllocatorFactory),
-                                                nullptr /* audio_mixer */,
-                                                webrtc::AudioProcessingBuilder().Create());
-  RTC_LOG(LS_INFO) << "Media engine created: " << media_engine.get();
-
-  pcf_ = webrtc::CreateModularPeerConnectionFactory(network_thread_.get(),
-                                                    worker_thread_.get(),
-                                                    signaling_thread_.get(),
-                                                    std::move(media_engine),
-                                                    webrtc::CreateCallFactory(),
-                                                    webrtc::CreateRtcEventLogFactory());
+  media_deps.video_decoder_factory =
+      webrtc::ObjCToNativeVideoDecoderFactory([[RTCDefaultVideoDecoderFactory alloc] init]);
+  media_deps.audio_processing = webrtc::AudioProcessingBuilder().Create();
+  dependencies.media_engine = cricket::CreateMediaEngine(std::move(media_deps));
+  RTC_LOG(LS_INFO) << "Media engine created: " << dependencies.media_engine.get();
+  dependencies.call_factory = webrtc::CreateCallFactory();
+  dependencies.event_log_factory =
+      std::make_unique<webrtc::RtcEventLogFactory>(dependencies.task_queue_factory.get());
+  pcf_ = webrtc::CreateModularPeerConnectionFactory(std::move(dependencies));
   RTC_LOG(LS_INFO) << "PeerConnectionFactory created: " << pcf_;
 }
 
@@ -147,8 +142,8 @@ void ObjCCallClient::CreatePeerConnection() {
   config.sdp_semantics = webrtc::SdpSemantics::kUnifiedPlan;
   // DTLS SRTP has to be disabled for loopback to work.
   config.enable_dtls_srtp = false;
-  pc_ = pcf_->CreatePeerConnection(
-      config, nullptr /* port_allocator */, nullptr /* cert_generator */, pc_observer_.get());
+  webrtc::PeerConnectionDependencies pc_dependencies(pc_observer_.get());
+  pc_ = pcf_->CreatePeerConnection(config, std::move(pc_dependencies));
   RTC_LOG(LS_INFO) << "PeerConnection created: " << pc_;
 
   rtc::scoped_refptr<webrtc::VideoTrackInterface> local_video_track =

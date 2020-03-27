@@ -8,17 +8,21 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "rtc_base/critical_section.h"
+
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <set>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/atomic_ops.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/critical_section.h"
 #include "rtc_base/event.h"
 #include "rtc_base/location.h"
 #include "rtc_base/message_handler.h"
@@ -279,6 +283,13 @@ TEST(AtomicOpsTest, CompareAndSwap) {
   EXPECT_EQ(1, runner.shared_value());
 }
 
+TEST(GlobalLockTest, CanHaveStaticStorageDuration) {
+  static_assert(std::is_trivially_destructible<GlobalLock>::value, "");
+  ABSL_CONST_INIT static GlobalLock global_lock;
+  global_lock.Lock();
+  global_lock.Unlock();
+}
+
 TEST(GlobalLockTest, Basic) {
   // Create and start lots of threads.
   LockRunner<GlobalLock> runner;
@@ -359,11 +370,10 @@ class PerfTestThread {
   }
 
  private:
-  static bool ThreadFunc(void* param) {
+  static void ThreadFunc(void* param) {
     PerfTestThread* me = static_cast<PerfTestThread*>(param);
     for (int i = 0; i < me->repeats_; ++i)
       me->data_->AddToCounter(me->my_id_);
-    return false;
   }
 
   PlatformThread thread_;

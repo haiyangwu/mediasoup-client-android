@@ -8,13 +8,15 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "test/layer_filtering_transport.h"
+
 #include <string.h>
+
 #include <algorithm>
 #include <memory>
 #include <utility>
 
 #include "api/rtp_headers.h"
-#include "common_types.h"  // NOLINT(build/include)
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/rtp_format.h"
 #include "modules/rtp_rtcp/source/rtp_utility.h"
@@ -23,13 +25,12 @@
 #include "modules/video_coding/codecs/vp8/include/vp8_globals.h"
 #include "modules/video_coding/codecs/vp9/include/vp9_globals.h"
 #include "rtc_base/checks.h"
-#include "test/layer_filtering_transport.h"
 
 namespace webrtc {
 namespace test {
 
 LayerFilteringTransport::LayerFilteringTransport(
-    SingleThreadedTaskQueueForTesting* task_queue,
+    DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue,
     std::unique_ptr<SimulatedPacketReceiverInterface> pipe,
     Call* send_call,
     uint8_t vp8_video_payload_type,
@@ -49,7 +50,7 @@ LayerFilteringTransport::LayerFilteringTransport(
       ssrc_to_filter_max_(ssrc_to_filter_max) {}
 
 LayerFilteringTransport::LayerFilteringTransport(
-    SingleThreadedTaskQueueForTesting* task_queue,
+    DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue,
     std::unique_ptr<SimulatedPacketReceiverInterface> pipe,
     Call* send_call,
     uint8_t vp8_video_payload_type,

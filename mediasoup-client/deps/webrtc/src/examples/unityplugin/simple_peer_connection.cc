@@ -122,9 +122,9 @@ bool SimplePeerConnection::InitializePeerConnection(const char** turn_urls,
   RTC_DCHECK(peer_connection_.get() == nullptr);
 
   if (g_peer_connection_factory == nullptr) {
-    g_worker_thread.reset(new rtc::Thread());
+    g_worker_thread = rtc::Thread::Create();
     g_worker_thread->Start();
-    g_signaling_thread.reset(new rtc::Thread());
+    g_signaling_thread = rtc::Thread::Create();
     g_signaling_thread->Start();
 
     g_peer_connection_factory = webrtc::CreatePeerConnectionFactory(
@@ -133,10 +133,10 @@ bool SimplePeerConnection::InitializePeerConnection(const char** turn_urls,
         webrtc::CreateBuiltinAudioDecoderFactory(),
         std::unique_ptr<webrtc::VideoEncoderFactory>(
             new webrtc::MultiplexEncoderFactory(
-                absl::make_unique<webrtc::InternalEncoderFactory>())),
+                std::make_unique<webrtc::InternalEncoderFactory>())),
         std::unique_ptr<webrtc::VideoDecoderFactory>(
             new webrtc::MultiplexDecoderFactory(
-                absl::make_unique<webrtc::InternalDecoderFactory>())),
+                std::make_unique<webrtc::InternalDecoderFactory>())),
         nullptr, nullptr);
   }
   if (!g_peer_connection_factory.get()) {

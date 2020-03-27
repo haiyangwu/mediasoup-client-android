@@ -15,6 +15,7 @@
 #define PC_STATS_COLLECTOR_H_
 
 #include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -79,8 +80,11 @@ class StatsCollector {
   // in the ExtractStatsFromList template.
   StatsReport* PrepareReport(bool local,
                              uint32_t ssrc,
+                             const std::string& track_id,
                              const StatsReport::Id& transport_id,
                              StatsReport::Direction direction);
+
+  StatsReport* PrepareADMReport();
 
   // A track is invalid if there is no report data for it.
   bool IsValidTrack(const std::string& track_id);
@@ -89,6 +93,8 @@ class StatsCollector {
   // that occur less than kMinGatherStatsPeriod number of ms apart will be
   // ignored.
   void ClearUpdateStatsCacheForTest();
+
+  bool UseStandardBytesStats() const { return use_standard_bytes_stats_; }
 
  private:
   friend class StatsCollectorTest;
@@ -130,11 +136,6 @@ class StatsCollector {
                                   StatsReport* report,
                                   bool has_remote_tracks);
 
-  // Helper method to get the id for the track identified by ssrc.
-  // |direction| tells if the track is for sending or receiving.
-  absl::string_view GetTrackIdBySsrc(uint32_t ssrc,
-                                     StatsReport::Direction direction);
-
   // Helper method to update the timestamp of track records.
   void UpdateTrackReports();
 
@@ -144,6 +145,7 @@ class StatsCollector {
   // Raw pointer to the peer connection the statistics are gathered from.
   PeerConnectionInternal* const pc_;
   double stats_gathering_started_;
+  const bool use_standard_bytes_stats_;
 
   // TODO(tommi): We appear to be holding on to raw pointers to reference
   // counted objects?  We should be using scoped_refptr here.

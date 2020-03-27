@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "api/video/encoded_image.h"
+#include "api/video_codecs/video_encoder.h"
 #include "common_video/include/video_frame_buffer.h"
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "modules/include/module_common_types.h"
@@ -60,9 +61,14 @@ MultiplexEncoderAdapter::~MultiplexEncoderAdapter() {
   Release();
 }
 
-int MultiplexEncoderAdapter::InitEncode(const VideoCodec* inst,
-                                        int number_of_cores,
-                                        size_t max_payload_size) {
+void MultiplexEncoderAdapter::SetFecControllerOverride(
+    FecControllerOverride* fec_controller_override) {
+  // Ignored.
+}
+
+int MultiplexEncoderAdapter::InitEncode(
+    const VideoCodec* inst,
+    const VideoEncoder::Settings& settings) {
   const size_t buffer_size =
       CalcBufferSize(VideoType::kI420, inst->width, inst->height);
   multiplex_dummy_planes_.resize(buffer_size);
@@ -71,23 +77,23 @@ int MultiplexEncoderAdapter::InitEncode(const VideoCodec* inst,
             0x80);
 
   RTC_DCHECK_EQ(kVideoCodecMultiplex, inst->codecType);
-  VideoCodec settings = *inst;
-  settings.codecType = PayloadStringToCodecType(associated_format_.name);
+  VideoCodec video_codec = *inst;
+  video_codec.codecType = PayloadStringToCodecType(associated_format_.name);
 
   // Take over the key frame interval at adapter level, because we have to
   // sync the key frames for both sub-encoders.
-  switch (settings.codecType) {
+  switch (video_codec.codecType) {
     case kVideoCodecVP8:
-      key_frame_interval_ = settings.VP8()->keyFrameInterval;
-      settings.VP8()->keyFrameInterval = 0;
+      key_frame_interval_ = video_codec.VP8()->keyFrameInterval;
+      video_codec.VP8()->keyFrameInterval = 0;
       break;
     case kVideoCodecVP9:
-      key_frame_interval_ = settings.VP9()->keyFrameInterval;
-      settings.VP9()->keyFrameInterval = 0;
+      key_frame_interval_ = video_codec.VP9()->keyFrameInterval;
+      video_codec.VP9()->keyFrameInterval = 0;
       break;
     case kVideoCodecH264:
-      key_frame_interval_ = settings.H264()->keyFrameInterval;
-      settings.H264()->keyFrameInterval = 0;
+      key_frame_interval_ = video_codec.H264()->keyFrameInterval;
+      video_codec.H264()->keyFrameInterval = 0;
       break;
     default:
       break;
@@ -101,8 +107,7 @@ int MultiplexEncoderAdapter::InitEncode(const VideoCodec* inst,
   for (size_t i = 0; i < kAlphaCodecStreams; ++i) {
     std::unique_ptr<VideoEncoder> encoder =
         factory_->CreateVideoEncoder(associated_format_);
-    const int rv =
-        encoder->InitEncode(&settings, number_of_cores, max_payload_size);
+    const int rv = encoder->InitEncode(&video_codec, settings);
     if (rv) {
       RTC_LOG(LS_ERROR) << "Failed to create multiplex codec index " << i;
       return rv;
@@ -138,17 +143,16 @@ int MultiplexEncoderAdapter::InitEncode(const VideoCodec* inst,
 
 int MultiplexEncoderAdapter::Encode(
     const VideoFrame& input_image,
-    const CodecSpecificInfo* codec_specific_info,
-    const std::vector<FrameType>* frame_types) {
+    const std::vector<VideoFrameType>* frame_types) {
   if (!encoded_complete_callback_) {
     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
   }
 
-  std::vector<FrameType> adjusted_frame_types;
+  std::vector<VideoFrameType> adjusted_frame_types;
   if (key_frame_interval_ > 0 && picture_index_ % key_frame_interval_ == 0) {
-    adjusted_frame_types.push_back(kVideoFrameKey);
+    adjusted_frame_types.push_back(VideoFrameType::kVideoFrameKey);
   } else {
-    adjusted_frame_types.push_back(kVideoFrameDelta);
+    adjusted_frame_types.push_back(VideoFrameType::kVideoFrameDelta);
   }
   const bool has_alpha = input_image.video_frame_buffer()->type() ==
                          VideoFrameBuffer::Type::kI420A;
@@ -181,8 +185,7 @@ int MultiplexEncoderAdapter::Encode(
   ++picture_index_;
 
   // Encode YUV
-  int rv = encoders_[kYUVStream]->Encode(input_image, codec_specific_info,
-                                         &adjusted_frame_types);
+  int rv = encoders_[kYUVStream]->Encode(input_image, &adjusted_frame_types);
 
   // If we do not receive an alpha frame, we send a single frame for this
   // |picture_index_|. The receiver will receive |frame_count| as 1 which
@@ -207,9 +210,9 @@ int MultiplexEncoderAdapter::Encode(
                                .set_timestamp_ms(input_image.render_time_ms())
                                .set_rotation(input_image.rotation())
                                .set_id(input_image.id())
+                               .set_packet_infos(input_image.packet_infos())
                                .build();
-  rv = encoders_[kAXXStream]->Encode(alpha_image, codec_specific_info,
-                                     &adjusted_frame_types);
+  rv = encoders_[kAXXStream]->Encode(alpha_image, &adjusted_frame_types);
   return rv;
 }
 
@@ -219,23 +222,40 @@ int MultiplexEncoderAdapter::RegisterEncodeCompleteCallback(
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-int MultiplexEncoderAdapter::SetRateAllocation(
-    const VideoBitrateAllocation& bitrate,
-    uint32_t framerate) {
-  VideoBitrateAllocation bitrate_allocation(bitrate);
+void MultiplexEncoderAdapter::SetRates(
+    const RateControlParameters& parameters) {
+  VideoBitrateAllocation bitrate_allocation(parameters.bitrate);
   bitrate_allocation.SetBitrate(
-      0, 0, bitrate.GetBitrate(0, 0) - augmenting_data_size_);
+      0, 0, parameters.bitrate.GetBitrate(0, 0) - augmenting_data_size_);
   for (auto& encoder : encoders_) {
     // TODO(emircan): |framerate| is used to calculate duration in encoder
     // instances. We report the total frame rate to keep real time for now.
     // Remove this after refactoring duration logic.
-    const int rv = encoder->SetRateAllocation(
+    encoder->SetRates(RateControlParameters(
         bitrate_allocation,
-        static_cast<uint32_t>(encoders_.size()) * framerate);
-    if (rv)
-      return rv;
+        static_cast<uint32_t>(encoders_.size() * parameters.framerate_fps),
+        parameters.bandwidth_allocation -
+            DataRate::bps(augmenting_data_size_)));
   }
-  return WEBRTC_VIDEO_CODEC_OK;
+}
+
+void MultiplexEncoderAdapter::OnPacketLossRateUpdate(float packet_loss_rate) {
+  for (auto& encoder : encoders_) {
+    encoder->OnPacketLossRateUpdate(packet_loss_rate);
+  }
+}
+
+void MultiplexEncoderAdapter::OnRttUpdate(int64_t rtt_ms) {
+  for (auto& encoder : encoders_) {
+    encoder->OnRttUpdate(rtt_ms);
+  }
+}
+
+void MultiplexEncoderAdapter::OnLossNotification(
+    const LossNotification& loss_notification) {
+  for (auto& encoder : encoders_) {
+    encoder->OnLossNotification(loss_notification);
+  }
 }
 
 int MultiplexEncoderAdapter::Release() {

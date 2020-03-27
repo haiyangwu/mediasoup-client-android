@@ -12,7 +12,7 @@ adds the first use.
 ## **Allowed**
 
 * `absl::InlinedVector`
-* `absl::make_unique` and `absl::WrapUnique`
+* `absl::WrapUnique`
 * `absl::optional` and related stuff from `absl/types/optional.h`.
 * `absl::string_view`
 * The functions in `absl/strings/ascii.h`, `absl/strings/match.h`,
@@ -22,10 +22,15 @@ adds the first use.
   `absl::is_trivially_destructible` from `absl/meta/type_traits.h`.
 * `absl::variant` and related stuff from `absl/types/variant.h`.
 * The functions in `absl/algorithm/algorithm.h` and
-  `absl/algorithm/container.h`
-* The macros in `absl/base/attributes.h` and `absl/base/config.h`
+  `absl/algorithm/container.h`.
+* The macros in `absl/base/attributes.h`, `absl/base/config.h` and
+  `absl/base/macros.h`.
 
 ## **Disallowed**
+
+### `absl::make_unique`
+
+*Use `std::make_unique` instead.*
 
 ### `absl::Mutex`
 

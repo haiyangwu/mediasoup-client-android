@@ -1,42 +1,43 @@
 set(
 	SOURCE_FILES
-	Device.test.cpp
-	Handler.test.cpp
-	PeerConnection.test.cpp
-	data/Parameters.cpp
-	mediasoupclient.test.cpp
-	ortc.test.cpp
-	peerConnectionUtils.cpp
-	scalabilityMode.test.cpp
-	sdp/RemoteSdp.test.cpp
-	sdp/Utils.test.cpp
-	tests.cpp
-	VcmCapturer.cpp
-	VideoCapturer.cpp
+	src/Device.test.cpp
+	src/Handler.test.cpp
+	src/PeerConnection.test.cpp
+	src/RemoteSdp.test.cpp
+	src/SdpUtils.test.cpp
+	src/mediasoupclient.test.cpp
+	src/MediaStreamTrackFactory.cpp
+	src/ortc.test.cpp
+	src/fakeParameters.cpp
+	src/scalabilityMode.test.cpp
+	src/tests.cpp
+	include/FakeTransportListener.hpp
+	include/MediaStreamTrackFactory.hpp
+	include/helpers.hpp
+	include/fakeParameters.hpp
 )
 
-# Create taget.
+# Create target.
 add_executable(test_mediasoupclient ${SOURCE_FILES})
+
+# Private (implementation) header files.
+target_include_directories(test_mediasoupclient PRIVATE
+	include
+	${mediasoupclient_SOURCE_DIR}/include
+	${mediasoupclient_SOURCE_DIR}/deps/catch/single_include/catch2
+)
 
 if(APPLE)
 	find_library(APPLICATION_SERVICES ApplicationServices)
 	find_library(AUDIO_TOOLBOX AudioToolbox)
-	find_library(AV_FOUNDATION AVFoundation)
 	find_library(CORE_AUDIO CoreAudio)
 	find_library(CORE_FOUNDATION Foundation)
-	find_library(CORE_MEDIA CoreMedia)
-	find_library(CORE_VIDEO CoreVideo)
-	find_library(CORE_SERVICES CoreServices)
 
 	target_link_libraries(test_mediasoupclient PRIVATE
 		${APPLICATION_SERVICES}
 		${AUDIO_TOOLBOX}
-		${AV_FOUNDATION}
 		${CORE_AUDIO}
 		${CORE_FOUNDATION}
-		${CORE_MEDIA}
-		${CORE_VIDEO}
-		${CORE_SERVICES}
 	)
 
 	# Bundle it.
@@ -46,11 +47,22 @@ if(APPLE)
 	)
 endif(APPLE)
 
-# Private (implementation) header files.
-target_include_directories(test_mediasoupclient PRIVATE
-	${mediasoupclient_SOURCE_DIR}/include
-	include
-)
+if(UNIX)
+	find_package(Threads REQUIRED)
+	target_link_libraries(test_mediasoupclient PRIVATE Threads::Threads)
+endif(UNIX)
 
 # Private dependencies.
 target_link_libraries(test_mediasoupclient PRIVATE mediasoupclient)
+target_link_libraries(test_mediasoupclient PRIVATE ${CMAKE_DL_LIBS})
+
+# Create a library with required webrtc extra code and link against it.
+file(GLOB_RECURSE FAKE_AUDIO_CAPTURE
+	${LIBWEBRTC_BINARY_PATH}/pc/pc_test_utils/fake_audio_capture_module.o
+)
+
+set(WEBRTC_EXTRA_OBJS ${FAKE_AUDIO_CAPTURE})
+
+add_library (webrtc_extra STATIC ${WEBRTC_EXTRA_OBJS})
+set_target_properties(webrtc_extra PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries (test_mediasoupclient PUBLIC webrtc_extra)

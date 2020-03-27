@@ -12,6 +12,7 @@
 #define VIDEO_VIDEO_QUALITY_OBSERVER_H_
 
 #include <stdint.h>
+
 #include <set>
 #include <vector>
 
@@ -31,7 +32,7 @@ class VideoQualityObserver {
   // Use either VideoQualityObserver::kBlockyQpThresholdVp8 or
   // VideoQualityObserver::kBlockyQpThresholdVp9.
   explicit VideoQualityObserver(VideoContentType content_type);
-  ~VideoQualityObserver();
+  ~VideoQualityObserver() = default;
 
   void OnDecodedFrame(const VideoFrame& frame,
                       absl::optional<uint8_t> qp,
@@ -41,20 +42,20 @@ class VideoQualityObserver {
 
   void OnStreamInactive();
 
-  uint32_t NumFreezes();
-  uint32_t NumPauses();
-  uint32_t TotalFreezesDurationMs();
-  uint32_t TotalPausesDurationMs();
-  uint32_t TotalFramesDurationMs();
-  double SumSquaredFrameDurationsSec();
+  uint32_t NumFreezes() const;
+  uint32_t NumPauses() const;
+  uint32_t TotalFreezesDurationMs() const;
+  uint32_t TotalPausesDurationMs() const;
+  uint32_t TotalFramesDurationMs() const;
+  double SumSquaredFrameDurationsSec() const;
+
+  void UpdateHistograms();
 
   static const uint32_t kMinFrameSamplesToDetectFreeze;
   static const uint32_t kMinIncreaseForFreezeMs;
   static const uint32_t kAvgInterframeDelaysWindowSizeFrames;
 
  private:
-  void UpdateHistograms();
-
   enum Resolution {
     Low = 0,
     Medium = 1,

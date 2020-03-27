@@ -11,12 +11,13 @@
 #include "modules/audio_coding/neteq/tools/rtc_event_log_source.h"
 
 #include <string.h>
+
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <set>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "logging/rtc_event_log/rtc_event_processor.h"
 #include "modules/audio_coding/neteq/tools/packet.h"
 #include "rtc_base/checks.h"
@@ -36,11 +37,29 @@ bool ShouldSkipStream(ParsedRtcEventLog::MediaType media_type,
 }
 }  // namespace
 
-RtcEventLogSource* RtcEventLogSource::Create(
+std::unique_ptr<RtcEventLogSource> RtcEventLogSource::CreateFromFile(
     const std::string& file_name,
     absl::optional<uint32_t> ssrc_filter) {
-  RtcEventLogSource* source = new RtcEventLogSource();
-  RTC_CHECK(source->OpenFile(file_name, ssrc_filter));
+  auto source = std::unique_ptr<RtcEventLogSource>(new RtcEventLogSource());
+  ParsedRtcEventLog parsed_log;
+  if (!parsed_log.ParseFile(file_name) ||
+      !source->Initialize(parsed_log, ssrc_filter)) {
+    std::cerr << "Error while parsing event log, skipping." << std::endl;
+    return nullptr;
+  }
+  return source;
+}
+
+std::unique_ptr<RtcEventLogSource> RtcEventLogSource::CreateFromString(
+    const std::string& file_contents,
+    absl::optional<uint32_t> ssrc_filter) {
+  auto source = std::unique_ptr<RtcEventLogSource>(new RtcEventLogSource());
+  ParsedRtcEventLog parsed_log;
+  if (!parsed_log.ParseString(file_contents) ||
+      !source->Initialize(parsed_log, ssrc_filter)) {
+    std::cerr << "Error while parsing event log, skipping." << std::endl;
+    return nullptr;
+  }
   return source;
 }
 
@@ -64,12 +83,8 @@ int64_t RtcEventLogSource::NextAudioOutputEventMs() {
 
 RtcEventLogSource::RtcEventLogSource() : PacketSource() {}
 
-bool RtcEventLogSource::OpenFile(const std::string& file_name,
-                                 absl::optional<uint32_t> ssrc_filter) {
-  ParsedRtcEventLog parsed_log;
-  if (!parsed_log.ParseFile(file_name))
-    return false;
-
+bool RtcEventLogSource::Initialize(const ParsedRtcEventLog& parsed_log,
+                                   absl::optional<uint32_t> ssrc_filter) {
   const auto first_log_end_time_us =
       parsed_log.stop_log_events().empty()
           ? std::numeric_limits<int64_t>::max()
@@ -81,7 +96,7 @@ bool RtcEventLogSource::OpenFile(const std::string& file_name,
        &packet_ssrcs](const webrtc::LoggedRtpPacketIncoming& incoming) {
         if (!filter_.test(incoming.rtp.header.payloadType) &&
             incoming.log_time_us() < first_log_end_time_us) {
-          rtp_packets_.emplace_back(absl::make_unique<Packet>(
+          rtp_packets_.emplace_back(std::make_unique<Packet>(
               incoming.rtp.header, incoming.rtp.total_length,
               incoming.rtp.total_length - incoming.rtp.header_length,
               static_cast<double>(incoming.log_time_ms())));

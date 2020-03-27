@@ -8,21 +8,21 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/congestion_controller/pcc/pcc_network_controller.h"
+
 #include <memory>
 
 #include "modules/congestion_controller/pcc/pcc_factory.h"
-#include "modules/congestion_controller/pcc/pcc_network_controller.h"
-#include "test/scenario/scenario.h"
-
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/scenario/scenario.h"
 
-using testing::Field;
-using testing::Matcher;
-using testing::AllOf;
-using testing::Ge;
-using testing::Le;
-using testing::Property;
+using ::testing::AllOf;
+using ::testing::Field;
+using ::testing::Ge;
+using ::testing::Le;
+using ::testing::Matcher;
+using ::testing::Property;
 
 namespace webrtc {
 namespace test {
@@ -75,47 +75,39 @@ TEST(PccNetworkControllerTest, SendsConfigurationOnFirstProcess) {
 TEST(PccNetworkControllerTest, UpdatesTargetSendRate) {
   PccNetworkControllerFactory factory;
   Scenario s("pcc_unit/updates_rate", false);
-  SimulatedTimeClientConfig config;
-  config.transport.cc =
-      TransportControllerConfig::CongestionController::kInjected;
+  CallClientConfig config;
   config.transport.cc_factory = &factory;
   config.transport.rates.min_rate = DataRate::kbps(10);
   config.transport.rates.max_rate = DataRate::kbps(1500);
   config.transport.rates.start_rate = DataRate::kbps(300);
-  NetworkNodeConfig net_conf;
-  auto send_net = s.CreateSimulationNode([](NetworkNodeConfig* c) {
-    c->simulation.bandwidth = DataRate::kbps(500);
-    c->simulation.delay = TimeDelta::ms(100);
-    c->simulation.loss_rate = 0.0;
-    c->update_frequency = TimeDelta::ms(5);
+  auto send_net = s.CreateMutableSimulationNode([](NetworkSimulationConfig* c) {
+    c->bandwidth = DataRate::kbps(500);
+    c->delay = TimeDelta::ms(100);
   });
-  auto ret_net = s.CreateSimulationNode([](NetworkNodeConfig* c) {
-    c->simulation.delay = TimeDelta::ms(100);
-    c->update_frequency = TimeDelta::ms(5);
+  auto ret_net = s.CreateMutableSimulationNode(
+      [](NetworkSimulationConfig* c) { c->delay = TimeDelta::ms(100); });
+
+  auto* client = s.CreateClient("send", config);
+  auto* route = s.CreateRoutes(client, {send_net->node()},
+                               s.CreateClient("return", CallClientConfig()),
+                               {ret_net->node()});
+  s.CreateVideoStream(route->forward(), VideoStreamConfig());
+  s.RunFor(TimeDelta::seconds(30));
+  EXPECT_NEAR(client->target_rate().kbps(), 450, 100);
+  send_net->UpdateConfig([](NetworkSimulationConfig* c) {
+    c->bandwidth = DataRate::kbps(800);
+    c->delay = TimeDelta::ms(100);
   });
-  SimulatedTimeClient* client = s.CreateSimulatedTimeClient(
-      "send", config, {PacketStreamConfig()}, {send_net}, {ret_net});
-
-  s.RunFor(TimeDelta::seconds(25));
-  EXPECT_NEAR(client->target_rate_kbps(), 450, 100);
-
-  send_net->UpdateConfig([](NetworkNodeConfig* c) {
-    c->simulation.bandwidth = DataRate::kbps(800);
-    c->simulation.delay = TimeDelta::ms(100);
-  });
-
   s.RunFor(TimeDelta::seconds(20));
-  EXPECT_NEAR(client->target_rate_kbps(), 750, 150);
-
-  send_net->UpdateConfig([](NetworkNodeConfig* c) {
-    c->simulation.bandwidth = DataRate::kbps(200);
-    c->simulation.delay = TimeDelta::ms(200);
+  EXPECT_NEAR(client->target_rate().kbps(), 750, 150);
+  send_net->UpdateConfig([](NetworkSimulationConfig* c) {
+    c->bandwidth = DataRate::kbps(200);
+    c->delay = TimeDelta::ms(200);
   });
   ret_net->UpdateConfig(
-      [](NetworkNodeConfig* c) { c->simulation.delay = TimeDelta::ms(200); });
-
-  s.RunFor(TimeDelta::seconds(20));
-  EXPECT_NEAR(client->target_rate_kbps(), 200, 40);
+      [](NetworkSimulationConfig* c) { c->delay = TimeDelta::ms(200); });
+  s.RunFor(TimeDelta::seconds(35));
+  EXPECT_NEAR(client->target_rate().kbps(), 180, 40);
 }
 
 }  // namespace test

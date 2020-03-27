@@ -89,6 +89,7 @@ struct timeval;
 #include "absl/time/internal/cctz/include/cctz/time_zone.h"
 
 namespace absl {
+ABSL_NAMESPACE_BEGIN
 
 class Duration;  // Defined below
 class Time;      // Defined below
@@ -1202,15 +1203,18 @@ struct tm ToTM(Time t, TimeZone tz);
 // time with UTC offset.  Also note the use of "%Y": RFC3339 mandates that
 // years have exactly four digits, but we allow them to take their natural
 // width.
-extern const char RFC3339_full[];  // %Y-%m-%dT%H:%M:%E*S%Ez
-extern const char RFC3339_sec[];   // %Y-%m-%dT%H:%M:%S%Ez
+ABSL_DLL extern const char
+    RFC3339_full[];  // %Y-%m-%dT%H:%M:%E*S%Ez
+ABSL_DLL extern const char RFC3339_sec[];  // %Y-%m-%dT%H:%M:%S%Ez
 
 // RFC1123_full
 // RFC1123_no_wday
 //
 // FormatTime()/ParseTime() format specifiers for RFC1123 date/time strings.
-extern const char RFC1123_full[];     // %a, %d %b %E4Y %H:%M:%S %z
-extern const char RFC1123_no_wday[];  // %d %b %E4Y %H:%M:%S %z
+ABSL_DLL extern const char
+    RFC1123_full[];  // %a, %d %b %E4Y %H:%M:%S %z
+ABSL_DLL extern const char
+    RFC1123_no_wday[];  // %d %b %E4Y %H:%M:%S %z
 
 // FormatTime()
 //
@@ -1412,8 +1416,7 @@ constexpr Duration FromInt64(int64_t v, std::ratio<3600>) {
 // IsValidRep64<T>(0) is true if the expression `int64_t{std::declval<T>()}` is
 // valid. That is, if a T can be assigned to an int64_t without narrowing.
 template <typename T>
-constexpr auto IsValidRep64(int)
-    -> decltype(int64_t{std::declval<T>()}, bool()) {
+constexpr auto IsValidRep64(int) -> decltype(int64_t{std::declval<T>()} == 0) {
   return true;
 }
 template <typename T>
@@ -1575,6 +1578,7 @@ constexpr Time FromTimeT(time_t t) {
   return time_internal::FromUnixDuration(Seconds(t));
 }
 
+ABSL_NAMESPACE_END
 }  // namespace absl
 
 #endif  // ABSL_TIME_TIME_H_

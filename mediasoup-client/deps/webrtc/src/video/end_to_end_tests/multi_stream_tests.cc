@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <vector>
 
@@ -62,7 +63,8 @@ TEST_F(MultiStreamEndToEndTest, SendsAndReceivesMultipleStreams) {
 
   class Tester : public MultiStreamTester {
    public:
-    explicit Tester(test::SingleThreadedTaskQueueForTesting* task_queue)
+    explicit Tester(
+        test::DEPRECATED_SingleThreadedTaskQueueForTesting* task_queue)
         : MultiStreamTester(task_queue) {}
     virtual ~Tester() {}
 

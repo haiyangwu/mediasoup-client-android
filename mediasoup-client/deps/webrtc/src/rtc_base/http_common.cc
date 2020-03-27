@@ -21,6 +21,7 @@
 
 #include <ctype.h>  // for isspace
 #include <stdio.h>  // for sprintf
+
 #include <utility>  // for pair
 #include <vector>
 
@@ -30,6 +31,7 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/message_digest.h"
 #include "rtc_base/socket_address.h"
+#include "rtc_base/string_utils.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/third_party/base64/base64.h"  // for Base64
 #include "rtc_base/zero_memory.h"                // for ExplicitZeroMemory

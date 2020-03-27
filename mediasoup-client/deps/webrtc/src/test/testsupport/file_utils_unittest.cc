@@ -11,6 +11,7 @@
 #include "test/testsupport/file_utils.h"
 
 #include <stdio.h>
+
 #include <algorithm>
 #include <fstream>
 #include <string>
@@ -68,12 +69,12 @@ void WriteStringInFile(const std::string& what, const std::string& file_path) {
 // Test fixture to restore the working directory between each test, since some
 // of them change it with chdir during execution (not restored by the
 // gtest framework).
-class FileUtilsTest : public testing::Test {
+class FileUtilsTest : public ::testing::Test {
  protected:
   FileUtilsTest() {}
   ~FileUtilsTest() override {}
   // Runs before the first test
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     original_working_dir_ = webrtc::test::WorkingDir();
   }
   void SetUp() override { ASSERT_EQ(chdir(original_working_dir_.c_str()), 0); }

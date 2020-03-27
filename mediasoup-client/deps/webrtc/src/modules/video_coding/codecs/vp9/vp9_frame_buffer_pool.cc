@@ -13,13 +13,12 @@
 
 #include "modules/video_coding/codecs/vp9/vp9_frame_buffer_pool.h"
 
-#include "vpx/vpx_codec.h"
-#include "vpx/vpx_decoder.h"
-#include "vpx/vpx_frame_buffer.h"
-
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ref_counted_object.h"
+#include "vpx/vpx_codec.h"
+#include "vpx/vpx_decoder.h"
+#include "vpx/vpx_frame_buffer.h"
 
 namespace webrtc {
 
@@ -109,6 +108,14 @@ int32_t Vp9FrameBufferPool::VpxGetFrameBuffer(void* user_priv,
                                               vpx_codec_frame_buffer* fb) {
   RTC_DCHECK(user_priv);
   RTC_DCHECK(fb);
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  // Limit size of 8k YUV highdef frame
+  size_t size_limit = 7680 * 4320 * 3 / 2 * 2;
+  if (min_size > size_limit)
+    return -1;
+#endif
+
   Vp9FrameBufferPool* pool = static_cast<Vp9FrameBufferPool*>(user_priv);
 
   rtc::scoped_refptr<Vp9FrameBuffer> buffer = pool->GetFrameBuffer(min_size);

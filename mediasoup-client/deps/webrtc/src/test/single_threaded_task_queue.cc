@@ -10,9 +10,9 @@
 
 #include "test/single_threaded_task_queue.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/time_utils.h"
@@ -20,55 +20,43 @@
 namespace webrtc {
 namespace test {
 
-SingleThreadedTaskQueueForTesting::QueuedTask::QueuedTask(
-    SingleThreadedTaskQueueForTesting::TaskId task_id,
-    int64_t earliest_execution_time,
-    SingleThreadedTaskQueueForTesting::Task task)
-    : task_id(task_id),
-      earliest_execution_time(earliest_execution_time),
-      task(task) {}
+DEPRECATED_SingleThreadedTaskQueueForTesting::StoredTask::StoredTask(
+    DEPRECATED_SingleThreadedTaskQueueForTesting::TaskId task_id,
+    std::unique_ptr<QueuedTask> task)
+    : task_id(task_id), task(std::move(task)) {}
 
-SingleThreadedTaskQueueForTesting::QueuedTask::~QueuedTask() = default;
+DEPRECATED_SingleThreadedTaskQueueForTesting::StoredTask::~StoredTask() =
+    default;
 
-SingleThreadedTaskQueueForTesting::SingleThreadedTaskQueueForTesting(
-    const char* name)
+DEPRECATED_SingleThreadedTaskQueueForTesting::
+    DEPRECATED_SingleThreadedTaskQueueForTesting(const char* name)
     : thread_(Run, this, name), running_(true), next_task_id_(0) {
   thread_.Start();
 }
 
-SingleThreadedTaskQueueForTesting::~SingleThreadedTaskQueueForTesting() {
-  RTC_DCHECK_RUN_ON(&owner_thread_checker_);
-  {
-    rtc::CritScope lock(&cs_);
-    running_ = false;
-  }
-  wake_up_.Set();
-  thread_.Stop();
+DEPRECATED_SingleThreadedTaskQueueForTesting::
+    ~DEPRECATED_SingleThreadedTaskQueueForTesting() {
+  Stop();
 }
 
-SingleThreadedTaskQueueForTesting::TaskId
-SingleThreadedTaskQueueForTesting::PostTask(Task task) {
-  return PostDelayedTask(task, 0);
-}
-
-SingleThreadedTaskQueueForTesting::TaskId
-SingleThreadedTaskQueueForTesting::PostDelayedTask(Task task,
-                                                   int64_t delay_ms) {
+DEPRECATED_SingleThreadedTaskQueueForTesting::TaskId
+DEPRECATED_SingleThreadedTaskQueueForTesting::PostDelayed(
+    std::unique_ptr<QueuedTask> task,
+    int64_t delay_ms) {
   int64_t earliest_exec_time = rtc::TimeAfter(delay_ms);
 
   rtc::CritScope lock(&cs_);
+  if (!running_)
+    return kInvalidTaskId;
 
   TaskId id = next_task_id_++;
 
   // Insert after any other tasks with an earlier-or-equal target time.
-  auto it = tasks_.begin();
-  for (; it != tasks_.end(); it++) {
-    if (earliest_exec_time < (*it)->earliest_execution_time) {
-      break;
-    }
-  }
-  tasks_.insert(it,
-                absl::make_unique<QueuedTask>(id, earliest_exec_time, task));
+  // Note: multimap has promise "The order of the key-value pairs whose keys
+  // compare equivalent is the order of insertion and does not change."
+  tasks_.emplace(std::piecewise_construct,
+                 std::forward_as_tuple(earliest_exec_time),
+                 std::forward_as_tuple(id, std::move(task)));
 
   // This class is optimized for simplicty, not for performance. This will wake
   // the thread up even if the next task in the queue is only scheduled for
@@ -79,19 +67,10 @@ SingleThreadedTaskQueueForTesting::PostDelayedTask(Task task,
   return id;
 }
 
-void SingleThreadedTaskQueueForTesting::SendTask(Task task) {
-  rtc::Event done;
-  PostTask([&task, &done]() {
-    task();
-    done.Set();
-  });
-  done.Wait(rtc::Event::kForever);
-}
-
-bool SingleThreadedTaskQueueForTesting::CancelTask(TaskId task_id) {
+bool DEPRECATED_SingleThreadedTaskQueueForTesting::CancelTask(TaskId task_id) {
   rtc::CritScope lock(&cs_);
   for (auto it = tasks_.begin(); it != tasks_.end(); it++) {
-    if ((*it)->task_id == task_id) {
+    if (it->second.task_id == task_id) {
       tasks_.erase(it);
       return true;
     }
@@ -99,11 +78,42 @@ bool SingleThreadedTaskQueueForTesting::CancelTask(TaskId task_id) {
   return false;
 }
 
-void SingleThreadedTaskQueueForTesting::Run(void* obj) {
-  static_cast<SingleThreadedTaskQueueForTesting*>(obj)->RunLoop();
+bool DEPRECATED_SingleThreadedTaskQueueForTesting::IsCurrent() {
+  return rtc::IsThreadRefEqual(thread_.GetThreadRef(), rtc::CurrentThreadRef());
 }
 
-void SingleThreadedTaskQueueForTesting::RunLoop() {
+bool DEPRECATED_SingleThreadedTaskQueueForTesting::IsRunning() {
+  RTC_DCHECK_RUN_ON(&owner_thread_checker_);
+  // We could check the |running_| flag here, but this is equivalent for the
+  // purposes of this function.
+  return thread_.IsRunning();
+}
+
+bool DEPRECATED_SingleThreadedTaskQueueForTesting::HasPendingTasks() const {
+  rtc::CritScope lock(&cs_);
+  return !tasks_.empty();
+}
+
+void DEPRECATED_SingleThreadedTaskQueueForTesting::Stop() {
+  RTC_DCHECK_RUN_ON(&owner_thread_checker_);
+  if (!thread_.IsRunning())
+    return;
+
+  {
+    rtc::CritScope lock(&cs_);
+    running_ = false;
+  }
+
+  wake_up_.Set();
+  thread_.Stop();
+}
+
+void DEPRECATED_SingleThreadedTaskQueueForTesting::Run(void* obj) {
+  static_cast<DEPRECATED_SingleThreadedTaskQueueForTesting*>(obj)->RunLoop();
+}
+
+void DEPRECATED_SingleThreadedTaskQueueForTesting::RunLoop() {
+  CurrentTaskQueueSetter set_current(this);
   while (true) {
     std::unique_ptr<QueuedTask> queued_task;
 
@@ -119,11 +129,13 @@ void SingleThreadedTaskQueueForTesting::RunLoop() {
         return;
       }
       if (!tasks_.empty()) {
-        int64_t remaining_delay_ms = rtc::TimeDiff(
-            tasks_.front()->earliest_execution_time, rtc::TimeMillis());
+        auto next_delayed_task = tasks_.begin();
+        int64_t earliest_exec_time = next_delayed_task->first;
+        int64_t remaining_delay_ms =
+            rtc::TimeDiff(earliest_exec_time, rtc::TimeMillis());
         if (remaining_delay_ms <= 0) {
-          queued_task = std::move(tasks_.front());
-          tasks_.pop_front();
+          queued_task = std::move(next_delayed_task->second.task);
+          tasks_.erase(next_delayed_task);
         } else {
           wait_time = rtc::saturated_cast<int>(remaining_delay_ms);
         }
@@ -131,11 +143,18 @@ void SingleThreadedTaskQueueForTesting::RunLoop() {
     }
 
     if (queued_task) {
-      queued_task->task();
+      if (!queued_task->Run()) {
+        queued_task.release();
+      }
     } else {
       wake_up_.Wait(wait_time);
     }
   }
+}
+
+void DEPRECATED_SingleThreadedTaskQueueForTesting::Delete() {
+  Stop();
+  delete this;
 }
 
 }  // namespace test

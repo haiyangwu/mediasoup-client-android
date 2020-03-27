@@ -13,6 +13,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
 #include <memory>
 #include <vector>
 
@@ -141,13 +142,6 @@ class AudioDecoder {
 
   // Resets the decoder state (empty buffers etc.).
   virtual void Reset() = 0;
-
-  // Notifies the decoder of an incoming packet to NetEQ.
-  virtual int IncomingPacket(const uint8_t* payload,
-                             size_t payload_len,
-                             uint16_t rtp_sequence_number,
-                             uint32_t rtp_timestamp,
-                             uint32_t arrival_timestamp);
 
   // Returns the last error code from the decoder.
   virtual int ErrorCode();

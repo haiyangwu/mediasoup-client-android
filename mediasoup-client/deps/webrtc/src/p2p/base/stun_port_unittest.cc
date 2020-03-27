@@ -8,10 +8,11 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/base/stun_port.h"
+
 #include <memory>
 
 #include "p2p/base/basic_packet_socket_factory.h"
-#include "p2p/base/stun_port.h"
 #include "p2p/base/test_stun_server.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/helpers.h"
@@ -41,7 +42,7 @@ static const int kInfiniteLifetime = -1;
 static const int kHighCostPortKeepaliveLifetimeMs = 2 * 60 * 1000;
 
 // Tests connecting a StunPort to a fake STUN server (cricket::StunServer)
-class StunPortTestBase : public testing::Test, public sigslot::has_slots<> {
+class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
  public:
   StunPortTestBase()
       : ss_(new rtc::VirtualSocketServer()),
@@ -88,6 +89,8 @@ class StunPortTestBase : public testing::Test, public sigslot::has_slots<> {
     stun_port_->SignalPortComplete.connect(this,
                                            &StunPortTestBase::OnPortComplete);
     stun_port_->SignalPortError.connect(this, &StunPortTestBase::OnPortError);
+    stun_port_->SignalCandidateError.connect(
+        this, &StunPortTestBase::OnCandidateError);
   }
 
   void CreateSharedUdpPort(const rtc::SocketAddress& server_addr,
@@ -131,7 +134,7 @@ class StunPortTestBase : public testing::Test, public sigslot::has_slots<> {
   }
 
  protected:
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     // Ensure the RNG is inited.
     rtc::InitRandom(NULL, 0);
   }
@@ -144,6 +147,10 @@ class StunPortTestBase : public testing::Test, public sigslot::has_slots<> {
   void OnPortError(cricket::Port* port) {
     done_ = true;
     error_ = true;
+  }
+  void OnCandidateError(cricket::Port* port,
+                        const cricket::IceCandidateErrorEvent& event) {
+    error_event_ = event;
   }
   void SetKeepaliveDelay(int delay) { stun_keepalive_delay_ = delay; }
 
@@ -167,6 +174,9 @@ class StunPortTestBase : public testing::Test, public sigslot::has_slots<> {
   bool error_;
   int stun_keepalive_delay_;
   int stun_keepalive_lifetime_;
+
+ protected:
+  cricket::IceCandidateErrorEvent error_event_;
 };
 
 class StunPortTestWithRealClock : public StunPortTestBase {};
@@ -212,6 +222,15 @@ TEST_F(StunPortTest, TestPrepareAddressFail) {
   EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
+  EXPECT_EQ_SIMULATED_WAIT(error_event_.error_code,
+                           cricket::SERVER_NOT_REACHABLE_ERROR, kTimeoutMs,
+                           fake_clock);
+  ASSERT_NE(error_event_.error_text.find("."), std::string::npos);
+  ASSERT_NE(
+      error_event_.host_candidate.find(kLocalAddr.HostAsSensitiveURIString()),
+      std::string::npos);
+  std::string server_url = "stun:" + kBadAddr.ToString();
+  ASSERT_EQ(error_event_.url, server_url);
 }
 
 // Test that we can get an address from a STUN server specified by a hostname.
@@ -237,6 +256,8 @@ TEST_F(StunPortTestWithRealClock, TestPrepareAddressHostnameFail) {
   EXPECT_TRUE_WAIT(done(), kTimeoutMs);
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
+  EXPECT_EQ_WAIT(error_event_.error_code, cricket::SERVER_NOT_REACHABLE_ERROR,
+                 kTimeoutMs);
 }
 
 // This test verifies keepalive response messages don't result in
@@ -303,6 +324,9 @@ TEST_F(StunPortTest, TestMultipleStunServersWithBadServer) {
   PrepareAddress();
   EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
   EXPECT_EQ(1U, port()->Candidates().size());
+  std::string server_url = "stun:" + kBadAddr.ToString();
+  ASSERT_EQ_SIMULATED_WAIT(error_event_.url, server_url, kTimeoutMs,
+                           fake_clock);
 }
 
 // Test that two candidates are allocated if the two STUN servers return
@@ -419,17 +443,18 @@ TEST_F(StunPortTest, TestStunPacketsHaveDscpPacketOption) {
   EXPECT_CALL(*socket, SetOption(_, _)).WillRepeatedly(Return(0));
 
   // If DSCP is not set on the socket, stun packets should have no value.
-  EXPECT_CALL(*socket, SendTo(_, _, _,
-                              testing::Field(&rtc::PacketOptions::dscp,
-                                             testing::Eq(rtc::DSCP_NO_CHANGE))))
+  EXPECT_CALL(*socket,
+              SendTo(_, _, _,
+                     ::testing::Field(&rtc::PacketOptions::dscp,
+                                      ::testing::Eq(rtc::DSCP_NO_CHANGE))))
       .WillOnce(Return(100));
   PrepareAddress();
 
   // Once it is set transport wide, they should inherit that value.
   port()->SetOption(rtc::Socket::OPT_DSCP, rtc::DSCP_AF41);
   EXPECT_CALL(*socket, SendTo(_, _, _,
-                              testing::Field(&rtc::PacketOptions::dscp,
-                                             testing::Eq(rtc::DSCP_AF41))))
+                              ::testing::Field(&rtc::PacketOptions::dscp,
+                                               ::testing::Eq(rtc::DSCP_AF41))))
       .WillRepeatedly(Return(100));
   EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
 }

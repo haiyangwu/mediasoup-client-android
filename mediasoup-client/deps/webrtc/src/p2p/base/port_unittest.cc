@@ -8,7 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "p2p/base/port.h"
+
 #include <string.h>
+
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -16,14 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "api/candidate.h"
+#include "api/packet_socket_factory.h"
 #include "api/units/time_delta.h"
 #include "p2p/base/basic_packet_socket_factory.h"
 #include "p2p/base/p2p_constants.h"
-#include "p2p/base/packet_socket_factory.h"
-#include "p2p/base/port.h"
 #include "p2p/base/port_allocator.h"
 #include "p2p/base/port_interface.h"
 #include "p2p/base/relay_port.h"
@@ -69,11 +70,11 @@
 using rtc::AsyncPacketSocket;
 using rtc::ByteBufferReader;
 using rtc::ByteBufferWriter;
-using rtc::NATType;
-using rtc::NAT_OPEN_CONE;
 using rtc::NAT_ADDR_RESTRICTED;
+using rtc::NAT_OPEN_CONE;
 using rtc::NAT_PORT_RESTRICTED;
 using rtc::NAT_SYMMETRIC;
+using rtc::NATType;
 using rtc::PacketSocketFactory;
 using rtc::Socket;
 using rtc::SocketAddress;
@@ -123,7 +124,7 @@ SocketAddress GetAddress(Port* port) {
 }
 
 std::unique_ptr<IceMessage> CopyStunMessage(const IceMessage& src) {
-  auto dst = absl::make_unique<IceMessage>();
+  auto dst = std::make_unique<IceMessage>();
   ByteBufferWriter buf;
   src.Write(&buf);
   ByteBufferReader read_buf(buf);
@@ -220,8 +221,8 @@ class TestPort : public Port {
                      const rtc::PacketOptions& options,
                      bool payload) {
     if (!payload) {
-      auto msg = absl::make_unique<IceMessage>();
-      auto buf = absl::make_unique<rtc::BufferT<uint8_t>>(
+      auto msg = std::make_unique<IceMessage>();
+      auto buf = std::make_unique<rtc::BufferT<uint8_t>>(
           static_cast<const char*>(data), size);
       ByteBufferReader read_buf(*buf);
       if (!msg->Read(&read_buf)) {
@@ -397,7 +398,7 @@ class TestChannel : public sigslot::has_slots<> {
   bool connection_ready_to_send_ = false;
 };
 
-class PortTest : public testing::Test, public sigslot::has_slots<> {
+class PortTest : public ::testing::Test, public sigslot::has_slots<> {
  public:
   PortTest()
       : ss_(new rtc::VirtualSocketServer()),
@@ -586,8 +587,8 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
   }
   std::unique_ptr<rtc::NATServer> CreateNatServer(const SocketAddress& addr,
                                                   rtc::NATType type) {
-    return absl::make_unique<rtc::NATServer>(type, ss_.get(), addr, addr,
-                                             ss_.get(), addr);
+    return std::make_unique<rtc::NATServer>(type, ss_.get(), addr, addr,
+                                            ss_.get(), addr);
   }
   static const char* StunName(NATType type) {
     switch (type) {
@@ -781,7 +782,7 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
   }
 
   std::unique_ptr<IceMessage> CreateStunMessage(int type) {
-    auto msg = absl::make_unique<IceMessage>();
+    auto msg = std::make_unique<IceMessage>();
     msg->SetType(type);
     msg->SetTransactionID("TESTTESTTEST");
     return msg;
@@ -790,16 +791,16 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
       int type,
       const std::string& username) {
     std::unique_ptr<IceMessage> msg = CreateStunMessage(type);
-    msg->AddAttribute(absl::make_unique<StunByteStringAttribute>(
+    msg->AddAttribute(std::make_unique<StunByteStringAttribute>(
         STUN_ATTR_USERNAME, username));
     return msg;
   }
   std::unique_ptr<TestPort> CreateTestPort(const rtc::SocketAddress& addr,
                                            const std::string& username,
                                            const std::string& password) {
-    auto port = absl::make_unique<TestPort>(&main_, "test", &socket_factory_,
-                                            MakeNetwork(addr), 0, 0, username,
-                                            password);
+    auto port =
+        std::make_unique<TestPort>(&main_, "test", &socket_factory_,
+                                   MakeNetwork(addr), 0, 0, username, password);
     port->SignalRoleConflict.connect(this, &PortTest::OnRoleConflict);
     return port;
   }
@@ -817,8 +818,8 @@ class PortTest : public testing::Test, public sigslot::has_slots<> {
   std::unique_ptr<TestPort> CreateTestPort(rtc::Network* network,
                                            const std::string& username,
                                            const std::string& password) {
-    auto port = absl::make_unique<TestPort>(&main_, "test", &socket_factory_,
-                                            network, 0, 0, username, password);
+    auto port = std::make_unique<TestPort>(&main_, "test", &socket_factory_,
+                                           network, 0, 0, username, password);
     port->SignalRoleConflict.connect(this, &PortTest::OnRoleConflict);
     return port;
   }
@@ -1032,13 +1033,12 @@ class FakePacketSocketFactory : public rtc::PacketSocketFactory {
     return result;
   }
 
-  // TODO(?): |proxy_info| and |user_agent| should be set
-  // per-factory and not when socket is created.
-  AsyncPacketSocket* CreateClientTcpSocket(const SocketAddress& local_address,
-                                           const SocketAddress& remote_address,
-                                           const rtc::ProxyInfo& proxy_info,
-                                           const std::string& user_agent,
-                                           int opts) override {
+  AsyncPacketSocket* CreateClientTcpSocket(
+      const SocketAddress& local_address,
+      const SocketAddress& remote_address,
+      const rtc::ProxyInfo& proxy_info,
+      const std::string& user_agent,
+      const rtc::PacketSocketTcpOptions& opts) override {
     EXPECT_TRUE(next_client_tcp_socket_ != NULL);
     AsyncPacketSocket* result = next_client_tcp_socket_;
     next_client_tcp_socket_ = NULL;
@@ -1439,17 +1439,17 @@ TEST_F(PortTest, TestLoopbackCall) {
       CreateStunMessage(STUN_BINDING_REQUEST));
   const StunByteStringAttribute* username_attr =
       msg->GetByteString(STUN_ATTR_USERNAME);
-  modified_req->AddAttribute(absl::make_unique<StunByteStringAttribute>(
+  modified_req->AddAttribute(std::make_unique<StunByteStringAttribute>(
       STUN_ATTR_USERNAME, username_attr->GetString()));
   // To make sure we receive error response, adding tiebreaker less than
   // what's present in request.
-  modified_req->AddAttribute(absl::make_unique<StunUInt64Attribute>(
+  modified_req->AddAttribute(std::make_unique<StunUInt64Attribute>(
       STUN_ATTR_ICE_CONTROLLING, kTiebreaker1 - 1));
   modified_req->AddMessageIntegrity("lpass");
   modified_req->AddFingerprint();
 
   lport->Reset();
-  auto buf = absl::make_unique<ByteBufferWriter>();
+  auto buf = std::make_unique<ByteBufferWriter>();
   WriteStunMessage(*modified_req, buf.get());
   conn1->OnReadPacket(buf->Data(), buf->Length(), /* packet_time_us */ -1);
   ASSERT_TRUE_WAIT(lport->last_stun_msg() != NULL, kDefaultTimeout);
@@ -2051,7 +2051,7 @@ TEST_F(PortTest, TestHandleStunMessage) {
   auto port = CreateTestPort(kLocalAddr2, "rfrag", "rpass");
 
   std::unique_ptr<IceMessage> in_msg, out_msg;
-  auto buf = absl::make_unique<ByteBufferWriter>();
+  auto buf = std::make_unique<ByteBufferWriter>();
   rtc::SocketAddress addr(kLocalAddr1);
   std::string username;
 
@@ -2068,7 +2068,7 @@ TEST_F(PortTest, TestHandleStunMessage) {
 
   // BINDING-RESPONSE without username, with MESSAGE-INTEGRITY and FINGERPRINT.
   in_msg = CreateStunMessage(STUN_BINDING_RESPONSE);
-  in_msg->AddAttribute(absl::make_unique<StunXorAddressAttribute>(
+  in_msg->AddAttribute(std::make_unique<StunXorAddressAttribute>(
       STUN_ATTR_XOR_MAPPED_ADDRESS, kLocalAddr2));
   in_msg->AddMessageIntegrity("rpass");
   in_msg->AddFingerprint();
@@ -2080,7 +2080,7 @@ TEST_F(PortTest, TestHandleStunMessage) {
 
   // BINDING-ERROR-RESPONSE without username, with error, M-I, and FINGERPRINT.
   in_msg = CreateStunMessage(STUN_BINDING_ERROR_RESPONSE);
-  in_msg->AddAttribute(absl::make_unique<StunErrorCodeAttribute>(
+  in_msg->AddAttribute(std::make_unique<StunErrorCodeAttribute>(
       STUN_ATTR_ERROR_CODE, STUN_ERROR_SERVER_ERROR,
       STUN_ERROR_REASON_SERVER_ERROR));
   in_msg->AddFingerprint();
@@ -2100,7 +2100,7 @@ TEST_F(PortTest, TestHandleStunMessageBadUsername) {
   auto port = CreateTestPort(kLocalAddr2, "rfrag", "rpass");
 
   std::unique_ptr<IceMessage> in_msg, out_msg;
-  auto buf = absl::make_unique<ByteBufferWriter>();
+  auto buf = std::make_unique<ByteBufferWriter>();
   rtc::SocketAddress addr(kLocalAddr1);
   std::string username;
 
@@ -2166,7 +2166,7 @@ TEST_F(PortTest, TestHandleStunMessageBadMessageIntegrity) {
   auto port = CreateTestPort(kLocalAddr2, "rfrag", "rpass");
 
   std::unique_ptr<IceMessage> in_msg, out_msg;
-  auto buf = absl::make_unique<ByteBufferWriter>();
+  auto buf = std::make_unique<ByteBufferWriter>();
   rtc::SocketAddress addr(kLocalAddr1);
   std::string username;
 
@@ -2204,7 +2204,7 @@ TEST_F(PortTest, TestHandleStunMessageBadFingerprint) {
   auto port = CreateTestPort(kLocalAddr2, "rfrag", "rpass");
 
   std::unique_ptr<IceMessage> in_msg, out_msg;
-  auto buf = absl::make_unique<ByteBufferWriter>();
+  auto buf = std::make_unique<ByteBufferWriter>();
   rtc::SocketAddress addr(kLocalAddr1);
   std::string username;
 
@@ -2227,7 +2227,7 @@ TEST_F(PortTest, TestHandleStunMessageBadFingerprint) {
 
   // Valid BINDING-RESPONSE, except no FINGERPRINT.
   in_msg = CreateStunMessage(STUN_BINDING_RESPONSE);
-  in_msg->AddAttribute(absl::make_unique<StunXorAddressAttribute>(
+  in_msg->AddAttribute(std::make_unique<StunXorAddressAttribute>(
       STUN_ATTR_XOR_MAPPED_ADDRESS, kLocalAddr2));
   in_msg->AddMessageIntegrity("rpass");
   WriteStunMessage(*in_msg, buf.get());
@@ -2245,7 +2245,7 @@ TEST_F(PortTest, TestHandleStunMessageBadFingerprint) {
 
   // Valid BINDING-ERROR-RESPONSE, except no FINGERPRINT.
   in_msg = CreateStunMessage(STUN_BINDING_ERROR_RESPONSE);
-  in_msg->AddAttribute(absl::make_unique<StunErrorCodeAttribute>(
+  in_msg->AddAttribute(std::make_unique<StunErrorCodeAttribute>(
       STUN_ATTR_ERROR_CODE, STUN_ERROR_SERVER_ERROR,
       STUN_ERROR_REASON_SERVER_ERROR));
   in_msg->AddMessageIntegrity("rpass");

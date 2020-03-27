@@ -12,10 +12,11 @@
 #define LOGGING_RTC_EVENT_LOG_EVENTS_RTC_EVENT_RTCP_PACKET_INCOMING_H_
 
 #include <stdint.h>
+
 #include <memory>
 
 #include "api/array_view.h"
-#include "logging/rtc_event_log/events/rtc_event.h"
+#include "api/rtc_event_log/rtc_event.h"
 #include "rtc_base/buffer.h"
 
 namespace webrtc {

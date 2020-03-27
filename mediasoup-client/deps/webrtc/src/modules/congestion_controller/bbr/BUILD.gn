@@ -18,7 +18,6 @@ rtc_static_library("bbr") {
     "../../../api/transport:network_control",
     "../../../api/units:time_delta",
     "../../../rtc_base:rtc_base_approved",
-    "//third_party/abseil-cpp/absl/memory",
   ]
 }
 
@@ -116,22 +115,6 @@ rtc_source_set("windowed_filter") {
   ]
 }
 if (rtc_include_tests) {
-  rtc_source_set("test_bbr_printer") {
-    testonly = true
-    sources = [
-      "test/bbr_printer.cc",
-      "test/bbr_printer.h",
-    ]
-    deps = [
-      ":bbr",
-      ":bbr_controller",
-      "..:test_controller_printer",
-      "../../../api/transport:network_control",
-      "../../../api/units:timestamp",
-      "../../../logging:rtc_event_log_api",
-      "../../../rtc_base:checks",
-    ]
-  }
   rtc_source_set("bbr_unittests") {
     testonly = true
     sources = [
@@ -152,7 +135,6 @@ if (rtc_include_tests) {
       ":packet_number_indexed_queue",
       ":rtt_stats",
       ":windowed_filter",
-      "../../../api/transport:network_control_test",
       "../../../api/units:data_rate",
       "../../../api/units:time_delta",
       "../../../api/units:timestamp",

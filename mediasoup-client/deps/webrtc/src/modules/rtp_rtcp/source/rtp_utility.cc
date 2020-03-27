@@ -13,6 +13,8 @@
 #include <assert.h>
 #include <stddef.h>
 
+#include <string>
+
 #include "api/array_view.h"
 #include "api/video/video_content_type.h"
 #include "api/video/video_frame_marking.h"
@@ -156,9 +158,9 @@ bool RtpHeaderParser::ParseRtcp(RTPHeader* header) const {
   return true;
 }
 
-bool RtpHeaderParser::Parse(
-    RTPHeader* header,
-    const RtpHeaderExtensionMap* ptrExtensionMap) const {
+bool RtpHeaderParser::Parse(RTPHeader* header,
+                            const RtpHeaderExtensionMap* ptrExtensionMap,
+                            bool header_only) const {
   const ptrdiff_t length = _ptrRTPDataEnd - _ptrRTPDataBegin;
   if (length < kRtpMinParseLength) {
     return false;
@@ -202,7 +204,7 @@ bool RtpHeaderParser::Parse(
   header->timestamp = RTPTimestamp;
   header->ssrc = SSRC;
   header->numCSRCs = CC;
-  if (!P) {
+  if (!P || header_only) {
     header->paddingLength = 0;
   }
 
@@ -244,8 +246,8 @@ bool RtpHeaderParser::Parse(
   header->extension.video_timing = {0u, 0u, 0u, 0u, 0u, 0u, false};
 
   header->extension.has_frame_marking = false;
-  header->extension.frame_marking = {false, false, false, false, false,
-                                     kNoTemporalIdx, 0, 0};
+  header->extension.frame_marking = {false, false,          false, false,
+                                     false, kNoTemporalIdx, 0,     0};
 
   if (X) {
     /* RTP header extension, RFC 3550.
@@ -286,7 +288,7 @@ bool RtpHeaderParser::Parse(
   if (header->headerLength > static_cast<size_t>(length))
     return false;
 
-  if (P) {
+  if (P && !header_only) {
     // Packet has padding.
     if (header->headerLength != static_cast<size_t>(length)) {
       // Packet is not header only. We can parse padding length now.
@@ -399,6 +401,17 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           header->extension.hasAbsoluteSendTime = true;
           break;
         }
+        case kRtpExtensionAbsoluteCaptureTime: {
+          AbsoluteCaptureTime extension;
+          if (!AbsoluteCaptureTimeExtension::Parse(
+                  rtc::MakeArrayView(ptr, len + 1), &extension)) {
+            RTC_LOG(LS_WARNING)
+                << "Incorrect absolute capture time len: " << len;
+            return;
+          }
+          header->extension.absolute_capture_time = extension;
+          break;
+        }
         case kRtpExtensionVideoRotation: {
           if (len != 0) {
             RTC_LOG(LS_WARNING)
@@ -486,7 +499,7 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
         }
         case kRtpExtensionFrameMarking: {
           if (!FrameMarkingExtension::Parse(rtc::MakeArrayView(ptr, len + 1),
-              &header->extension.frame_marking)) {
+                                            &header->extension.frame_marking)) {
             RTC_LOG(LS_WARNING) << "Incorrect frame marking len: " << len;
             return;
           }
@@ -494,20 +507,35 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           break;
         }
         case kRtpExtensionRtpStreamId: {
-          header->extension.stream_id.Set(rtc::MakeArrayView(ptr, len + 1));
+          std::string name(reinterpret_cast<const char*>(ptr), len + 1);
+          if (IsLegalRsidName(name)) {
+            header->extension.stream_id = name;
+          } else {
+            RTC_LOG(LS_WARNING) << "Incorrect RtpStreamId";
+          }
           break;
         }
         case kRtpExtensionRepairedRtpStreamId: {
-          header->extension.repaired_stream_id.Set(
-              rtc::MakeArrayView(ptr, len + 1));
+          std::string name(reinterpret_cast<const char*>(ptr), len + 1);
+          if (IsLegalRsidName(name)) {
+            header->extension.repaired_stream_id = name;
+          } else {
+            RTC_LOG(LS_WARNING) << "Incorrect RepairedRtpStreamId";
+          }
           break;
         }
         case kRtpExtensionMid: {
-          header->extension.mid.Set(rtc::MakeArrayView(ptr, len + 1));
+          std::string name(reinterpret_cast<const char*>(ptr), len + 1);
+          if (IsLegalMidName(name)) {
+            header->extension.mid = name;
+          } else {
+            RTC_LOG(LS_WARNING) << "Incorrect Mid";
+          }
           break;
         }
         case kRtpExtensionGenericFrameDescriptor00:
         case kRtpExtensionGenericFrameDescriptor01:
+        case kRtpExtensionGenericFrameDescriptor02:
           RTC_LOG(WARNING)
               << "RtpGenericFrameDescriptor unsupported by rtp header parser.";
           break;

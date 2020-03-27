@@ -8,14 +8,14 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/audio_processing/test/fake_recording_device.h"
+
 #include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/array_view.h"
-#include "modules/audio_processing/test/fake_recording_device.h"
 #include "rtc_base/strings/string_builder.h"
 #include "test/gtest.h"
 
@@ -47,7 +47,7 @@ void WritesDataIntoChannelBuffer(const std::vector<std::vector<float>>& data,
 std::unique_ptr<ChannelBuffer<float>> CreateChannelBufferWithData(
     const std::vector<std::vector<float>>& data) {
   auto buff =
-      absl::make_unique<ChannelBuffer<float>>(data[0].size(), data.size());
+      std::make_unique<ChannelBuffer<float>>(data[0].size(), data.size());
   WritesDataIntoChannelBuffer(data, buff.get());
   return buff;
 }

@@ -16,7 +16,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "api/crypto/crypto_options.h"
 #include "p2p/base/dtls_transport_internal.h"
 #include "p2p/base/fake_ice_transport.h"
@@ -57,8 +56,8 @@ class FakeDtlsTransport : public DtlsTransportInternal {
   // If this constructor is called, a new fake ICE transport will be created,
   // and this FakeDtlsTransport will take the ownership.
   explicit FakeDtlsTransport(const std::string& name, int component)
-      : FakeDtlsTransport(
-            absl::make_unique<FakeIceTransport>(name, component)) {}
+      : FakeDtlsTransport(std::make_unique<FakeIceTransport>(name, component)) {
+  }
 
   ~FakeDtlsTransport() override {
     if (dest_ && dest_->dest_ == this) {
@@ -177,7 +176,17 @@ class FakeDtlsTransport : public DtlsTransportInternal {
     return true;
   }
   void SetSrtpCryptoSuite(int crypto_suite) { crypto_suite_ = crypto_suite; }
-  bool GetSslCipherSuite(int* cipher_suite) override { return false; }
+
+  bool GetSslCipherSuite(int* cipher_suite) override {
+    if (ssl_cipher_suite_) {
+      *cipher_suite = *ssl_cipher_suite_;
+      return true;
+    }
+    return false;
+  }
+  void SetSslCipherSuite(absl::optional<int> cipher_suite) {
+    ssl_cipher_suite_ = cipher_suite;
+  }
   rtc::scoped_refptr<rtc::RTCCertificate> GetLocalCertificate() const override {
     return local_cert_;
   }
@@ -185,7 +194,7 @@ class FakeDtlsTransport : public DtlsTransportInternal {
     if (!remote_cert_) {
       return nullptr;
     }
-    return absl::make_unique<rtc::SSLCertChain>(remote_cert_->Clone());
+    return std::make_unique<rtc::SSLCertChain>(remote_cert_->Clone());
   }
   bool ExportKeyingMaterial(const std::string& label,
                             const uint8_t* context,
@@ -278,6 +287,7 @@ class FakeDtlsTransport : public DtlsTransportInternal {
   rtc::SSLFingerprint dtls_fingerprint_;
   absl::optional<rtc::SSLRole> dtls_role_;
   int crypto_suite_ = rtc::SRTP_AES128_CM_SHA1_80;
+  absl::optional<int> ssl_cipher_suite_;
   webrtc::CryptoOptions crypto_options_;
 
   DtlsTransportState dtls_state_ = DTLS_TRANSPORT_NEW;

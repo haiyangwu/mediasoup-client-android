@@ -33,7 +33,7 @@ set(
 
 # TODO(haiyang wu): add condition
 list(APPEND SOURCE_FILES ${PROJECT_SOURCE_DIR}/src/androidTest/jni/parameters_jni.cpp)
-list(APPEND SOURCE_FILES ${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/test/data/parameters.cpp)
+list(APPEND SOURCE_FILES ${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/test/src/fakeParameters.cpp)
 
 # Create target.
 add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})

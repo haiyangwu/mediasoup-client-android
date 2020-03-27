@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <numeric>
 
+#include "modules/audio_processing/aec3/aec_state.h"
 #include "rtc_base/random.h"
 #include "rtc_base/system/arch.h"
 #include "system_wrappers/include/cpu_features_wrapper.h"
@@ -36,8 +37,8 @@ TEST(ComfortNoiseGenerator, NullLowerBandNoise) {
   std::array<float, kFftLengthBy2Plus1> N2;
   FftData noise;
   EXPECT_DEATH(
-      ComfortNoiseGenerator(DetectOptimization())
-          .Compute(AecState(EchoCanceller3Config{}), N2, nullptr, &noise),
+      ComfortNoiseGenerator(DetectOptimization(), 42)
+          .Compute(AecState(EchoCanceller3Config{}, 1), N2, nullptr, &noise),
       "");
 }
 
@@ -45,16 +46,16 @@ TEST(ComfortNoiseGenerator, NullUpperBandNoise) {
   std::array<float, kFftLengthBy2Plus1> N2;
   FftData noise;
   EXPECT_DEATH(
-      ComfortNoiseGenerator(DetectOptimization())
-          .Compute(AecState(EchoCanceller3Config{}), N2, &noise, nullptr),
+      ComfortNoiseGenerator(DetectOptimization(), 42)
+          .Compute(AecState(EchoCanceller3Config{}, 1), N2, &noise, nullptr),
       "");
 }
 
 #endif
 
 TEST(ComfortNoiseGenerator, CorrectLevel) {
-  ComfortNoiseGenerator cng(DetectOptimization());
-  AecState aec_state(EchoCanceller3Config{});
+  ComfortNoiseGenerator cng(DetectOptimization(), 42);
+  AecState aec_state(EchoCanceller3Config{}, 1);
 
   std::array<float, kFftLengthBy2Plus1> N2;
   N2.fill(1000.f * 1000.f);

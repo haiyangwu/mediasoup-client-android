@@ -44,6 +44,7 @@ specific_include_rules = {
     "+rtc_base/checks.h",
     "+rtc_base/system/rtc_export.h",
     "+rtc_base/units/unit_base.h",
+    "+rtc_base/deprecation.h",
   ],
 
   "array_view\.h": [
@@ -66,17 +67,18 @@ specific_include_rules = {
     "+rtc_base/socket_address.h",
   ],
 
-  "create_peerconnection_factory\.h": [
-    "+rtc_base/deprecation.h",
-  ],
-
   "data_channel_interface\.h": [
     "+rtc_base/copy_on_write_buffer.h",
     "+rtc_base/ref_count.h",
   ],
 
+  "data_channel_transport_interface\.h": [
+    "+rtc_base/copy_on_write_buffer.h",
+  ],
+
   "dtls_transport_interface\.h": [
     "+rtc_base/ref_count.h",
+    "+rtc_base/ssl_certificate.h",
   ],
 
   "dtmf_sender_interface\.h": [
@@ -113,18 +115,20 @@ specific_include_rules = {
     "+rtc_base/network_route.h",
   ],
 
+  "packet_socket_factory\.h": [
+    "+rtc_base/proxy_info.h",
+    "+rtc_base/async_packet_socket.h",
+  ],
+
   "peer_connection_factory_proxy\.h": [
     "+rtc_base/bind.h",
   ],
 
   "peer_connection_interface\.h": [
-    "+logging/rtc_event_log/rtc_event_log_factory_interface.h",
     "+media/base/media_config.h",
     "+media/base/media_engine.h",
     "+p2p/base/port_allocator.h",
-    "+rtc_base/bitrate_allocation_strategy.h",
     "+rtc_base/network.h",
-    "+rtc_base/platform_file.h",
     "+rtc_base/rtc_certificate.h",
     "+rtc_base/rtc_certificate_generator.h",
     "+rtc_base/socket_address.h",
@@ -149,11 +153,10 @@ specific_include_rules = {
   "rtc_error\.h": [
     "+rtc_base/logging.h",
   ],
-
-  "rtp_parameters\.h": [
-    "+rtc_base/deprecation.h",
+  "rtc_event_log_output_file.h": [
+    # For private member and constructor.
+    "+rtc_base/system/file_wrapper.h",
   ],
-
   "rtp_receiver_interface\.h": [
     "+rtc_base/ref_count.h",
   ],
@@ -208,7 +211,6 @@ specific_include_rules = {
 
   "audio_encoder\.h": [
     "+rtc_base/buffer.h",
-    "+rtc_base/deprecation.h",
   ],
 
   "audio_encoder_factory\.h": [
