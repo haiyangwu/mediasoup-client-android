@@ -30,12 +30,12 @@ function get_dep()
 
 	cd ${DEST}
 
-    if [ -z '${GIT_TAG}' ]
-    then
-        echo ">>> [INFO] setting '${GIT_TAG}' git tag ..."
-        git checkout --quiet ${GIT_TAG}
-        set -e
-    fi
+	if [ -z '${GIT_TAG}' ]
+	then
+		echo ">>> [INFO] setting '${GIT_TAG}' git tag ..."
+		git checkout --quiet ${GIT_TAG}
+		set -e
+	fi
 
 	echo ">>> [INFO] adding dep source code to the repository ..."
 	rm -rf .git
@@ -44,6 +44,15 @@ function get_dep()
 	echo ">>> [INFO] got dep '${DEP}'"
 
 	cd ${PROJECT_PWD}
+}
+
+function download_dep()
+{
+	DEP_URL="$1"
+	DEST="$2"
+	rm -rf ${DEST}
+	mkdir ${DEST}
+	curl ${DEP_URL} | tar -xz  -C ${DEST}
 }
 
 function get_libmediasoupclient()
@@ -57,15 +66,31 @@ function get_libmediasoupclient()
 
 function get_webrtc()
 {
-    GIT_REPO="-b m74 --depth=1 https://github.com/haiyangwu/webrtc-mirror.git"
+	GIT_REPO="-b m74 --depth=1 https://github.com/haiyangwu/webrtc-mirror.git"
 	DEST="deps/webrtc/src"
 
-	get_dep "${GIT_REPO}" "${GIT_TAG}" "${DEST}"
+	get_dep "${GIT_REPO}" "" "${DEST}"
+}
+
+function get_chromium-base()
+{
+	DEP_URL="https://chromium.googlesource.com/chromium/src/base/+archive/315ad40d90b614bb6993fdca73053be982927bff.tar.gz"
+	DEST="deps/webrtc/src/base"
+
+	download_dep "${DEP_URL}" "${DEST}"
+}
+
+function get_build()
+{
+	DEP_URL="https://chromium.googlesource.com/chromium/src/build/+archive/80892bfe019dc854c6acdbfbb7304cca63986d4f.tar.gz"
+	DEST="deps/webrtc/src/build"
+
+	download_dep "${DEP_URL}" "${DEST}"
 }
 
 function get_abseil-cpp()
 {
-    GIT_REPO="https://github.com/abseil/abseil-cpp.git"
+	GIT_REPO="https://github.com/abseil/abseil-cpp.git"
 	GIT_TAG="20181200"
 	DEST="deps/webrtc/src/third_party/abseil-cpp"
 
@@ -74,7 +99,7 @@ function get_abseil-cpp()
 
 function get_webrtc-libs()
 {
-    GIT_REPO="https://github.com/haiyangwu/webrtc-android-build.git"
+	GIT_REPO="https://github.com/haiyangwu/webrtc-android-build.git"
 	GIT_TAG="m74"
 	DEST="deps/webrtc/lib"
 
@@ -84,21 +109,27 @@ function get_webrtc-libs()
 case "${DEP}" in
 	'-h')
 		echo "Usage:"
-		echo "  ./scripts/$(basename $0) [libmediasoupclient|webrtc|abseil-cpp|webrtc-libs]"
+		echo "  ./scripts/$(basename $0) [libmediasoupclient|webrtc|abseil-cpp|chromium-base|build|webrtc-libs]"
 		echo
 		;;
 	libmediasoupclient)
 		get_libmediasoupclient
 		;;
-    webrtc)
-        get_webrtc
-        ;;
-    abseil-cpp)
-        get_abseil-cpp
-        ;;
-    webrtc-libs)
-        get_webrtc-libs
-        ;;
+	webrtc)
+		get_webrtc
+		;;
+	abseil-cpp)
+		get_abseil-cpp
+		;;
+	chromium-base)
+		get_chromium-base
+		;;
+	build)
+		get_build
+		;;
+	webrtc-libs)
+		get_webrtc-libs
+		;;
 	*)
 		echo ">>> [ERROR] unknown dep '${DEP}'" >&2
 		exit 1
