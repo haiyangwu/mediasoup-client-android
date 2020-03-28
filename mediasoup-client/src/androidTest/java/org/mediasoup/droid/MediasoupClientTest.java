@@ -24,7 +24,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
-import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
+import static org.mediasoup.droid.data.Parameters.nativeGenTransportRemoteParameters;
 
 @RunWith(AndroidJUnit4.class)
 public class MediasoupClientTest extends BaseTest {
@@ -39,7 +39,7 @@ public class MediasoupClientTest extends BaseTest {
   public void setUp() {
     super.setUp();
     try {
-      JSONObject transportRemoteParameters = new JSONObject(generateTransportRemoteParameters());
+      JSONObject transportRemoteParameters = new JSONObject(nativeGenTransportRemoteParameters());
       mId = transportRemoteParameters.getString("id");
       mIceParameters = transportRemoteParameters.getString("iceParameters");
       mIceCandidates = transportRemoteParameters.getString("iceCandidates");
@@ -103,13 +103,13 @@ public class MediasoupClientTest extends BaseTest {
 
     // device->load() with invalid routerRtpCapabilities throws.
     {
-      final String cap = Parameters.generateRouterRtpCapabilitiesExclude("mimeType");
+      final String cap = Parameters.nativeGenRouterRtpCapabilitiesExclude("mimeType");
       exceptionException(() -> device.load(cap));
     }
 
     // device->load() succeeds.
     {
-      routerRtpCapabilities = Parameters.generateRouterRtpCapabilities();
+      routerRtpCapabilities = Parameters.nativeGenRouterRtpCapabilities();
       device.load(routerRtpCapabilities);
       assertTrue(device.isLoaded());
     }
@@ -289,9 +289,9 @@ public class MediasoupClientTest extends BaseTest {
       String appData = "{\"baz\":\"BAZ\"}";
 
       JSONObject audioConsumerRemoteParameters =
-          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/opus"));
+          new JSONObject(Parameters.nativeGenConsumerRemoteParameters("audio/opus"));
       JSONObject videoConsumerRemoteParameters =
-          new JSONObject(Parameters.generateConsumerRemoteParameters("video/VP8"));
+          new JSONObject(Parameters.nativeGenConsumerRemoteParameters("video/VP8"));
 
       audioConsumer =
           recvTransport.consume(
@@ -392,7 +392,7 @@ public class MediasoupClientTest extends BaseTest {
     // transport.consume() with unsupported consumerRtpParameters throws.
     {
       JSONObject consumerRemoteParameters =
-          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/ISAC"));
+          new JSONObject(Parameters.nativeGenConsumerRemoteParameters("audio/ISAC"));
       exceptionException(
           () -> {
             try {
@@ -557,7 +557,7 @@ public class MediasoupClientTest extends BaseTest {
     // transport.consume() throws if closed.
     {
       final JSONObject audioConsumerRemoteParameters =
-          new JSONObject(Parameters.generateConsumerRemoteParameters("audio/opus"));
+          new JSONObject(Parameters.nativeGenConsumerRemoteParameters("audio/opus"));
       exceptionException(
           () -> {
             try {

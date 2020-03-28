@@ -30,11 +30,11 @@ public class FakeTransportListener {
       mAppData = appData;
       if ("audio".equals(kind)) {
         mAudioProducerLocalParameters = rtpParameters;
-        mAudioProducerId = Parameters.generateProducerRemoteId();
+        mAudioProducerId = Parameters.nativeGenProducerRemoteId();
         return mAudioProducerId;
       } else if ("video".equals(kind)) {
         mVideoProducerLocalParameters = rtpParameters;
-        mVideoProducerId = Parameters.generateProducerRemoteId();
+        mVideoProducerId = Parameters.nativeGenProducerRemoteId();
         return mVideoProducerId;
       } else {
         throw new RuntimeException("Unknown producerLocalParameters[\\\"kind\\\"]");

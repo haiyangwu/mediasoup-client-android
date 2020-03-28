@@ -29,11 +29,6 @@ public class SendTransport extends Transport {
     mNativeTransport = 0;
   }
 
-  @CalledByNative
-  long getNativeOwnedSendTransport() {
-    return mNativeTransport;
-  }
-
   private void checkTransportExists() {
     if (mNativeTransport == 0) {
       throw new IllegalStateException("SendTransport has been disposed.");

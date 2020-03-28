@@ -14,7 +14,7 @@ import org.mediasoup.droid.data.Parameters;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
-import static org.mediasoup.droid.data.Parameters.generateTransportRemoteParameters;
+import static org.mediasoup.droid.data.Parameters.nativeGenTransportRemoteParameters;
 
 @RunWith(AndroidJUnit4.class)
 public class DeviceTest extends BaseTest {
@@ -29,7 +29,7 @@ public class DeviceTest extends BaseTest {
   public void setUp() {
     super.setUp();
     try {
-      JSONObject transportRemoteParameters = new JSONObject(generateTransportRemoteParameters());
+      JSONObject transportRemoteParameters = new JSONObject(nativeGenTransportRemoteParameters());
       mId = transportRemoteParameters.getString("id");
       mIceParameters = transportRemoteParameters.getString("iceParameters");
       mIceCandidates = transportRemoteParameters.getString("iceCandidates");
@@ -86,7 +86,7 @@ public class DeviceTest extends BaseTest {
 
   @Test
   public void testLoad() throws MediasoupException {
-    String routerRtpCapabilities = Parameters.generateRouterRtpCapabilities();
+    String routerRtpCapabilities = Parameters.nativeGenRouterRtpCapabilities();
     assertFalse(TextUtils.isEmpty(routerRtpCapabilities));
 
     // 'device->Load()' succeeds.

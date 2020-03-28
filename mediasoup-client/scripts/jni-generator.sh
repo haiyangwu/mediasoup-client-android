@@ -21,20 +21,22 @@ fi
 function jni_generator()
 {
 	file="$1"
+	namespace="$2"
 	python  ./deps/webrtc/src/base/android/jni_generator/jni_generator.py \
     --input_file=${file} \
     --ptr_type=long  \
     --includes ../include/jni_generator_helper.h \
     --output_dir ./src/main/jni/generated_mediasoupclient_jni/jni \
-    -n\mediasoupclient
+    -n ${namespace}
 }
 
-jni_generator "./src/main/java/org/mediasoup/droid/Consumer.java"
-jni_generator "./src/main/java/org/mediasoup/droid/Device.java"
-jni_generator "./src/main/java/org/mediasoup/droid/PeerConnection.java"
-jni_generator "./src/main/java/org/mediasoup/droid/Producer.java"
-jni_generator "./src/main/java/org/mediasoup/droid/RecvTransport.java"
-jni_generator "./src/main/java/org/mediasoup/droid/SendTransport.java"
-jni_generator "./src/main/java/org/mediasoup/droid/Transport.java"
-jni_generator "./src/main/java/org/mediasoup/droid/Logger.java"
-jni_generator "./src/main/java/org/mediasoup/droid/MediasoupClient.java"
+jni_generator "./src/main/java/org/mediasoup/droid/Consumer.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/Device.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/PeerConnection.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/Producer.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/RecvTransport.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/SendTransport.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/Transport.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/Logger.java" mediasoupclient
+jni_generator "./src/main/java/org/mediasoup/droid/MediasoupClient.java" mediasoupclient
+jni_generator "./src/androidTest/java/org/mediasoup/droid/data/Parameters.java" mediasoupclient::test

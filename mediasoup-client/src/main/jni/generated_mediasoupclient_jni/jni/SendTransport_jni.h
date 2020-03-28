@@ -143,29 +143,6 @@ static base::android::ScopedJavaLocalRef<jobject> Java_SendTransport_Constructor
   return base::android::ScopedJavaLocalRef<jobject>(env, ret);
 }
 
-static std::atomic<jmethodID>
-    g_org_mediasoup_droid_SendTransport_getNativeOwnedSendTransport(nullptr);
-static jlong Java_SendTransport_getNativeOwnedSendTransport(JNIEnv* env, const
-    base::android::JavaRef<jobject>& obj) {
-  jclass clazz = org_mediasoup_droid_SendTransport_clazz(env);
-  CHECK_CLAZZ(env, obj.obj(),
-      org_mediasoup_droid_SendTransport_clazz(env), 0);
-
-  jni_generator::JniJavaCallContextChecked call_context;
-  call_context.Init<
-      base::android::MethodID::TYPE_INSTANCE>(
-          env,
-          clazz,
-          "getNativeOwnedSendTransport",
-          "()J",
-          &g_org_mediasoup_droid_SendTransport_getNativeOwnedSendTransport);
-
-  jlong ret =
-      env->CallLongMethod(obj.obj(),
-          call_context.base.method_id);
-  return ret;
-}
-
 }  // namespace mediasoupclient
 
 #endif  // org_mediasoup_droid_SendTransport_JNI

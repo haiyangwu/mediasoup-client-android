@@ -1,78 +1,62 @@
+#include "generated_mediasoupclient_jni/jni/Parameters_jni.h"
 #include "../../../deps/libmediasoupclient/test/data/parameters.hpp"
 #include "json.hpp"
 #include <include/java_types.h>
 #include <jni.h>
 
 using json = nlohmann::json;
-using namespace webrtc;
 
 namespace mediasoupclient
 {
 namespace test
 {
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateRouterRtpCapabilities(
-	  JNIEnv* env, jclass /* j_type */)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenRouterRtpCapabilities(JNIEnv* env)
 	{
-		json routerRtpCapabilities         = generateRouterRtpCapabilities();
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, routerRtpCapabilities.dump());
-		return result.Release();
+		json routerRtpCapabilities = generateRouterRtpCapabilities();
+		return NativeToJavaString(env, routerRtpCapabilities.dump());
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateRouterRtpCapabilitiesExclude(
-	  JNIEnv* env, jclass /* j_type */, jstring j_exclude)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenRouterRtpCapabilitiesExclude(
+	  JNIEnv* env, const JavaParamRef<jstring>& j_exclude)
 	{
-		std::string exclude = webrtc::JavaToNativeString(env, webrtc::JavaParamRef<jstring>(j_exclude));
+		std::string exclude        = JavaToNativeString(env, j_exclude);
 		json routerRtpCapabilities = generateRouterRtpCapabilities();
 		for (auto& codec : routerRtpCapabilities["codecs"])
 			codec.erase(exclude);
 
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, routerRtpCapabilities.dump());
-		return result.Release();
+		return NativeToJavaString(env, routerRtpCapabilities.dump());
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateRtpParametersByKind(JNIEnv* env, jclass /* j_type */)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenRtpParametersByKind(JNIEnv* env)
 	{
-		json rtpParametersByKind           = generateRtpParametersByKind();
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, rtpParametersByKind.dump());
-		return result.Release();
+		json rtpParametersByKind = generateRtpParametersByKind();
+		return NativeToJavaString(env, rtpParametersByKind.dump());
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateLocalDtlsParameters(JNIEnv* env, jclass /* j_type */)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenLocalDtlsParameters(JNIEnv* env)
 	{
-		json localDtlsParameters           = generateLocalDtlsParameters();
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, localDtlsParameters.dump());
-		return result.Release();
+		json localDtlsParameters = generateLocalDtlsParameters();
+		return NativeToJavaString(env, localDtlsParameters.dump());
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateTransportRemoteParameters(
-	  JNIEnv* env, jclass /* j_type */)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenTransportRemoteParameters(JNIEnv* env)
 	{
-		json transportRemoteParameters     = generateTransportRemoteParameters();
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, transportRemoteParameters.dump());
-		return result.Release();
+		json transportRemoteParameters = generateTransportRemoteParameters();
+		return NativeToJavaString(env, transportRemoteParameters.dump());
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateProducerRemoteId(JNIEnv* env, jclass /* j_type */)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenProducerRemoteId(JNIEnv* env)
 	{
-		std::string producerRemoteId       = generateProducerRemoteId();
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, producerRemoteId);
-		return result.Release();
+		std::string producerRemoteId = generateProducerRemoteId();
+		return NativeToJavaString(env, producerRemoteId);
 	}
 
-	extern "C" JNIEXPORT jstring JNICALL
-	Java_org_mediasoup_droid_data_Parameters_generateConsumerRemoteParameters(
-	  JNIEnv* env, jclass /* j_type */, jstring j_codecMimeType)
+	static ScopedJavaLocalRef<jstring> JNI_Parameters_GenConsumerRemoteParameters(
+	  JNIEnv* env, const JavaParamRef<jstring>& j_codecMimeType)
 	{
-		std::string codecMimeType          = JavaToStdString(env, j_codecMimeType);
-		json consumerRemoteParameters      = generateConsumerRemoteParameters(codecMimeType);
-		ScopedJavaLocalRef<jstring> result = NativeToJavaString(env, consumerRemoteParameters.dump());
-		return result.Release();
+		std::string codecMimeType     = JavaToNativeString(env, j_codecMimeType);
+		json consumerRemoteParameters = generateConsumerRemoteParameters(codecMimeType);
+		return NativeToJavaString(env, consumerRemoteParameters.dump());
 	}
 
 } // namespace test

@@ -38,7 +38,7 @@ static void JNI_Logger_SetLogLevel(JNIEnv* env, jint j_level)
 	Logger::SetLogLevel(static_cast<Logger::LogLevel>(j_level));
 }
 
-static long JNI_Logger_SetHandler(JNIEnv* env, const JavaParamRef<jobject>& j_handler)
+static jlong JNI_Logger_SetHandler(JNIEnv* env, const JavaParamRef<jobject>& j_handler)
 {
 	auto* handler = new LogHandlerInterfaceJNI(env, j_handler);
 	Logger::SetHandler(reinterpret_cast<Logger::LogHandlerInterface*>(handler));
