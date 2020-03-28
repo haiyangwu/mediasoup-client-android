@@ -48,17 +48,17 @@ public class RecvTransport extends Transport {
     return nativeConsume(mNativeTransport, listener, id, producerId, kind, rtpParameters, appData);
   }
 
-  private static native long nativeGetNativeTransport(long nativeTransport);
+  private static native long nativeGetNativeTransport(long transport);
 
+  // may throws MediasoupException
   private static native Consumer nativeConsume(
-      long mNativeTransport,
+      long transport,
       Consumer.Listener listener,
       String id,
       String producerId,
       String kind,
       String rtpParameters,
-      String appData)
-      throws MediasoupException;
+      String appData);
 
-  private static native void nativeFreeTransport(long nativeTransport);
+  private static native void nativeFreeTransport(long transport);
 }

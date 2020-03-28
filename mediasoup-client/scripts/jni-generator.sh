@@ -30,8 +30,11 @@ function jni_generator()
 }
 
 jni_generator "./src/main/java/org/mediasoup/droid/Consumer.java"
+jni_generator "./src/main/java/org/mediasoup/droid/Device.java"
 jni_generator "./src/main/java/org/mediasoup/droid/PeerConnection.java"
 jni_generator "./src/main/java/org/mediasoup/droid/Producer.java"
 jni_generator "./src/main/java/org/mediasoup/droid/RecvTransport.java"
 jni_generator "./src/main/java/org/mediasoup/droid/SendTransport.java"
 jni_generator "./src/main/java/org/mediasoup/droid/Transport.java"
+jni_generator "./src/main/java/org/mediasoup/droid/Logger.java"
+jni_generator "./src/main/java/org/mediasoup/droid/MediasoupClient.java"

@@ -1,13 +1,13 @@
+#include "generated_mediasoupclient_jni/jni/MediasoupClient_jni.h"
 #include "mediasoupclient.hpp"
-#include <jni.h>
+#include <include/java_types.h>
+#include <sdk/android/native_api/jni/java_types.h>
 
 namespace mediasoupclient
 {
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_MediasoupClient_nativeVersion(JNIEnv* env, jclass /* type */)
+static ScopedJavaLocalRef<jstring> JNI_MediasoupClient_Version(JNIEnv* env)
 {
 	std::string version = mediasoupclient::Version();
-	return env->NewStringUTF(version.c_str());
+	return NativeToJavaString(env, version);
 }
-
 } // namespace mediasoupclient

@@ -22,9 +22,9 @@ public class PeerConnection {
 
   public static class Options {
 
-    private org.webrtc.PeerConnection.RTCConfiguration mRTCConfig;
+    public RTCConfiguration mRTCConfig;
 
-    private PeerConnectionFactory mFactory;
+    public PeerConnectionFactory mFactory;
 
     public void setRTCConfig(RTCConfiguration RTCConfig) {
       mRTCConfig = RTCConfig;
@@ -32,16 +32,6 @@ public class PeerConnection {
 
     public void setFactory(PeerConnectionFactory factory) {
       mFactory = factory;
-    }
-
-    @CalledByNative("Options")
-    public RTCConfiguration getRTCConfig() {
-      return mRTCConfig;
-    }
-
-    @CalledByNative("Options")
-    public long getNativeFactory() {
-      return mFactory != null ? mFactory.getNativePeerConnectionFactory() : 0;
     }
   }
 
@@ -109,7 +99,11 @@ public class PeerConnection {
       mOptions.mFactory = options.mFactory;
     }
 
-    mNativePeerConnection = nativeNewPeerConnection(listener, mOptions);
+    mNativePeerConnection =
+        nativeNewPeerConnection(
+            listener,
+            mOptions.mRTCConfig,
+            mOptions.mFactory != null ? mOptions.mFactory.getNativePeerConnectionFactory() : 0);
   }
 
   public void dispose() {
@@ -244,7 +238,7 @@ public class PeerConnection {
   }
 
   private static native long nativeNewPeerConnection(
-      PrivateListener nativeListener, Options options);
+      PrivateListener nativeListener, RTCConfiguration configuration, long peerConnectionFactory);
 
   private static native void nativeFreeOwnedPeerConnection(long ownedPeerConnection);
 
@@ -254,13 +248,14 @@ public class PeerConnection {
 
   private native String nativeCreateOffer(MediaConstraints constraints);
 
-  private native String nativeCreateAnswer(MediaConstraints constraints) throws MediasoupException;
+  // may throws MediasoupException;
+  private native String nativeCreateAnswer(MediaConstraints constraints);
 
-  private native void nativeSetLocalDescription(String type, String description)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private native void nativeSetLocalDescription(String type, String description);
 
-  private native void nativeSetRemoteDescription(String type, String description)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private native void nativeSetRemoteDescription(String type, String description);
 
   private native String nativeGetLocalDescription();
 

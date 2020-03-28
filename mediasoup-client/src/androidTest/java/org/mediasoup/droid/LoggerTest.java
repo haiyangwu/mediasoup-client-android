@@ -12,13 +12,8 @@ public class LoggerTest {
 
   @Test
   public void setDefaultHandler() {
-    Logger.setDefaultHandler();
-  }
-
-  @Test
-  public void log() {
     Logger.setLogLevel(Logger.LogLevel.LOG_TRACE);
-
+    Logger.setDefaultHandler();
     Logger.v(TAG, "test log");
     Logger.d(TAG, "test log");
     Logger.w(TAG, "test log");

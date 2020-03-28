@@ -11,78 +11,81 @@
 // generation script. We are exporting types in strange namespaces in order to
 // be compatible with the generated code targeted for Chromium.
 
-#ifndef MEDIASOUPCLIENT_JNI_GENERATOR_HELPER_H_
-#define MEDIASOUPCLIENT_JNI_GENERATOR_HELPER_H_
+#ifndef MEDIASOUP_CLIENT_JNI_GENERATOR_HELPER_H_
+#define MEDIASOUP_CLIENT_JNI_GENERATOR_HELPER_H_
 
-#include <jni.h>
 #include <atomic>
+#include <jni.h>
 
-#include "rtc_base/checks.h"
-#include "sdk/android/native_api/jni/jni_int_wrapper.h"
 #include "include/scoped_java_ref.h"
+#include "sdk/android/native_api/jni/jni_int_wrapper.h"
+#include "rtc_base/checks.h"
 
 #define CHECK_CLAZZ(env, jcaller, clazz, ...) RTC_DCHECK(clazz);
-#define CHECK_NATIVE_PTR(env, jcaller, native_ptr, method_name, ...) \
-  RTC_DCHECK(native_ptr) << method_name;
+#define CHECK_NATIVE_PTR(env, jcaller, native_ptr, method_name, ...)                               \
+	RTC_DCHECK(native_ptr) << method_name;
 
 #define BASE_EXPORT
 #define JNI_REGISTRATION_EXPORT __attribute__((visibility("default")))
 #define JNI_GENERATOR_EXPORT extern "C" JNIEXPORT JNICALL
 
-#define CHECK_EXCEPTION(jni)        \
-  RTC_CHECK(!jni->ExceptionCheck()) \
-      << (jni->ExceptionDescribe(), jni->ExceptionClear(), "")
+#define CHECK_EXCEPTION(jni)                                                                       \
+	RTC_CHECK(!jni->ExceptionCheck()) << (jni->ExceptionDescribe(), jni->ExceptionClear(), "")
 
-namespace mediasoupclient {
-
+namespace mediasoupclient
+{
 // This function will initialize |atomic_class_id| to contain a global ref to
 // the given class, and will return that ref on subsequent calls. The caller is
 // responsible to zero-initialize |atomic_class_id|. It's fine to
 // simultaneously call this on multiple threads referencing the same
 // |atomic_method_id|.
-jclass LazyGetClass(JNIEnv* env,
-                    const char* class_name,
-                    std::atomic<jclass>* atomic_class_id);
+jclass LazyGetClass(JNIEnv* env, const char* class_name, std::atomic<jclass>* atomic_class_id);
 
 // This class is a wrapper for JNIEnv Get(Static)MethodID.
-class MethodID {
- public:
-  enum Type {
-    TYPE_STATIC,
-    TYPE_INSTANCE,
-  };
+class MethodID
+{
+public:
+	enum Type
+	{
+		TYPE_STATIC,
+		TYPE_INSTANCE,
+	};
 
-  // This function will initialize |atomic_method_id| to contain a ref to
-  // the given method, and will return that ref on subsequent calls. The caller
-  // is responsible to zero-initialize |atomic_method_id|. It's fine to
-  // simultaneously call this on multiple threads referencing the same
-  // |atomic_method_id|.
-  template <Type type>
-  static jmethodID LazyGet(JNIEnv* env,
-                           jclass clazz,
-                           const char* method_name,
-                           const char* jni_signature,
-                           std::atomic<jmethodID>* atomic_method_id);
+	// This function will initialize |atomic_method_id| to contain a ref to
+	// the given method, and will return that ref on subsequent calls. The caller
+	// is responsible to zero-initialize |atomic_method_id|. It's fine to
+	// simultaneously call this on multiple threads referencing the same
+	// |atomic_method_id|.
+	template<Type type>
+	static jmethodID LazyGet(
+	  JNIEnv* env,
+	  jclass clazz,
+	  const char* method_name,
+	  const char* jni_signature,
+	  std::atomic<jmethodID>* atomic_method_id);
 };
 
-}  // namespace mediasoupclient
+} // namespace mediasoupclient
 
 // Re-export relevant classes into the namespaces the script expects.
-namespace base {
-namespace android {
+namespace base
+{
+namespace android
+{
+	using mediasoupclient::JavaParamRef;
+	using mediasoupclient::JavaRef;
+	using mediasoupclient::LazyGetClass;
+	using mediasoupclient::MethodID;
+	using mediasoupclient::ScopedJavaLocalRef;
 
-using mediasoupclient::JavaParamRef;
-using mediasoupclient::JavaRef;
-using mediasoupclient::ScopedJavaLocalRef;
-using mediasoupclient::LazyGetClass;
-using mediasoupclient::MethodID;
+} // namespace android
+} // namespace base
 
-}  // namespace android
-}  // namespace base
-
-namespace jni_generator {
-inline void CheckException(JNIEnv* env) {
-  CHECK_EXCEPTION(env);
+namespace jni_generator
+{
+inline void CheckException(JNIEnv* env)
+{
+	CHECK_EXCEPTION(env);
 }
 
 // A 32 bit number could be an address on stack. Random 64 bit marker on the
@@ -90,70 +93,81 @@ inline void CheckException(JNIEnv* env) {
 constexpr uint64_t kJniStackMarkerValue = 0xbdbdef1bebcade1b;
 
 // Context about the JNI call with exception checked to be stored in stack.
-struct BASE_EXPORT JniJavaCallContextUnchecked {
-  inline JniJavaCallContextUnchecked() {
+struct BASE_EXPORT JniJavaCallContextUnchecked
+{
+	inline JniJavaCallContextUnchecked()
+	{
 // TODO(ssid): Implement for other architectures.
 #if defined(__arm__) || defined(__aarch64__)
-    // This assumes that this method does not increment the stack pointer.
-    asm volatile("mov %0, sp" : "=r"(sp));
+		// This assumes that this method does not increment the stack pointer.
+		asm volatile("mov %0, sp" : "=r"(sp));
 #else
-    sp = 0;
+		sp = 0;
 #endif
-  }
+	}
 
-  // Force no inline to reduce code size.
-  template <base::android::MethodID::Type type>
-  void Init(JNIEnv* env,
-            jclass clazz,
-            const char* method_name,
-            const char* jni_signature,
-            std::atomic<jmethodID>* atomic_method_id) {
-    env1 = env;
+	// Force no inline to reduce code size.
+	template<base::android::MethodID::Type type>
+	void Init(
+	  JNIEnv* env,
+	  jclass clazz,
+	  const char* method_name,
+	  const char* jni_signature,
+	  std::atomic<jmethodID>* atomic_method_id)
+	{
+		env1 = env;
 
-    // Make sure compiler doesn't optimize out the assignment.
-    memcpy(&marker, &kJniStackMarkerValue, sizeof(kJniStackMarkerValue));
-    // Gets PC of the calling function.
-    pc = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+		// Make sure compiler doesn't optimize out the assignment.
+		memcpy(&marker, &kJniStackMarkerValue, sizeof(kJniStackMarkerValue));
+		// Gets PC of the calling function.
+		pc = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
 
-    method_id = base::android::MethodID::LazyGet<type>(
-        env, clazz, method_name, jni_signature, atomic_method_id);
-  }
+		method_id = base::android::MethodID::LazyGet<type>(
+		  env, clazz, method_name, jni_signature, atomic_method_id);
+	}
 
-  ~JniJavaCallContextUnchecked() {
-    // Reset so that spurious marker finds are avoided.
-    memset(&marker, 0, sizeof(marker));
-  }
+	~JniJavaCallContextUnchecked()
+	{
+		// Reset so that spurious marker finds are avoided.
+		memset(&marker, 0, sizeof(marker));
+	}
 
-  uint64_t marker;
-  uintptr_t sp;
-  uintptr_t pc;
+	uint64_t marker;
+	uintptr_t sp;
+	uintptr_t pc;
 
-  JNIEnv* env1;
-  jmethodID method_id;
+	JNIEnv* env1;
+	jmethodID method_id;
 };
 
 // Context about the JNI call with exception unchecked to be stored in stack.
-struct BASE_EXPORT JniJavaCallContextChecked {
-  // Force no inline to reduce code size.
-  template <base::android::MethodID::Type type>
-  void Init(JNIEnv* env,
-            jclass clazz,
-            const char* method_name,
-            const char* jni_signature,
-            std::atomic<jmethodID>* atomic_method_id) {
-    base.Init<type>(env, clazz, method_name, jni_signature, atomic_method_id);
-    // Reset |pc| to correct caller.
-    base.pc = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
-  }
+struct BASE_EXPORT JniJavaCallContextChecked
+{
+	// Force no inline to reduce code size.
+	template<base::android::MethodID::Type type>
+	void Init(
+	  JNIEnv* env,
+	  jclass clazz,
+	  const char* method_name,
+	  const char* jni_signature,
+	  std::atomic<jmethodID>* atomic_method_id)
+	{
+		base.Init<type>(env, clazz, method_name, jni_signature, atomic_method_id);
+		// Reset |pc| to correct caller.
+		base.pc = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+	}
 
-  ~JniJavaCallContextChecked() { jni_generator::CheckException(base.env1); }
+	~JniJavaCallContextChecked()
+	{
+		jni_generator::CheckException(base.env1);
+	}
 
-  JniJavaCallContextUnchecked base;
+	JniJavaCallContextUnchecked base;
 };
 
-static_assert(sizeof(JniJavaCallContextChecked) ==
-                  sizeof(JniJavaCallContextUnchecked),
-              "Stack unwinder cannot work with structs of different sizes.");
-}  // namespace jni_generator
+static_assert(
+  sizeof(JniJavaCallContextChecked) == sizeof(JniJavaCallContextUnchecked),
+  "Stack unwinder cannot work with structs of different sizes.");
+} // namespace jni_generator
 
-#endif  // MEDIASOUPCLIENT_JNI_GENERATOR_HELPER_H_
+#endif // MEDIASOUP_CLIENT_JNI_GENERATOR_HELPER_H_

@@ -2,13 +2,15 @@
 
 #include "consumer_jni.h"
 #include "Logger.hpp"
-#include "sdk/android/jni/consumer_jni.h"
+#include "generated_mediasoupclient_jni/jni/Consumer_jni.h"
+#include "include/java_types.h"
 #include <jni.h>
+#include <sdk/android/native_api/jni/java_types.h>
 
 namespace mediasoupclient
 {
 ConsumerListenerJni::ConsumerListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener)
-  : j_listener_global_(env, j_listener)
+  : j_listener_global_(j_listener)
 {
 	MSC_TRACE();
 }
@@ -18,30 +20,26 @@ void ConsumerListenerJni::OnTransportClose(Consumer* /* native_consumer */)
 	MSC_TRACE();
 
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	Java_Mediasoup_Consumer_Listener_onTransportClose(
-	  env, j_listener_global_, JavaParamRef<jobject>(j_consumer_));
+	Java_Listener_onTransportClose(env, j_listener_global_, j_consumer_);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Consumer_getNativeId(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetNativeId(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetId();
-	return NativeToJavaString(env, result).Release();
+	return NativeToJavaString(env, result);
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_org_mediasoup_droid_Consumer_getNativeProducerId(
-  JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetProducerId(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetProducerId();
-	return NativeToJavaString(env, result).Release();
+	return NativeToJavaString(env, result);
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_org_mediasoup_droid_Consumer_isNativeClosed(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static jboolean JNI_Consumer_IsClosed(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
@@ -49,8 +47,7 @@ Java_org_mediasoup_droid_Consumer_isNativeClosed(JNIEnv* env, jclass /* j_type *
 	return static_cast<jboolean>(result);
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_org_mediasoup_droid_Consumer_isNativePaused(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static jboolean JNI_Consumer_IsPaused(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
@@ -58,17 +55,15 @@ Java_org_mediasoup_droid_Consumer_isNativePaused(JNIEnv* env, jclass /* j_type *
 	return static_cast<jboolean>(result);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Consumer_getNativeKind(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetKind(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetKind();
-	return NativeToJavaString(env, result).Release();
+	return NativeToJavaString(env, result);
 }
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_org_mediasoup_droid_Consumer_getNativeTrack(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static jlong JNI_Consumer_GetTrack(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
@@ -76,51 +71,46 @@ Java_org_mediasoup_droid_Consumer_getNativeTrack(JNIEnv* env, jclass /* j_type *
 	return NativeToJavaPointer(result);
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_org_mediasoup_droid_Consumer_getNativeRtpParameters(
-  JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetRtpParameters(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetRtpParameters();
 
-	return NativeToJavaString(env, result.dump()).Release();
+	return NativeToJavaString(env, result.dump());
 }
 
-extern "C" JNIEXPORT jstring JNICALL Java_org_mediasoup_droid_Consumer_getNativeAppData(
-  JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetAppData(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetAppData();
 
-	return NativeToJavaString(env, result.dump()).Release();
+	return NativeToJavaString(env, result.dump());
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Consumer_nativeResume(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static void JNI_Consumer_Resume(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->Resume();
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Consumer_nativePause(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static void JNI_Consumer_Pause(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->Pause();
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Consumer_getNativeStats(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetStats(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	try
 	{
 		auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetStats();
-		return NativeToJavaString(env, result.dump()).Release();
+		return NativeToJavaString(env, result.dump());
 	}
 	catch (const std::exception& e)
 	{
@@ -130,12 +120,20 @@ Java_org_mediasoup_droid_Consumer_getNativeStats(JNIEnv* env, jclass /* j_type *
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Consumer_nativeClose(JNIEnv* env, jclass /* j_type */, jlong j_consumer)
+static void JNI_Consumer_Close(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();
 
 	reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->Close();
+}
+
+ScopedJavaLocalRef<jobject> NativeToJavaConsumer(
+  JNIEnv* env, Consumer* consumer, ConsumerListenerJni* listener)
+{
+	auto ownedConsumer = new OwnedConsumer(consumer, listener);
+	auto j_consumer    = Java_Consumer_Constructor(env, webrtc::NativeToJavaPointer(ownedConsumer));
+	listener->SetJConsumer(env, j_consumer);
+	return ScopedJavaLocalRef<jobject>(env, j_consumer.Release());
 }
 
 } // namespace mediasoupclient

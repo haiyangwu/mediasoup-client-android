@@ -10,7 +10,7 @@ public class Producer {
 
   public interface Listener {
 
-    @CalledByNative
+    @CalledByNative("Listener")
     void onTransportClose(Producer producer);
   }
 
@@ -20,20 +20,20 @@ public class Producer {
   @CalledByNative
   public Producer(long nativeProducer) {
     mNativeProducer = nativeProducer;
-    long nativeTrack = getNativeTrack(mNativeProducer);
+    long nativeTrack = nativeGetTrack(mNativeProducer);
     mCachedTrack = RTCUtils.createMediaStreamTrack(nativeTrack);
   }
 
   public String getId() {
-    return getNativeId(mNativeProducer);
+    return nativeGetId(mNativeProducer);
   }
 
   public boolean isClosed() {
-    return isNativeClosed(mNativeProducer);
+    return nativeIsClosed(mNativeProducer);
   }
 
   public String getKind() {
-    return getNativeKind(mNativeProducer);
+    return nativeGetKind(mNativeProducer);
   }
 
   public MediaStreamTrack getTrack() {
@@ -41,19 +41,19 @@ public class Producer {
   }
 
   public boolean isPaused() {
-    return isNativePaused(mNativeProducer);
+    return nativeIsPaused(mNativeProducer);
   }
 
   public int getMaxSpatialLayer() {
-    return getNativeMaxSpatialLayer(mNativeProducer);
+    return nativeGetMaxSpatialLayer(mNativeProducer);
   }
 
   public String getAppData() {
-    return getNativeAppData(mNativeProducer);
+    return nativeGetAppData(mNativeProducer);
   }
 
   public String getRtpParameters() {
-    return getNativeRtpParameters(mNativeProducer);
+    return nativeGetRtpParameters(mNativeProducer);
   }
 
   public void resume() {
@@ -61,7 +61,7 @@ public class Producer {
   }
 
   public void setMaxSpatialLayer(int layer) throws MediasoupException {
-    setNativeMaxSpatialLayer(mNativeProducer, layer);
+    nativeSetMaxSpatialLayer(mNativeProducer, layer);
   }
 
   public void pause() {
@@ -75,40 +75,41 @@ public class Producer {
   }
 
   public String getStats() throws MediasoupException {
-    return getNativeStats(mNativeProducer);
+    return nativeGetStats(mNativeProducer);
   }
 
   public void close() {
     nativeClose(mNativeProducer);
   }
 
-  private static native String getNativeId(long nativeProducer);
+  private static native String nativeGetId(long producer);
 
-  private static native boolean isNativeClosed(long nativeProducer);
+  private static native boolean nativeIsClosed(long producer);
 
-  private static native String getNativeKind(long nativeProducer);
+  private static native String nativeGetKind(long producer);
 
-  private static native long getNativeTrack(long nativeProducer);
+  private static native long nativeGetTrack(long producer);
 
-  private static native boolean isNativePaused(long nativeProducer);
+  private static native boolean nativeIsPaused(long producer);
 
-  private static native int getNativeMaxSpatialLayer(long nativeProducer);
+  private static native int nativeGetMaxSpatialLayer(long producer);
 
-  private static native String getNativeAppData(long nativeProducer);
+  private static native String nativeGetAppData(long producer);
 
-  private static native String getNativeRtpParameters(long nativeProducer);
+  private static native String nativeGetRtpParameters(long producer);
 
-  private static native String getNativeStats(long nativeProducer) throws MediasoupException;
+  // may throws MediasoupException
+  private static native String nativeGetStats(long producer);
 
-  private static native void nativeResume(long nativeProducer);
+  private static native void nativeResume(long producer);
 
-  private static native void setNativeMaxSpatialLayer(long nativeProducer, int layer)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private static native void nativeSetMaxSpatialLayer(long producer, int layer);
 
-  private static native void nativePause(long nativeProducer);
+  private static native void nativePause(long producer);
 
-  private static native void nativeReplaceTrack(long nativeProducer, long track)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private static native void nativeReplaceTrack(long producer, long track);
 
-  private static native void nativeClose(long nativeProducer);
+  private static native void nativeClose(long producer);
 }

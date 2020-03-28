@@ -14,10 +14,6 @@ public:
 
 	~ProducerListenerJni()
 	{
-		if (j_producer_ != nullptr)
-		{
-			webrtc::AttachCurrentThreadIfNeeded()->DeleteGlobalRef(j_producer_);
-		}
 	}
 
 	void OnTransportClose(Producer* producer) override;
@@ -25,12 +21,12 @@ public:
 public:
 	void SetJProducer(JNIEnv* env, const JavaRef<jobject>& j_producer)
 	{
-		j_producer_ = env->NewGlobalRef(j_producer.obj());
+		j_producer_.Reset(j_producer);
 	}
 
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_;
-	jobject j_producer_;
+	ScopedJavaGlobalRef<jobject> j_producer_;
 };
 
 class OwnedProducer
@@ -56,6 +52,9 @@ private:
 	Producer* producer_;
 	ProducerListenerJni* listener_;
 };
+
+ScopedJavaLocalRef<jobject> NativeToJavaProducer(
+  JNIEnv* env, Producer* producer, ProducerListenerJni* listener);
 
 } // namespace mediasoupclient
 

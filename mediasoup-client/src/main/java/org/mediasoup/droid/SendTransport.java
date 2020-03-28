@@ -72,16 +72,16 @@ public class SendTransport extends Transport {
         mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, appData);
   }
 
-  private static native long nativeGetNativeTransport(long nativeTransport);
+  private static native long nativeGetNativeTransport(long transport);
 
+  // may throws MediasoupException
   private static native Producer nativeProduce(
-      long mNativeTransport,
+      long transport,
       Producer.Listener listener,
       long track,
       RtpParameters.Encoding[] encodings,
       String codecOptions,
-      String appData)
-      throws MediasoupException;
+      String appData);
 
-  private static native void nativeFreeTransport(long nativeTransport);
+  private static native void nativeFreeTransport(long transport);
 }

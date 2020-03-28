@@ -1,7 +1,7 @@
 #include "../../../deps/libmediasoupclient/test/data/parameters.hpp"
 #include "json.hpp"
+#include <include/java_types.h>
 #include <jni.h>
-#include <sdk/android/native_api/jni/java_types.h>
 
 using json = nlohmann::json;
 using namespace webrtc;

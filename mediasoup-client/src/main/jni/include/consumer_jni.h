@@ -14,10 +14,6 @@ public:
 
 	~ConsumerListenerJni()
 	{
-		if (j_consumer_ != nullptr)
-		{
-			webrtc::AttachCurrentThreadIfNeeded()->DeleteGlobalRef(j_consumer_);
-		}
 	}
 
 	void OnTransportClose(Consumer* native_consumer) override;
@@ -25,12 +21,12 @@ public:
 public:
 	void SetJConsumer(JNIEnv* env, const JavaRef<jobject>& j_consumer)
 	{
-		j_consumer_ = env->NewGlobalRef(j_consumer.obj());
+		j_consumer_.Reset(j_consumer);
 	}
 
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_global_;
-	jobject j_consumer_;
+	ScopedJavaGlobalRef<jobject> j_consumer_;
 };
 
 class OwnedConsumer
@@ -56,6 +52,9 @@ private:
 	Consumer* consumer_;
 	ConsumerListenerJni* listener_;
 };
+
+ScopedJavaLocalRef<jobject> NativeToJavaConsumer(
+  JNIEnv* env, Consumer* consumer, ConsumerListenerJni* listener);
 
 } // namespace mediasoupclient
 

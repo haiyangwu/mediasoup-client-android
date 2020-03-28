@@ -10,14 +10,9 @@ namespace mediasoupclient
 class SendTransportListenerJni final : public SendTransport::Listener
 {
 public:
-	SendTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
-
-	~SendTransportListenerJni()
+	SendTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener)
+	  : j_listener_(j_listener)
 	{
-		if (j_transport_ != nullptr)
-		{
-			webrtc::AttachCurrentThreadIfNeeded()->DeleteGlobalRef(j_transport_);
-		}
 	}
 
 	std::future<void> OnConnect(Transport* transport, const json& dtlsParameters) override;
@@ -30,25 +25,20 @@ public:
 public:
 	void SetJTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
 	{
-		j_transport_ = env->NewGlobalRef(j_transport.obj());
+		j_transport_.Reset(j_transport);
 	}
 
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_;
-	jobject j_transport_;
+	ScopedJavaGlobalRef<jobject> j_transport_;
 };
 
 class RecvTransportListenerJni final : public RecvTransport::Listener
 {
 public:
-	RecvTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_);
-
-	~RecvTransportListenerJni()
+	RecvTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener)
+	  : j_listener_(j_listener)
 	{
-		if (j_transport_ != nullptr)
-		{
-			webrtc::AttachCurrentThreadIfNeeded()->DeleteGlobalRef(j_transport_);
-		}
 	}
 
 	std::future<void> OnConnect(Transport* transport, const json& dtlsParameters) override;
@@ -58,12 +48,12 @@ public:
 public:
 	void SetJTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
 	{
-		j_transport_ = env->NewGlobalRef(j_transport.obj());
+		j_transport_.Reset(j_transport);
 	}
 
 private:
 	const ScopedJavaGlobalRef<jobject> j_listener_;
-	jobject j_transport_;
+	ScopedJavaGlobalRef<jobject> j_transport_;
 };
 
 class OwnedSendTransport
@@ -113,6 +103,12 @@ private:
 	RecvTransport* transport_;
 	RecvTransportListenerJni* listener_;
 };
+
+ScopedJavaLocalRef<jobject> NativeToJavaSendTransport(
+  JNIEnv* env, SendTransport* transport, SendTransportListenerJni* listener);
+
+ScopedJavaLocalRef<jobject> NativeToJavaRecvTransport(
+  JNIEnv* env, RecvTransport* transport, RecvTransportListenerJni* listener);
 
 } // namespace mediasoupclient
 

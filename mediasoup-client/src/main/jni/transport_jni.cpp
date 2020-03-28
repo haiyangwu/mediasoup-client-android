@@ -3,36 +3,21 @@
 #include "transport_jni.h"
 #include "Logger.hpp"
 #include "consumer_jni.h"
+#include "generated_mediasoupclient_jni/jni/RecvTransport_jni.h"
+#include "generated_mediasoupclient_jni/jni/SendTransport_jni.h"
+#include "generated_mediasoupclient_jni/jni/Transport_jni.h"
 #include "producer_jni.h"
-#include "sdk/android/jni/rec_transport_jni.h"
-#include "sdk/android/jni/send_transport_jni.h"
-#include "sdk/android/jni/transport_jni.h"
-#include <jni.h>
+#include <include/java_types.h>
 #include <sdk/android/native_api/jni/java_types.h>
-#include <sdk/android/src/jni/jni_generator_helper.h>
 #include <sdk/android/src/jni/pc/rtp_parameters.h>
-
-extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_Producer_Constructor(
-  JNIEnv* env, jlong nativeProducer);
-
-extern base::android::ScopedJavaLocalRef<jobject> Java_Mediasoup_Consumer_Constructor(
-  JNIEnv* env, jlong nativeConsumer);
 
 namespace mediasoupclient
 {
-SendTransportListenerJni::SendTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_)
-  : j_listener_(env, j_listener_)
-{
-}
-
 std::future<void> SendTransportListenerJni::OnConnect(Transport* /*transport*/, const json& dtlsParameters)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	Java_Mediasoup_Listener_OnConnect(
-	  env,
-	  j_listener_,
-	  JavaParamRef<jobject>(j_transport_),
-	  NativeToJavaString(env, dtlsParameters.dump()));
+	Java_Listener_onConnect(
+	  env, j_listener_, j_transport_, NativeToJavaString(env, dtlsParameters.dump()));
 	std::promise<void> promise;
 	promise.set_value();
 	return promise.get_future();
@@ -42,18 +27,18 @@ void SendTransportListenerJni::OnConnectionStateChange(
   Transport* /*transport*/, const std::string& connectionState)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	Java_Mediasoup_Listener_OnConnectionStateChange(
-	  env, j_listener_, JavaParamRef<jobject>(j_transport_), NativeToJavaString(env, connectionState));
+	Java_Listener_onConnectionStateChange(
+	  env, j_listener_, j_transport_, NativeToJavaString(env, connectionState));
 }
 
 std::future<std::string> SendTransportListenerJni::OnProduce(
   SendTransport* /*transport*/, const std::string& kind, json rtpParameters, const json& appData)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	auto result = Java_Mediasoup_Listener_OnProduce(
+	auto result = Java_Listener_onProduce(
 	  env,
 	  j_listener_,
-	  JavaParamRef<jobject>(j_transport_),
+	  j_transport_,
 	  NativeToJavaString(env, kind),
 	  NativeToJavaString(env, rtpParameters.dump()),
 	  NativeToJavaString(env, appData.dump()));
@@ -62,19 +47,11 @@ std::future<std::string> SendTransportListenerJni::OnProduce(
 	return promise.get_future();
 }
 
-RecvTransportListenerJni::RecvTransportListenerJni(JNIEnv* env, const JavaRef<jobject>& j_listener_)
-  : j_listener_(env, j_listener_)
-{
-}
-
 std::future<void> RecvTransportListenerJni::OnConnect(Transport* /*transport*/, const json& dtlsParameters)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	Java_Mediasoup_Listener_OnConnect(
-	  env,
-	  j_listener_,
-	  JavaParamRef<jobject>(j_transport_),
-	  NativeToJavaString(env, dtlsParameters.dump()));
+	Java_Listener_onConnect(
+	  env, j_listener_, j_transport_, NativeToJavaString(env, dtlsParameters.dump()));
 
 	std::promise<void> promise;
 	promise.set_value();
@@ -85,54 +62,53 @@ void RecvTransportListenerJni::OnConnectionStateChange(
   Transport* /*transport*/, const std::string& connectionState)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
-	Java_Mediasoup_Listener_OnConnectionStateChange(
-	  env, j_listener_, JavaParamRef<jobject>(j_transport_), NativeToJavaString(env, connectionState));
+	Java_Listener_onConnectionStateChange(
+	  env, j_listener_, j_transport_, NativeToJavaString(env, connectionState));
 }
 
 Transport* ExtractNativeTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)
 {
-	auto* pc =
-	  reinterpret_cast<Transport*>(Java_Mediasoup_Transport_getNativeTransport(env, j_transport));
+	auto* pc = reinterpret_cast<Transport*>(Java_Transport_getNativeTransport(env, j_transport));
 	MSC_ASSERT(pc != nullptr, "native transport pointer null");
 	return pc;
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Transport_getNativeId(JNIEnv* env, jobject j_transport)
+static ScopedJavaLocalRef<jstring> JNI_Transport_GetId(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
-	auto id = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetId();
-	return NativeToJavaString(env, id).Release();
+	auto id = ExtractNativeTransport(env, j_transport)->GetId();
+	return NativeToJavaString(env, id);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Transport_getNativeConnectionState(JNIEnv* env, jobject j_transport)
+static ScopedJavaLocalRef<jstring> JNI_Transport_GetConnectionState(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
-	auto state = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetConnectionState();
-	return NativeToJavaString(env, state).Release();
+	auto state = ExtractNativeTransport(env, j_transport)->GetConnectionState();
+	return NativeToJavaString(env, state);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Transport_getNativeAppData(JNIEnv* env, jobject j_transport)
+static ScopedJavaLocalRef<jstring> JNI_Transport_GetAppData(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
-	auto appData = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetAppData().dump();
-	return NativeToJavaString(env, appData).Release();
+	auto appData = ExtractNativeTransport(env, j_transport)->GetAppData().dump();
+	return NativeToJavaString(env, appData);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_org_mediasoup_droid_Transport_getNativeStats(JNIEnv* env, jobject j_transport)
+static ScopedJavaLocalRef<jstring> JNI_Transport_GetStats(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
 	try
 	{
-		auto stats = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->GetStats().dump();
-		return NativeToJavaString(env, stats).Release();
+		auto stats = ExtractNativeTransport(env, j_transport)->GetStats().dump();
+		return NativeToJavaString(env, stats);
 	}
 	catch (const std::exception& e)
 	{
@@ -142,28 +118,27 @@ Java_org_mediasoup_droid_Transport_getNativeStats(JNIEnv* env, jobject j_transpo
 	}
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_org_mediasoup_droid_Transport_isNativeClosed(JNIEnv* env, jobject j_transport)
+static jboolean JNI_Transport_IsClosed(JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
-	auto closed = ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->IsClosed();
+	auto closed = ExtractNativeTransport(env, j_transport)->IsClosed();
 	return static_cast<jboolean>(closed);
 }
 
-extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeRestartIce(
-  JNIEnv* env, jobject j_transport, jstring j_iceParameters)
+static void JNI_Transport_RestartIce(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport, const JavaParamRef<jstring>& j_iceParameters)
 {
 	MSC_TRACE();
 
 	try
 	{
 		auto iceParameters = json::object();
-		if (j_iceParameters != nullptr)
+		if (!j_iceParameters.is_null())
 		{
-			iceParameters = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_iceParameters)));
+			iceParameters = json::parse(JavaToNativeString(env, j_iceParameters));
 		}
-		ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->RestartIce(iceParameters);
+		ExtractNativeTransport(env, j_transport)->RestartIce(iceParameters);
 	}
 	catch (const std::exception& e)
 	{
@@ -172,19 +147,19 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeResta
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeUpdateIceServers(
-  JNIEnv* env, jobject j_transport, jstring j_iceServers)
+static void JNI_Transport_UpdateIceServers(
+  JNIEnv* env, const JavaParamRef<jobject>& j_transport, const JavaParamRef<jstring>& j_iceServers)
 {
 	MSC_TRACE();
 
 	try
 	{
 		auto iceServers = json::array();
-		if (j_iceServers != nullptr)
+		if (!j_iceServers.is_null())
 		{
-			iceServers = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_iceServers)));
+			iceServers = json::parse(JavaToNativeString(env, j_iceServers));
 		}
-		ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->UpdateIceServers(iceServers);
+		ExtractNativeTransport(env, j_transport)->UpdateIceServers(iceServers);
 	}
 	catch (const std::exception& e)
 	{
@@ -193,61 +168,56 @@ extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_Transport_nativeUpdat
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Transport_nativeClose(JNIEnv* env, jobject j_transport)
+static void JNI_Transport_Close(JNIEnv* env, const JavaParamRef<jobject>& j_transport)
 {
 	MSC_TRACE();
 
-	ExtractNativeTransport(env, JavaParamRef<jobject>(j_transport))->Close();
+	ExtractNativeTransport(env, j_transport)->Close();
 }
 
-extern "C" JNIEXPORT jlong JNICALL Java_org_mediasoup_droid_SendTransport_nativeGetNativeTransport(
-  JNIEnv* /* env */, jclass /* j_type */, jlong j_transport)
+static jlong JNI_SendTransport_GetNativeTransport(JNIEnv* env, jlong j_transport)
 {
 	MSC_TRACE();
 
-	return NativeToJavaPointer(reinterpret_cast<OwnedSendTransport*>(j_transport)->transport());
+	return webrtc::NativeToJavaPointer(reinterpret_cast<OwnedSendTransport*>(j_transport)->transport());
 }
 
-extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_SendTransport_nativeProduce(
+static ScopedJavaLocalRef<jobject> JNI_SendTransport_Produce(
   JNIEnv* env,
-  jclass /* j_type */,
   jlong j_transport,
-  jobject j_listener,
+  const JavaParamRef<jobject>& j_listener,
   jlong j_track,
-  jobjectArray j_encodings,
-  jstring j_codecOptions,
-  jstring j_appData)
+  const JavaParamRef<jobjectArray>& j_encodings,
+  const JavaParamRef<jstring>& j_codecOptions,
+  const JavaParamRef<jstring>& j_appData)
 {
 	MSC_TRACE();
 
 	try
 	{
-		auto listener = new ProducerListenerJni(env, JavaParamRef<jobject>(j_listener));
+		auto listener = new ProducerListenerJni(env, j_listener);
 		auto track    = reinterpret_cast<webrtc::MediaStreamTrackInterface*>(j_track);
 		std::vector<webrtc::RtpEncodingParameters> encodings;
-		if (j_encodings != nullptr)
+		if (!j_encodings.is_null())
 		{
 			encodings = webrtc::JavaToNativeVector<webrtc::RtpEncodingParameters>(
-			  env, JavaParamRef<jobjectArray>(j_encodings), &webrtc::jni::JavaToNativeRtpEncodingParameters);
+			  env,
+			  webrtc::JavaParamRef<jobjectArray>(j_encodings.obj()),
+			  &webrtc::jni::JavaToNativeRtpEncodingParameters);
 		}
 		json codecOptions = json::object();
-		if (j_codecOptions != nullptr)
+		if (!j_codecOptions.is_null())
 		{
-			codecOptions = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_codecOptions)));
+			codecOptions = json::parse(JavaToNativeString(env, j_codecOptions));
 		}
 		json appData = json::object();
-		if (j_appData != nullptr)
+		if (!j_appData.is_null())
 		{
-			appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
+			appData = json::parse(JavaToNativeString(env, j_appData));
 		}
-		auto transport      = (reinterpret_cast<OwnedSendTransport*>(j_transport))->transport();
-		auto originProducer = transport->Produce(listener, track, &encodings, &codecOptions, appData);
-
-		OwnedProducer* producer = new OwnedProducer(originProducer, listener);
-		auto j_producer = Java_Mediasoup_Producer_Constructor(env, NativeToJavaPointer(producer));
-		listener->SetJProducer(env, j_producer);
-		return j_producer.Release();
+		auto transport = (reinterpret_cast<OwnedSendTransport*>(j_transport))->transport();
+		auto producer  = transport->Produce(listener, track, &encodings, &codecOptions, appData);
+		return NativeToJavaProducer(env, producer, listener);
 	}
 	catch (const std::exception& e)
 	{
@@ -257,58 +227,52 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_SendTransport_nati
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_SendTransport_nativeFreeTransport(
-  JNIEnv* /* env */, jclass /* j_type */, jlong j_transport)
+static void JNI_SendTransport_FreeTransport(JNIEnv* env, jlong j_transport)
 {
 	MSC_TRACE();
 
 	delete reinterpret_cast<OwnedSendTransport*>(j_transport);
 }
 
-extern "C" JNIEXPORT jlong JNICALL Java_org_mediasoup_droid_RecvTransport_nativeGetNativeTransport(
-  JNIEnv* /* env */, jclass /* j_type */, jlong j_transport)
+static jlong JNI_RecvTransport_GetNativeTransport(JNIEnv* env, jlong j_transport)
 {
 	MSC_TRACE();
 
-	return NativeToJavaPointer(reinterpret_cast<OwnedRecvTransport*>(j_transport)->transport());
+	return webrtc::NativeToJavaPointer(reinterpret_cast<OwnedRecvTransport*>(j_transport)->transport());
 }
 
-extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_RecvTransport_nativeConsume(
+static ScopedJavaLocalRef<jobject> JNI_RecvTransport_Consume(
   JNIEnv* env,
-  jclass /* j_type */,
   jlong j_transport,
-  jobject j_listener,
-  jstring j_id,
-  jstring j_producerId,
-  jstring j_kind,
-  jstring j_rtpParameters,
-  jstring j_appData)
+  const JavaParamRef<jobject>& j_listener,
+  const JavaParamRef<jstring>& j_id,
+  const JavaParamRef<jstring>& j_producerId,
+  const JavaParamRef<jstring>& j_kind,
+  const JavaParamRef<jstring>& j_rtpParameters,
+  const JavaParamRef<jstring>& j_appData)
 {
 	MSC_TRACE();
 
 	try
 	{
-		auto listener      = new ConsumerListenerJni(env, JavaParamRef<jobject>(j_listener));
-		auto id            = JavaToNativeString(env, JavaParamRef<jstring>(j_id));
-		auto producerId    = JavaToNativeString(env, JavaParamRef<jstring>(j_producerId));
-		auto kind          = JavaToNativeString(env, JavaParamRef<jstring>(j_kind));
+		auto listener      = new ConsumerListenerJni(env, j_listener);
+		auto id            = JavaToNativeString(env, j_id);
+		auto producerId    = JavaToNativeString(env, j_producerId);
+		auto kind          = JavaToNativeString(env, j_kind);
 		auto rtpParameters = json::object();
-		if (j_rtpParameters != nullptr)
+		if (!j_rtpParameters.is_null())
 		{
-			rtpParameters = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_rtpParameters)));
+			rtpParameters = json::parse(JavaToNativeString(env, j_rtpParameters));
 		}
 		auto appData = json::object();
-		if (j_appData != nullptr)
+		if (!j_appData.is_null())
 		{
-			appData = json::parse(JavaToNativeString(env, JavaParamRef<jstring>(j_appData)));
+			appData = json::parse(JavaToNativeString(env, j_appData));
 		}
 
 		auto transport = (reinterpret_cast<OwnedRecvTransport*>(j_transport))->transport();
 		auto consumer  = transport->Consume(listener, id, producerId, kind, &rtpParameters, appData);
-		auto ownedConsumer = new OwnedConsumer(consumer, listener);
-		auto j_consumer = Java_Mediasoup_Consumer_Constructor(env, NativeToJavaPointer(ownedConsumer));
-		listener->SetJConsumer(env, j_consumer);
-		return j_consumer.Release();
+		return NativeToJavaConsumer(env, consumer, listener);
 	}
 	catch (const std::exception& e)
 	{
@@ -318,12 +282,31 @@ extern "C" JNIEXPORT jobject JNICALL Java_org_mediasoup_droid_RecvTransport_nati
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL Java_org_mediasoup_droid_RecvTransport_nativeFreeTransport(
-  JNIEnv* /* env */, jclass /* j_type */, jlong j_transport)
+static void JNI_RecvTransport_FreeTransport(JNIEnv* env, jlong j_transport)
 {
 	MSC_TRACE();
 
 	delete reinterpret_cast<OwnedRecvTransport*>(j_transport);
+}
+
+ScopedJavaLocalRef<jobject> NativeToJavaSendTransport(
+  JNIEnv* env, SendTransport* transport, SendTransportListenerJni* listener)
+{
+	auto ownedSendTransport = new OwnedSendTransport(transport, listener);
+	auto j_transport =
+	  Java_SendTransport_Constructor(env, webrtc::NativeToJavaPointer(ownedSendTransport));
+	listener->SetJTransport(env, j_transport);
+	return ScopedJavaLocalRef<jobject>(env, j_transport.Release());
+}
+
+ScopedJavaLocalRef<jobject> NativeToJavaRecvTransport(
+  JNIEnv* env, RecvTransport* transport, RecvTransportListenerJni* listener)
+{
+	auto ownedRecvTransport = new OwnedRecvTransport(transport, listener);
+	auto j_transport =
+	  Java_RecvTransport_Constructor(env, webrtc::NativeToJavaPointer(ownedRecvTransport));
+	listener->SetJTransport(env, j_transport);
+	return ScopedJavaLocalRef<jobject>(env, j_transport.Release());
 }
 
 } // namespace mediasoupclient

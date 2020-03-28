@@ -1,50 +1,54 @@
 #include "Logger.hpp"
-#include <android/log.h>
 #include <jni.h>
+#include <sdk/android/native_api/jni/java_types.h>
 
+#include "generated_mediasoupclient_jni/jni/Logger_jni.h"
 #define TAG "mediasoupclient-jni"
-#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
-#define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 
 namespace mediasoupclient
 {
-class DefaultLogHandler : public Logger::LogHandlerInterface
+class LogHandlerInterfaceJNI : public Logger::LogHandlerInterface
 {
+public:
+	LogHandlerInterfaceJNI(JNIEnv* env, const JavaParamRef<jobject>& j_handler_interface)
+	  : j_handler_interface_(env, j_handler_interface),
+	    jni_tag_(env, webrtc::NativeToJavaString(env, TAG).obj())
+	{
+		assert(!j_handler_interface_.is_null());
+	}
+
 public:
 	void OnLog(Logger::LogLevel level, char* payload, size_t len) override
 	{
-		switch (level)
-		{
-			case Logger::LogLevel::LOG_ERROR:
-				ALOGE("%s", payload);
-				break;
-			case Logger::LogLevel::LOG_WARN:
-				ALOGW("%s", payload);
-				break;
-			case Logger::LogLevel::LOG_DEBUG:
-				ALOGD("%s", payload);
-				break;
-			case Logger::LogLevel::LOG_TRACE:
-				ALOGI("%s", payload);
-				break;
-			default:
-				break;
-		}
+		std::string message(payload, len);
+		auto env       = webrtc::AttachCurrentThreadIfNeeded();
+		auto j_level   = Java_LogLevel_getLogLevel(env, static_cast<int>(level));
+		auto j_message = webrtc::NativeToJavaString(env, message);
+		Java_LogHandlerInterface_OnLog(
+		  env, j_handler_interface_, j_level, jni_tag_, JavaParamRef<jstring>(env, j_message.obj()));
 	}
+
+private:
+	ScopedJavaGlobalRef<jobject> j_handler_interface_;
+	ScopedJavaGlobalRef<jstring> jni_tag_;
 };
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Logger_nativeSetLogLevel(JNIEnv* /* env */, jclass /* type */, jint j_level)
+static void JNI_Logger_SetLogLevel(JNIEnv* env, jint j_level)
 {
 	Logger::SetLogLevel(static_cast<Logger::LogLevel>(j_level));
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_mediasoup_droid_Logger_nativeSetDefaultHandler(JNIEnv* /* env */, jclass /* type */)
+static long JNI_Logger_SetHandler(JNIEnv* env, const JavaParamRef<jobject>& j_handler)
 {
-	Logger::SetHandler(new DefaultLogHandler());
+	auto* handler = new LogHandlerInterfaceJNI(env, j_handler);
+	Logger::SetHandler(reinterpret_cast<Logger::LogHandlerInterface*>(handler));
+	return webrtc::NativeToJavaPointer(handler);
+}
+
+static void JNI_Logger_FreeLogHandler(JNIEnv* env, jlong j_handler)
+{
+	auto* handler = reinterpret_cast<LogHandlerInterfaceJNI*>(j_handler);
+	delete handler;
 }
 
 } // namespace mediasoupclient

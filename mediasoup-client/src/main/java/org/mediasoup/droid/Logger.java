@@ -2,6 +2,8 @@ package org.mediasoup.droid;
 
 import android.util.Log;
 
+import org.webrtc.CalledByNative;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
@@ -11,32 +13,84 @@ public class Logger {
     System.loadLibrary("mediasoupclient_so");
   }
 
-  private static LogLevel loggableLevel = LogLevel.LOG_NONE;
+  private static LogHandlerInterface logHandler;
+  private static long nativeHandler;
 
   public enum LogLevel {
-    LOG_NONE,
-    LOG_ERROR,
-    LOG_WARN,
-    LOG_DEBUG,
-    LOG_TRACE,
+    LOG_NONE(0),
+    LOG_ERROR(1),
+    LOG_WARN(2),
+    LOG_DEBUG(3),
+    LOG_TRACE(4);
+
+    private final int value;
+
+    LogLevel(int value) {
+      this.value = value;
+    };
+
+    int getValue() {
+      return value;
+    };
+
+    @CalledByNative("LogLevel")
+    public static LogLevel getLogLevel(int level) {
+      LogLevel[] levels = LogLevel.values();
+      for (int i = 0; i < levels.length; i++) {
+        if (levels[i].getValue() == level) {
+          return levels[i];
+        }
+      }
+
+      throw new IllegalArgumentException("wrong log level");
+    }
+  }
+
+  public interface LogHandlerInterface {
+    @CalledByNative("LogHandlerInterface")
+    void OnLog(LogLevel logLevel, String tag, String message);
+  }
+
+  private static class DefaultLogHandler implements LogHandlerInterface {
+
+    @Override
+    public void OnLog(LogLevel level, String tag, String message) {
+      switch (level) {
+        case LOG_ERROR:
+          Log.e(tag, message);
+          break;
+        case LOG_WARN:
+          Log.w(tag, message);
+          break;
+        case LOG_DEBUG:
+          Log.d(tag, message);
+          break;
+        case LOG_TRACE:
+          Log.i(tag, message);
+          break;
+      }
+    }
   }
 
   public static void setLogLevel(LogLevel level) {
     if (level == null) {
       throw new IllegalArgumentException("Logging level may not be null.");
     }
-    loggableLevel = level;
-    if (loggableLevel.ordinal() <= LogLevel.LOG_DEBUG.ordinal()) {
-      nativeSetLogLevel(level.ordinal());
-    } else {
-      // native log level means different
-      // https://mediasoup.org/documentation/v3/libmediasoupclient/api/#Logger
-      nativeSetLogLevel(LogLevel.LOG_DEBUG.ordinal());
-    }
+    nativeSetLogLevel(level.getValue());
   }
 
   public static void setDefaultHandler() {
-    nativeSetDefaultHandler();
+    setHandler(new DefaultLogHandler());
+  }
+
+  public static void setHandler(LogHandlerInterface handler) {
+    logHandler = handler;
+    nativeHandler = nativeSetHandler(handler);
+  }
+
+  public static void freeHandler() {
+    nativeFreeLogHandler(nativeHandler);
+    nativeHandler = 0;
   }
 
   public static void d(String tag, String message) {
@@ -83,28 +137,14 @@ public class Logger {
       throw new IllegalArgumentException("Log tag or message may not be null.");
     }
 
-    // Filter log messages below logLevel.
-    if (LogLevel.LOG_NONE.equals(loggableLevel) || level.ordinal() > loggableLevel.ordinal()) {
-      return;
-    }
-
-    switch (level) {
-      case LOG_ERROR:
-        Log.e(tag, message);
-        break;
-      case LOG_WARN:
-        Log.w(tag, message);
-        break;
-      case LOG_DEBUG:
-        Log.d(tag, message);
-        break;
-      case LOG_TRACE:
-        Log.v(tag, message);
-        break;
+    if (logHandler != null) {
+      logHandler.OnLog(level, tag, message);
     }
   }
 
   private static native void nativeSetLogLevel(int level);
 
-  private static native void nativeSetDefaultHandler();
+  private static native long nativeSetHandler(LogHandlerInterface handler);
+
+  private static native void nativeFreeLogHandler(long handler);
 }

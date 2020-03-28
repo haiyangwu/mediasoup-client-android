@@ -19,8 +19,9 @@ if [ "${current_dir_name}" != "mediasoup-client" ] ; then
 fi
 
 # Run clang-format -i on 'include' and 'src' folders.
-for dir in "src/main/jni src/androidTest/jni"; do
+for dir in "src/main/jni/* src/main/jni/include/* src/androidTest/jni"; do
     find ${dir} \
+         -maxdepth 1 \
          \( -name '*.cpp' \
          -o -name '*.h' \) \
          -exec 'clang-format' -i '{}' \;

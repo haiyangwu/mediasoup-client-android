@@ -1,5 +1,5 @@
-#ifndef MEDIASOUP_CLIENT_ANDROID_PEERCONNECTION_JNI_H
-#define MEDIASOUP_CLIENT_ANDROID_PEERCONNECTION_JNI_H
+#ifndef MEDIASOUP_CLIENT_PEERCONNECTION_JNI_H
+#define MEDIASOUP_CLIENT_PEERCONNECTION_JNI_H
 
 #include "PeerConnection.hpp"
 #include "common_jni.h"
@@ -138,4 +138,4 @@ private:
 };
 
 } // namespace mediasoupclient
-#endif // MEDIASOUP_CLIENT_ANDROID__H
+#endif // MEDIASOUP_CLIENT_PEERCONNECTION_JNI_H

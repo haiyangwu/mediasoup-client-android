@@ -62,7 +62,10 @@ public class Device {
         iceParameters,
         iceCandidates,
         dtlsParameters,
-        options,
+        (options != null ? options.mRTCConfig : null),
+        (options != null && options.mFactory != null
+            ? options.mFactory.getNativePeerConnectionFactory()
+            : 0L),
         appData);
   }
 
@@ -94,7 +97,10 @@ public class Device {
         iceParameters,
         iceCandidates,
         dtlsParameters,
-        options,
+        (options != null ? options.mRTCConfig : null),
+        (options != null && options.mFactory != null
+            ? options.mFactory.getNativePeerConnectionFactory()
+            : 0L),
         appData);
   }
 
@@ -108,16 +114,18 @@ public class Device {
 
   private static native void nativeFreeDevice(long device);
 
-  private static native void nativeLoad(long device, String routerRtpCapabilities)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private static native void nativeLoad(long device, String routerRtpCapabilities);
 
   private static native boolean nativeIsLoaded(long device);
 
-  private static native String nativeGetRtpCapabilities(long device) throws MediasoupException;
+  // may throws MediasoupException;
+  private static native String nativeGetRtpCapabilities(long device);
 
-  private static native boolean nativeCanProduce(long device, String kind)
-      throws MediasoupException;
+  // may throws MediasoupException;
+  private static native boolean nativeCanProduce(long device, String kind);
 
+  // may throws MediasoupException;
   private static native SendTransport nativeCreateSendTransport(
       long device,
       SendTransport.Listener listener,
@@ -125,10 +133,11 @@ public class Device {
       String iceParameters,
       String iceCandidates,
       String dtlsParameters,
-      PeerConnection.Options options,
-      String appData)
-      throws MediasoupException;
+      org.webrtc.PeerConnection.RTCConfiguration configuration,
+      long peerConnectionFactory,
+      String appData);
 
+  // may throws MediasoupException;
   private static native RecvTransport nativeCreateRecvTransport(
       long device,
       RecvTransport.Listener listener,
@@ -136,7 +145,7 @@ public class Device {
       String iceParameters,
       String iceCandidates,
       String dtlsParameters,
-      PeerConnection.Options options,
-      String appData)
-      throws MediasoupException;
+      org.webrtc.PeerConnection.RTCConfiguration configuration,
+      long peerConnectionFactory,
+      String appData);
 }

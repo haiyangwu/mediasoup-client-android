@@ -18,7 +18,10 @@ set(
 
 set(
 	SOURCE_FILES
+	${SOURCE_DIR}/jni_generator_helper.cpp
 	${SOURCE_DIR}/jni_onload.cpp
+	${SOURCE_DIR}/scoped_java_ref.cpp
+	${SOURCE_DIR}/java_types.cpp
 	${SOURCE_DIR}/consumer_jni.cpp
 	${SOURCE_DIR}/device_jni.cpp
 	${SOURCE_DIR}/logger_jni.cpp
@@ -58,8 +61,8 @@ include_directories(SYSTEM "${LIBWEBRTC_INCLUDE_PATH}/third_party/abseil-cpp")
 
 # Private (implementation) header files.
 target_include_directories(${PROJECT_NAME} PUBLIC
+	"${SOURCE_DIR}/"
 	"${SOURCE_DIR}/include"
-	"${SOURCE_DIR}/generated"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include"
 	"${LIBWEBRTC_INCLUDE_PATH}"

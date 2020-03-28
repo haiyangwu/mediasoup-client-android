@@ -12,7 +12,7 @@ public abstract class BaseTest {
   @Before
   public void setUp() {
     mContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-    Logger.setLogLevel(Logger.LogLevel.LOG_TRACE);
+    Logger.setLogLevel(Logger.LogLevel.LOG_DEBUG);
     Logger.setDefaultHandler();
     MediasoupClient.initialize(mContext.getApplicationContext());
   }
