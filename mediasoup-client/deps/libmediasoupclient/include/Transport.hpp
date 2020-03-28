@@ -25,6 +25,8 @@ public:
 	class Listener
 	{
 	public:
+		// TODO(HaiyangWu): PR ?
+		virtual ~Listener() {}
 		virtual std::future<void> OnConnect(Transport* transport, const nlohmann::json& dtlsParameters) = 0;
 		virtual void OnConnectionStateChange(Transport* transport, const std::string& connectionState) = 0;
 	};

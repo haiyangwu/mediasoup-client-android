@@ -17,6 +17,8 @@ public:
 	class PrivateListener
 	{
 	public:
+		// TODO(HaiyangWu): PR ?
+		virtual ~PrivateListener(){}
 		virtual void OnConnect(nlohmann::json& dtlsParameters) = 0;
 		virtual void OnConnectionStateChange(
 		  webrtc::PeerConnectionInterface::IceConnectionState connectionState) = 0;

@@ -72,6 +72,8 @@ public:
 	class LogHandlerInterface
 	{
 	public:
+		// TODO(HaiyangWu): PR ?
+		virtual ~LogHandlerInterface() {}
 		virtual void OnLog(LogLevel level, char* payload, size_t len) = 0;
 	};
 
