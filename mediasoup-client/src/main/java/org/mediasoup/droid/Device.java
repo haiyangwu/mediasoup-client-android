@@ -74,10 +74,11 @@ public class Device {
       String id,
       String iceParameters,
       String iceCandidates,
-      String dtlsParameters)
+      String dtlsParameters,
+      String appData)
       throws MediasoupException {
     return createRecvTransport(
-        listener, id, iceParameters, iceCandidates, dtlsParameters, null, null);
+        listener, id, iceParameters, iceCandidates, dtlsParameters, null, appData);
   }
 
   public RecvTransport createRecvTransport(

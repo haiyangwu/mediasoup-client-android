@@ -80,7 +80,7 @@ public class DeviceTest extends BaseTest {
       exceptionException(
           () ->
               mDevice.createRecvTransport(
-                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null));
     }
   }
 
@@ -115,7 +115,7 @@ public class DeviceTest extends BaseTest {
           new FakeTransportListener.FakeRecvTransportListener();
       RecvTransport transport =
           mDevice.createRecvTransport(
-              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null);
       transport.dispose();
     }
   }

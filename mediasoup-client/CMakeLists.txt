@@ -51,7 +51,8 @@ if(${MEDIASOUPCLIENT_LOG_DEV})
 endif()
 
 # Source Dependencies. override LIBWEBRTC_BINARY_PATH
-set(LIBWEBRTC_BINARY_PATH ${LIBWEBRTC_BINARY_ANDROID_PATH}/${ANDROID_ABI} CACHE STRING "libwebrtc binary path" FORCE)
+# TODO(HaiyangWu) add libwebrtc.a without change CMakeLists in libmediasoupclient
+# set(LIBWEBRTC_BINARY_PATH ${LIBWEBRTC_BINARY_ANDROID_PATH}/${ANDROID_ABI} CACHE STRING "libwebrtc binary path" FORCE)
 add_subdirectory("deps/libmediasoupclient")
 
 # Add some compile flags to our source files.

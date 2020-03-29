@@ -21,7 +21,7 @@ android {
             cmake {
                 // Passes optional arguments to CMake.
                 arguments "-DLIBWEBRTC_INCLUDE_PATH=" + WEBRTC_INC_PATH,
-                        "-DLIBWEBRTC_BINARY_ANDROID_PATH=" + WEBRTC_LIB_PATH,
+                        "-DLIBWEBRTC_BINARY_PATH=" + WEBRTC_LIB_PATH,
                         "-DMEDIASOUPCLIENT_BUILD_TESTS=false",
                         "-DSDPTRANSFORM_BUILD_TESTS=OFF",
                         "-DSDPTRANSFORM_BUILD_READMEHELPER=OFF",
@@ -71,7 +71,7 @@ publish {
     userOrg = 'haiyangwu'
     groupId = 'org.mediasoup.droid'
     artifactId = 'mediasoup-client'
-    publishVersion = '3.0.8-beta-1'
+    publishVersion = '3.0.8-alpha-1'
     desc = 'mediasoup android client side library'
     website = 'https://github.com/haiyangwu/mediasoup-client-android'
 }
