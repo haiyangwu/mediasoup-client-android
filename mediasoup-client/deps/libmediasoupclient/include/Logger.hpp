@@ -64,6 +64,8 @@ namespace mediasoupclient
 		class LogHandlerInterface
 		{
 		public:
+			// TODO(HaiyangWu): pr ?
+			virtual ~LogHandlerInterface()                                = default;
 			virtual void OnLog(LogLevel level, char* payload, size_t len) = 0;
 		};
 
