@@ -12,7 +12,7 @@ mediasoup android client side library https://mediasoup.org
 Include `mediasoup-client-android`  into your project, for example, as a Gradle compile dependency:
 
 ```groovy
-implementation 'org.mediasoup.droid:mediasoup-client:3.0.4-beta-2'
+implementation 'org.mediasoup.droid:mediasoup-client:3.0.8-beta-1'
 ```
 ### Example
 
@@ -92,7 +92,7 @@ Consumer consumer =
 [mediasoup-demo-android][mediasoup-demo-android]
 
 ## TODO
-* [ ] sync to the latest version of [libmediasoupclient][libmediasoupclient] and adapter to `webrtc` m79
+* [X] sync to the latest version of [libmediasoupclient][libmediasoupclient] and adapter to `webrtc` m79
 * [ ] support `DataProducer` etc
 * [ ] add convenient `Gradle Tasks` for sync, compile and so on
 * [X] add script to use `generate-jni` to automatic generate `xxx-jni.h

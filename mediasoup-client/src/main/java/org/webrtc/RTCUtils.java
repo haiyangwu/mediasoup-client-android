@@ -29,6 +29,7 @@ public class RTCUtils {
   }
 
   public static RtpParameters.Encoding genRtpEncodingParameters(
+      String rid,
       boolean active,
       Integer maxBitrateBps,
       Integer minBitrateBps,
@@ -37,6 +38,7 @@ public class RTCUtils {
       Double scaleResolutionDownBy,
       Long ssrc) {
     return new RtpParameters.Encoding(
+        rid,
         active,
         maxBitrateBps,
         minBitrateBps,

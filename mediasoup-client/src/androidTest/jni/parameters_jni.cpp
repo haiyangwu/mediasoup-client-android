@@ -1,5 +1,5 @@
 #include "generated_mediasoupclient_jni/jni/Parameters_jni.h"
-#include "../../../deps/libmediasoupclient/test/data/parameters.hpp"
+#include "fakeParameters.hpp"
 #include "json.hpp"
 #include <include/java_types.h>
 #include <jni.h>

@@ -11,6 +11,7 @@
 #include <sdk/android/src/jni/pc/peer_connection.h>
 #include <sdk/android/src/jni/pc/peer_connection_factory.h>
 #include <sdk/android/src/jni/pc/rtp_sender.h>
+#include <sdk/android/src/jni/pc/rtp_transceiver.h>
 #include <sdk/android/src/jni/pc/session_description.h>
 
 namespace mediasoupclient
@@ -107,17 +108,17 @@ static ScopedJavaLocalRef<jstring> JNI_PeerConnection_CreateAnswer(
 static void JNI_PeerConnection_SetLocalDescription(
   JNIEnv* env,
   const JavaParamRef<jobject>& j_pc,
-  const JavaParamRef<jstring>& j_type,
+  jint j_type,
   const JavaParamRef<jstring>& j_desc)
 {
 	MSC_TRACE();
 
-	auto std_type        = JavaToNativeString(env, j_type);
 	auto std_description = JavaToNativeString(env, j_desc);
 
 	try
 	{
-		ExtractNativePC(env, j_pc)->SetLocalDescription(std_type, std_description);
+		ExtractNativePC(env, j_pc)->SetLocalDescription(
+		  static_cast<PeerConnection::SdpType>(j_type), std_description);
 	}
 	catch (const std::exception& e)
 	{
@@ -129,17 +130,17 @@ static void JNI_PeerConnection_SetLocalDescription(
 static void JNI_PeerConnection_SetRemoteDescription(
   JNIEnv* env,
   const JavaParamRef<jobject>& j_pc,
-  const JavaParamRef<jstring>& j_type,
+  jint j_type,
   const JavaParamRef<jstring>& j_desc)
 {
 	MSC_TRACE();
 
-	auto std_type        = JavaToNativeString(env, j_type);
 	auto std_description = JavaToNativeString(env, j_desc);
 
 	try
 	{
-		ExtractNativePC(env, j_pc)->SetRemoteDescription(std_type, std_description);
+		ExtractNativePC(env, j_pc)->SetRemoteDescription(
+		  static_cast<PeerConnection::SdpType>(j_type), std_description);
 	}
 	catch (const std::exception& e)
 	{
@@ -198,13 +199,14 @@ static jboolean JNI_PeerConnection_RemoveTrack(
 }
 
 static ScopedJavaLocalRef<jobject> JNI_PeerConnection_AddTransceiverWithTrack(
-  JNIEnv* env, const JavaParamRef<jobject>& j_pc, jlong native_track)
+  JNIEnv* env, const JavaParamRef<jobject>& j_pc, jlong native_track, const JavaParamRef<jobject>& j_init)
 {
 	MSC_TRACE();
 
 	webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpTransceiverInterface>> result =
 	  ExtractNativePC(env, j_pc)->AddTransceiver(
-	    reinterpret_cast<webrtc::MediaStreamTrackInterface*>(native_track));
+	    reinterpret_cast<webrtc::MediaStreamTrackInterface*>(native_track),
+	    webrtc::jni::JavaToNativeRtpTransceiverInit(env, webrtc::JavaParamRef<jobject>(j_init.obj())));
 	if (!result.ok())
 	{
 		MSC_ERROR("Failed to add transceiver: %s", result.error().message());

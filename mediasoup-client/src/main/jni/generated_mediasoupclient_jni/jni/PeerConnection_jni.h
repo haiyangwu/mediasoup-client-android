@@ -110,32 +110,30 @@ JNI_GENERATOR_EXPORT jstring Java_org_mediasoup_droid_PeerConnection_nativeCreat
 
 static void JNI_PeerConnection_SetLocalDescription(JNIEnv* env, const
     base::android::JavaParamRef<jobject>& jcaller,
-    const base::android::JavaParamRef<jstring>& type,
+    jint type,
     const base::android::JavaParamRef<jstring>& description);
 
 JNI_GENERATOR_EXPORT void Java_org_mediasoup_droid_PeerConnection_nativeSetLocalDescription(
     JNIEnv* env,
     jobject jcaller,
-    jstring type,
+    jint type,
     jstring description) {
   return JNI_PeerConnection_SetLocalDescription(env, base::android::JavaParamRef<jobject>(env,
-      jcaller), base::android::JavaParamRef<jstring>(env, type),
-      base::android::JavaParamRef<jstring>(env, description));
+      jcaller), type, base::android::JavaParamRef<jstring>(env, description));
 }
 
 static void JNI_PeerConnection_SetRemoteDescription(JNIEnv* env, const
     base::android::JavaParamRef<jobject>& jcaller,
-    const base::android::JavaParamRef<jstring>& type,
+    jint type,
     const base::android::JavaParamRef<jstring>& description);
 
 JNI_GENERATOR_EXPORT void Java_org_mediasoup_droid_PeerConnection_nativeSetRemoteDescription(
     JNIEnv* env,
     jobject jcaller,
-    jstring type,
+    jint type,
     jstring description) {
   return JNI_PeerConnection_SetRemoteDescription(env, base::android::JavaParamRef<jobject>(env,
-      jcaller), base::android::JavaParamRef<jstring>(env, type),
-      base::android::JavaParamRef<jstring>(env, description));
+      jcaller), type, base::android::JavaParamRef<jstring>(env, description));
 }
 
 static base::android::ScopedJavaLocalRef<jstring> JNI_PeerConnection_GetLocalDescription(JNIEnv*
@@ -192,14 +190,16 @@ JNI_GENERATOR_EXPORT jboolean Java_org_mediasoup_droid_PeerConnection_nativeRemo
 
 static base::android::ScopedJavaLocalRef<jobject> JNI_PeerConnection_AddTransceiverWithTrack(JNIEnv*
     env, const base::android::JavaParamRef<jobject>& jcaller,
-    jlong track);
+    jlong track,
+    const base::android::JavaParamRef<jobject>& init);
 
 JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_PeerConnection_nativeAddTransceiverWithTrack(
     JNIEnv* env,
     jobject jcaller,
-    jlong track) {
+    jlong track,
+    jobject init) {
   return JNI_PeerConnection_AddTransceiverWithTrack(env, base::android::JavaParamRef<jobject>(env,
-      jcaller), track).Release();
+      jcaller), track, base::android::JavaParamRef<jobject>(env, init)).Release();
 }
 
 static base::android::ScopedJavaLocalRef<jobject> JNI_PeerConnection_AddTransceiverOfType(JNIEnv*

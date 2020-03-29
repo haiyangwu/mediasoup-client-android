@@ -5,7 +5,7 @@ project(mediasoupclient_so LANGUAGES CXX)
 # Set version number.
 set(mediasoup_client_so_VERSION_MAJOR 3)
 set(mediasoup_client_so_VERSION_MINOR 0)
-set(mediasoup_client_so_VERSION_PATCH 4)
+set(mediasoup_client_so_VERSION_PATCH 8)
 
 # C++ standard requirements.
 set(CMAKE_CXX_STANDARD 11)
@@ -50,7 +50,8 @@ if(${MEDIASOUPCLIENT_LOG_DEV})
 	)
 endif()
 
-# Source Dependencies.
+# Source Dependencies. override LIBWEBRTC_BINARY_PATH
+set(LIBWEBRTC_BINARY_PATH ${LIBWEBRTC_BINARY_ANDROID_PATH}/${ANDROID_ABI} CACHE STRING "libwebrtc binary path" FORCE)
 add_subdirectory("deps/libmediasoupclient")
 
 # Add some compile flags to our source files.
@@ -64,6 +65,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 	"${SOURCE_DIR}/"
 	"${SOURCE_DIR}/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/include"
+	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/test/include"
 	"${PROJECT_SOURCE_DIR}/deps/libmediasoupclient/deps/libsdptransform/include"
 	"${LIBWEBRTC_INCLUDE_PATH}"
 	"${LIBWEBRTC_INCLUDE_PATH}/third_party/abseil-cpp"
