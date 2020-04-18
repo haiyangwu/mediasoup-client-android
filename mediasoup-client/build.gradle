@@ -8,6 +8,7 @@ def WEBRTC_LIB_PATH = "${projectDir}/deps/webrtc/lib"
 
 android {
     compileSdkVersion 28
+    ndkVersion "20.0.5594570"
 
     defaultConfig {
         minSdkVersion 18
@@ -61,17 +62,17 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     api fileTree(dir: WEBRTC_LIB_PATH, include: ['libwebrtc.jar'])
 
-    implementation 'androidx.appcompat:appcompat:1.0.0'
-    testImplementation 'junit:junit:4.12'
+    implementation 'androidx.appcompat:appcompat:1.1.0'
+    testImplementation 'junit:junit:4.13'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 }
 
 publish {
     userOrg = 'haiyangwu'
     groupId = 'org.mediasoup.droid'
     artifactId = 'mediasoup-client'
-    publishVersion = '3.0.8-alpha-1'
+    publishVersion = '3.0.8-alpha-2'
     desc = 'mediasoup android client side library'
     website = 'https://github.com/haiyangwu/mediasoup-client-android'
 }
