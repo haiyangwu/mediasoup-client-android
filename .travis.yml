@@ -19,7 +19,7 @@ env:
     # - API=16 AUDIO=-no-audio
     # - API=17
     # API18 has started being flaky
-    - API=18
+    # - API=18
     # Kernel/emulator mismatch failure probably fixible with -engine classic
     # - API=19
     # API 20 was Android Wear only
