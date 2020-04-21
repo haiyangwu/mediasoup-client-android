@@ -2,6 +2,12 @@
 
 namespace mediasoupclient
 {
+ScopedJavaLocalRef<jstring> NativeToJavaString(JNIEnv* jni, const std::string& str)
+{
+	auto j_str = webrtc::NativeToJavaString(jni, str);
+	return ScopedJavaLocalRef<jstring>(jni, j_str.Release());
+}
+
 ScopedJavaLocalRef<jstring> NativeToJavaString(JNIEnv* jni, const absl::optional<std::string>& str)
 {
 	auto j_str = webrtc::NativeToJavaString(jni, str);

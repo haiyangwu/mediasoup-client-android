@@ -12,6 +12,8 @@
 
 namespace mediasoupclient
 {
+ScopedJavaLocalRef<jstring> NativeToJavaString(JNIEnv* jni, const std::string& str);
+
 ScopedJavaLocalRef<jstring> NativeToJavaString(JNIEnv* jni, const absl::optional<std::string>& str);
 
 std::string JavaToNativeString(JNIEnv* jni, const JavaRef<jstring>& j_string);

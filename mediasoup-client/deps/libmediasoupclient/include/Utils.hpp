@@ -39,7 +39,9 @@ namespace mediasoupclient
 			static std::mt19937_64 rng(seed);
 
 			// Uniform distribution for integers in the [min, max) range.
-			std::uniform_int_distribution<T> dis(min, max);
+			// TODO(HaiyangWu) PR ?
+			// https://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution, [min, max]
+			std::uniform_int_distribution<T> dis(min, max -1);
 
 			return dis(rng);
 		}
@@ -66,7 +68,9 @@ namespace mediasoupclient
 			static std::mt19937_64 rng(seed);
 
 			// Uniform distribution for integers in the [min, max) range.
-			std::uniform_int_distribution<std::string::size_type> dis(0, chars.size());
+			// TODO(HaiyangWu) PR ?
+			// https://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution, [min, max]
+			std::uniform_int_distribution<std::string::size_type> dis(0, chars.size() - 1);
 
 			std::string s;
 

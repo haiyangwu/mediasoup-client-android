@@ -223,3 +223,6 @@ fabric.properties
 !/gradle/wrapper/gradle-wrapper.jar
 
 # End of https://www.gitignore.io/api/macos,android,androidstudio
+
+# VisualStudioCode files
+.vscode/
