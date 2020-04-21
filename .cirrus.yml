@@ -1,0 +1,8 @@
+container:
+  image: cirrusci/android-sdk:29
+
+test_task:
+  android_cache:
+    folder: ~/.android/build-cache
+  test_script:
+    - ./gradlew connectedCheck connectedAndroidTest
