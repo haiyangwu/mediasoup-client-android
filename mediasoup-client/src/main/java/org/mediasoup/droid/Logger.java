@@ -55,18 +55,27 @@ public class Logger {
 
     @Override
     public void OnLog(LogLevel level, String tag, String message) {
+      final int chunkSize = 2048;
       switch (level) {
         case LOG_ERROR:
-          Log.e(tag, message);
+          for (int i = 0; i < message.length(); i += chunkSize) {
+            Log.e(tag, message.substring(i, Math.min(message.length(), i + chunkSize)));
+          }
           break;
         case LOG_WARN:
-          Log.w(tag, message);
+          for (int i = 0; i < message.length(); i += chunkSize) {
+            Log.w(tag, message.substring(i, Math.min(message.length(), i + chunkSize)));
+          }
           break;
         case LOG_DEBUG:
-          Log.d(tag, message);
+          for (int i = 0; i < message.length(); i += chunkSize) {
+            Log.d(tag, message.substring(i, Math.min(message.length(), i + chunkSize)));
+          }
           break;
         case LOG_TRACE:
-          Log.i(tag, message);
+          for (int i = 0; i < message.length(); i += chunkSize) {
+            Log.i(tag, message.substring(i, Math.min(message.length(), i + chunkSize)));
+          }
           break;
       }
     }
