@@ -16,6 +16,11 @@ implementation 'org.mediasoup.droid:mediasoup-client:3.0.8-beta-1'
 ```
 ### Example
 
+* Initialize `MediasoupClient`
+```Java
+MediasoupClient.initialize(getApplicationContext());
+```
+
 * Create `Device` and load `routerRtpCapabilities`
 
 ```Java
