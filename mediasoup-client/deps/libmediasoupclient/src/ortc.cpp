@@ -103,11 +103,13 @@ namespace mediasoupclient
 			if (mimeTypeIt == codec.end() || !mimeTypeIt->is_string())
 				MSC_THROW_TYPE_ERROR("missing codec.mimeType");
 
+			auto mimeType = mimeTypeIt->get<std::string>();
+
 			std::smatch mimeTypeMatch;
-			std::regex_match(mimeTypeIt->get<std::string>(), mimeTypeMatch, MimeTypeRegex);
+			std::regex_match(mimeType, mimeTypeMatch, MimeTypeRegex);
 
 			if (mimeTypeMatch.empty())
-				MSC_THROW_TYPE_ERROR("invalid codec.mimeType");
+				MSC_THROW_TYPE_ERROR("invalid codec.mimeType (%s)", mimeType.c_str());
 
 			// Just override kind with media component of mimeType.
 			codec["kind"] = mimeTypeMatch[1].str();
@@ -346,11 +348,13 @@ namespace mediasoupclient
 			if (mimeTypeIt == codec.end() || !mimeTypeIt->is_string())
 				MSC_THROW_TYPE_ERROR("missing codec.mimeType");
 
+			auto mimeType = mimeTypeIt->get<std::string>();
+
 			std::smatch mimeTypeMatch;
-			std::regex_match(mimeTypeIt->get<std::string>(), mimeTypeMatch, MimeTypeRegex);
+			std::regex_match(mimeType, mimeTypeMatch, MimeTypeRegex);
 
 			if (mimeTypeMatch.empty())
-				MSC_THROW_TYPE_ERROR("invalid codec.mimeType");
+				MSC_THROW_TYPE_ERROR("invalid codec.mimeType (%s)", mimeType.c_str());
 
 			// payloadType is mandatory.
 			if (payloadTypeIt == codec.end() || !payloadTypeIt->is_number_integer())
