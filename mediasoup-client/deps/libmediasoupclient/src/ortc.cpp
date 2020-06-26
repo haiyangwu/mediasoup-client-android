@@ -110,7 +110,9 @@ namespace mediasoupclient
 				MSC_THROW_TYPE_ERROR("invalid codec.mimeType");
 
 			// Just override kind with media component of mimeType.
-			codec["kind"] = mimeTypeMatch[1].str();
+			// TODO(HaiyangWu) PR ? seems a bug related to `move` syntax
+			auto mimeKind = mimeTypeMatch[1].str();
+			codec["kind"] = mimeKind;
 
 			// preferredPayloadType is optional.
 			if (preferredPayloadTypeIt != codec.end() && !preferredPayloadTypeIt->is_number_integer())
