@@ -17,12 +17,12 @@ public class Device {
   public void load(String routerRtpCapabilities, PeerConnection.Options options) throws MediasoupException {
     checkDeviceExists();
     nativeLoad(
-            mNativeDevice,
-            routerRtpCapabilities,
-            (options != null ? options.mRTCConfig : null),
-            (options != null && options.mFactory != null
-                    ? options.mFactory.getNativePeerConnectionFactory()
-                    : 0L)
+        mNativeDevice,
+        routerRtpCapabilities,
+        (options != null ? options.mRTCConfig : null),
+        (options != null && options.mFactory != null
+                ? options.mFactory.getNativePeerConnectionFactory()
+                : 0L)
     );
   }
 
