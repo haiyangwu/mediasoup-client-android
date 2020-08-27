@@ -29,14 +29,20 @@ static void JNI_Device_FreeDevice(JNIEnv* env, jlong j_device)
 }
 
 static void JNI_Device_Load(
-  JNIEnv* env, jlong j_device, const JavaParamRef<jstring>& j_routerRtpCapabilities)
+  JNIEnv* env,
+  jlong j_device,
+  const JavaParamRef<jstring>& j_routerRtpCapabilities,
+  const JavaParamRef<jobject>& j_config,
+  jlong j_peerConnection_factory)
 {
 	MSC_TRACE();
 
 	try
 	{
 		auto capabilities = JavaToNativeString(env, j_routerRtpCapabilities);
-		reinterpret_cast<Device*>(j_device)->Load(json::parse(capabilities));
+        PeerConnection::Options options;
+        JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
+		reinterpret_cast<Device*>(j_device)->Load(json::parse(capabilities), &options);
 	}
 	catch (const std::exception& e)
 	{

@@ -107,20 +107,20 @@ public class MediasoupClientTest extends BaseTest {
     // device->load() with invalid routerRtpCapabilities throws.
     {
       final String cap = Parameters.nativeGenRouterRtpCapabilitiesExclude("mimeType");
-      exceptionException(() -> device.load(cap));
+      exceptionException(() -> device.load(cap, null));
     }
 
     // device->load() succeeds.
     {
       routerRtpCapabilities = Parameters.nativeGenRouterRtpCapabilities();
-      device.load(routerRtpCapabilities);
+      device.load(routerRtpCapabilities, null);
       assertTrue(device.isLoaded());
     }
 
     // device->load() rejects if already loaded.
     {
       final String cap = routerRtpCapabilities;
-      exceptionException(() -> device.load(cap));
+      exceptionException(() -> device.load(cap, null));
     }
 
     // 'device->getRtpCapabilities()' succeeds".
