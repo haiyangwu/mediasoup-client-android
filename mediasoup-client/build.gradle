@@ -72,7 +72,7 @@ publish {
     userOrg = 'haiyangwu'
     groupId = 'org.mediasoup.droid'
     artifactId = 'mediasoup-client'
-    publishVersion = '3.0.8-beta-3'
+    publishVersion = '3.0.8-beta-4'
     desc = 'mediasoup android client side library'
     website = 'https://github.com/haiyangwu/mediasoup-client-android'
 }

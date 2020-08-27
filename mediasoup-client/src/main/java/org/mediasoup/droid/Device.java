@@ -14,9 +14,16 @@ public class Device {
     mNativeDevice = 0;
   }
 
-  public void load(String routerRtpCapabilities) throws MediasoupException {
+  public void load(String routerRtpCapabilities, PeerConnection.Options options) throws MediasoupException {
     checkDeviceExists();
-    nativeLoad(mNativeDevice, routerRtpCapabilities);
+    nativeLoad(
+            mNativeDevice,
+            routerRtpCapabilities,
+            (options != null ? options.mRTCConfig : null),
+            (options != null && options.mFactory != null
+                    ? options.mFactory.getNativePeerConnectionFactory()
+                    : 0L)
+    );
   }
 
   public boolean isLoaded() {
@@ -116,7 +123,12 @@ public class Device {
   private static native void nativeFreeDevice(long device);
 
   // may throws MediasoupException;
-  private static native void nativeLoad(long device, String routerRtpCapabilities);
+  private static native void nativeLoad(
+    long device,
+    String routerRtpCapabilities,
+    org.webrtc.PeerConnection.RTCConfiguration configuration,
+    long peerConnectionFactory
+  );
 
   private static native boolean nativeIsLoaded(long device);
 
