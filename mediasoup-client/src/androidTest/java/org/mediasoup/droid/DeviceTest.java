@@ -90,7 +90,7 @@ public class DeviceTest extends BaseTest {
     assertFalse(TextUtils.isEmpty(routerRtpCapabilities));
 
     // 'device->Load()' succeeds.
-    mDevice.load(routerRtpCapabilities);
+    mDevice.load(routerRtpCapabilities, null);
     assertTrue(mDevice.isLoaded());
     assertFalse(TextUtils.isEmpty(mDevice.getRtpCapabilities()));
     assertTrue(mDevice.canProduce("audio"));
