@@ -21,11 +21,16 @@ namespace mediasoupclient
 		class PrivateListener
 		{
 		public:
-			// TODO(HaiyangWu): pr ?
-			virtual ~PrivateListener()                             = default;
 			virtual void OnConnect(nlohmann::json& dtlsParameters) = 0;
 			virtual void OnConnectionStateChange(
 			  webrtc::PeerConnectionInterface::IceConnectionState connectionState) = 0;
+		};
+
+	public:
+		struct DataChannel
+		{
+			rtc::scoped_refptr<webrtc::DataChannelInterface> dataChannel;
+			nlohmann::json sctpStreamParameters;
 		};
 
 	public:
@@ -49,8 +54,7 @@ namespace mediasoupclient
 		virtual void RestartIce(const nlohmann::json& iceParameters) = 0;
 
 	protected:
-		void SetupTransport(
-		  const std::string& localDtlsRole, nlohmann::json localSdpObject = nlohmann::json::object());
+		void SetupTransport(const std::string& localDtlsRole, nlohmann::json& localSdpObject);
 
 		/* Methods inherited from PeerConnectionListener. */
 	public:
@@ -60,19 +64,24 @@ namespace mediasoupclient
 		// PrivateListener instance.
 		PrivateListener* privateListener{ nullptr };
 		// Remote SDP instance.
-		std::unique_ptr<Sdp::RemoteSdp> remoteSdp;
+		std::unique_ptr<Sdp::RemoteSdp> remoteSdp{ nullptr };
 		// Got transport local and remote parameters.
 		bool transportReady{ false };
 		// Map of RTCTransceivers indexed by MID.
-		std::unordered_map<std::string, webrtc::RtpTransceiverInterface*> mapMidTransceiver;
+		std::unordered_map<std::string, webrtc::RtpTransceiverInterface*> mapMidTransceiver{};
 		// PeerConnection instance.
-		std::unique_ptr<PeerConnection> pc;
+		std::unique_ptr<PeerConnection> pc{ nullptr };
+		bool hasDataChannelMediaSection = false;
+		uint32_t nextSendSctpStreamId   = 0;
+		// Initial server side DTLS role. If not 'auto', it will force the opposite
+		// value in client side.
+		std::string forcedLocalDtlsRole;
 	};
 
 	class SendHandler : public Handler
 	{
 	public:
-		struct SendData
+		struct SendResult
 		{
 			std::string localId;
 			webrtc::RtpSenderInterface* rtpSender{ nullptr };
@@ -91,15 +100,17 @@ namespace mediasoupclient
 		  const nlohmann::json& sendingRemoteRtpParametersByKind = nlohmann::json());
 
 	public:
-		SendData Send(
+		SendResult Send(
 		  webrtc::MediaStreamTrackInterface* track,
 		  std::vector<webrtc::RtpEncodingParameters>* encodings,
-		  const nlohmann::json* codecOptions);
+		  const nlohmann::json* codecOptions,
+		  const nlohmann::json* codec);
 		void StopSending(const std::string& localId);
 		void ReplaceTrack(const std::string& localId, webrtc::MediaStreamTrackInterface* track);
 		void SetMaxSpatialLayer(const std::string& localId, uint8_t spatialLayer);
 		nlohmann::json GetSenderStats(const std::string& localId);
 		void RestartIce(const nlohmann::json& iceParameters) override;
+		DataChannel SendDataChannel(const std::string& label, webrtc::DataChannelInit dataChannelInit);
 
 	private:
 		// Generic sending RTP parameters for audio and video.
@@ -112,7 +123,7 @@ namespace mediasoupclient
 	class RecvHandler : public Handler
 	{
 	public:
-		struct RecvData
+		struct RecvResult
 		{
 			std::string localId;
 			webrtc::RtpReceiverInterface* rtpReceiver{ nullptr };
@@ -128,10 +139,12 @@ namespace mediasoupclient
 		  const nlohmann::json& sctpParameters,
 		  const PeerConnection::Options* peerConnectionOptions);
 
-		RecvData Receive(const std::string& id, const std::string& kind, const nlohmann::json* rtpParameters);
+		RecvResult Receive(
+		  const std::string& id, const std::string& kind, const nlohmann::json* rtpParameters);
 		void StopReceiving(const std::string& localId);
 		nlohmann::json GetReceiverStats(const std::string& localId);
 		void RestartIce(const nlohmann::json& iceParameters) override;
+		DataChannel ReceiveDataChannel(const std::string& label, webrtc::DataChannelInit dataChannelInit);
 	};
 } // namespace mediasoupclient
 

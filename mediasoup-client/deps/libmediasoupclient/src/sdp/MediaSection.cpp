@@ -207,11 +207,33 @@ namespace mediasoupclient
 								codecParameters["usedtx"]          = opusDtx ? 1 : 0;
 							}
 
+							auto opusCbrIt = codecOptions->find("opusCbr");
+							if (opusCbrIt != codecOptions->end())
+							{
+								auto opusCbr                    = opusCbrIt->get<bool>();
+								offerCodec["parameters"]["cbr"] = opusCbr ? 1 : 0;
+								codecParameters["cbr"]          = opusCbr ? 1 : 0;
+							}
+
 							auto opusMaxPlaybackRateIt = codecOptions->find("opusMaxPlaybackRate");
 							if (opusMaxPlaybackRateIt != codecOptions->end())
 							{
 								auto opusMaxPlaybackRate           = opusMaxPlaybackRateIt->get<uint32_t>();
 								codecParameters["maxplaybackrate"] = opusMaxPlaybackRate;
+							}
+
+							auto opusMaxAverageBitrateIt = codecOptions->find("opusMaxAverageBitrate");
+							if (opusMaxAverageBitrateIt != codecOptions->end())
+							{
+								auto opusMaxAverageBitrate           = opusMaxAverageBitrateIt->get<uint32_t>();
+								codecParameters["maxaveragebitrate"] = opusMaxAverageBitrate;
+							}
+
+							auto opusPtimeIt = codecOptions->find("opusPtime");
+							if (opusPtimeIt != codecOptions->end())
+							{
+								auto opusPtime           = opusPtimeIt->get<uint32_t>();
+								codecParameters["ptime"] = opusPtime;
 							}
 						}
 						else if (mimeType == "video/vp8" || mimeType == "video/vp9" || mimeType == "video/h264" || mimeType == "video/h265")
@@ -300,7 +322,7 @@ namespace mediasoupclient
 				// Don't add a header extension if not present in the offer.
 				for (auto& ext : answerRtpParameters["headerExtensions"])
 				{
-					auto& localExts = offerMediaObject["ext"];
+					const auto& localExts = offerMediaObject["ext"];
 					auto localExtIt = find_if(localExts.begin(), localExts.end(), [&ext](const json& localExt) {
 						return localExt["uri"] == ext["uri"];
 					});
@@ -348,7 +370,7 @@ namespace mediasoupclient
 
 					this->mediaObject["rids"] = json::array();
 
-					for (auto& rid : *ridsIt)
+					for (const auto& rid : *ridsIt)
 					{
 						if (rid["direction"] != "send")
 							continue;
@@ -421,7 +443,7 @@ namespace mediasoupclient
 				this->mediaObject["rtcpFb"]    = json::array();
 				this->mediaObject["fmtp"]      = json::array();
 
-				for (auto& codec : offerRtpParameters["codecs"])
+				for (const auto& codec : offerRtpParameters["codecs"])
 				{
 					// clang-format off
 					json rtp =
@@ -474,7 +496,7 @@ namespace mediasoupclient
 						this->mediaObject["fmtp"].push_back(fmtp);
 					}
 
-					for (auto& fb : codec["rtcpFeedback"])
+					for (const auto& fb : codec["rtcpFeedback"])
 					{
 						// clang-format off
 						this->mediaObject["rtcpFb"].push_back(
@@ -489,7 +511,7 @@ namespace mediasoupclient
 
 				std::string payloads;
 
-				for (auto& codec : offerRtpParameters["codecs"])
+				for (const auto& codec : offerRtpParameters["codecs"])
 				{
 					auto payloadType = codec["payloadType"].get<uint8_t>();
 
@@ -502,7 +524,7 @@ namespace mediasoupclient
 				this->mediaObject["payloads"] = payloads;
 				this->mediaObject["ext"]      = json::array();
 
-				for (auto& ext : offerRtpParameters["headerExtensions"])
+				for (const auto& ext : offerRtpParameters["headerExtensions"])
 				{
 					// clang-format off
 					this->mediaObject["ext"].push_back(
@@ -516,8 +538,8 @@ namespace mediasoupclient
 				this->mediaObject["rtcpMux"]   = "rtcp-mux";
 				this->mediaObject["rtcpRsize"] = "rtcp-rsize";
 
-				auto& encoding = offerRtpParameters["encodings"][0];
-				auto ssrc      = encoding["ssrc"].get<uint32_t>();
+				const auto& encoding = offerRtpParameters["encodings"][0];
+				auto ssrc            = encoding["ssrc"].get<uint32_t>();
 				uint32_t rtxSsrc;
 
 				auto rtxIt = encoding.find("rtx");

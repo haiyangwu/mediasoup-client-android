@@ -15,12 +15,16 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 
 	static std::unique_ptr<mediasoupclient::Device> device;
 	static std::unique_ptr<mediasoupclient::SendTransport> sendTransport;
+	static std::unique_ptr<mediasoupclient::SendTransport> sendTransportNoSctp;
 	static std::unique_ptr<mediasoupclient::RecvTransport> recvTransport;
 	static std::unique_ptr<mediasoupclient::Producer> audioProducer;
 	static std::unique_ptr<mediasoupclient::Producer> videoProducer;
 	static std::unique_ptr<mediasoupclient::Consumer> audioConsumer;
 	static std::unique_ptr<mediasoupclient::Consumer> videoConsumer;
 	static std::unique_ptr<mediasoupclient::Consumer> audioConsumer2;
+
+	static std::unique_ptr<mediasoupclient::DataProducer> dataProducer;
+	static std::unique_ptr<mediasoupclient::DataConsumer> dataConsumer;
 
 	static rtc::scoped_refptr<webrtc::AudioTrackInterface> audioTrack;
 	static rtc::scoped_refptr<webrtc::VideoTrackInterface> videoTrack;
@@ -127,6 +131,7 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 		  TransportRemoteParameters["iceParameters"],
 		  TransportRemoteParameters["iceCandidates"],
 		  TransportRemoteParameters["dtlsParameters"],
+		  TransportRemoteParameters["sctpParameters"],
 		  nullptr,
 		  appData)));
 
@@ -185,8 +190,8 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 		};
 		/* clang-format on */
 
-		REQUIRE_NOTHROW(audioProducer.reset(
-		  sendTransport->Produce(&producerListener, audioTrack, nullptr, &codecOptions, appData)));
+		REQUIRE_NOTHROW(audioProducer.reset(sendTransport->Produce(
+		  &producerListener, audioTrack, nullptr, &codecOptions, nullptr, appData)));
 
 		REQUIRE(
 		  sendTransportListener.onConnectTimesCalled ==
@@ -230,7 +235,7 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 		audioProducer->Resume();
 
 		REQUIRE_NOTHROW(videoProducer.reset(
-		  sendTransport->Produce(&producerListener, videoTrack, &encodings, nullptr)));
+		  sendTransport->Produce(&producerListener, videoTrack, &encodings, nullptr, nullptr)));
 
 		REQUIRE(
 		  sendTransportListener.onConnectTimesCalled ==
@@ -270,10 +275,61 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 		REQUIRE(videoProducer->GetAppData() == json::object());
 	}
 
+	SECTION("transport.produceData() succeeds")
+	{
+		/* clang-format off */
+		json appData =
+		{
+			{ "tdr", "TDR" }
+		};
+		/* clang-format on */
+
+		REQUIRE_NOTHROW(dataProducer.reset(
+		  sendTransport->ProduceData(&producerListener, "", "", true, 0, 0, appData)));
+
+		REQUIRE(
+		  sendTransportListener.onConnectTimesCalled ==
+		  sendTransportListener.onConnectExpectedTimesCalled); // connect has already been called for Producer
+
+		REQUIRE(sendTransportListener.id == sendTransport->GetId());
+
+		REQUIRE(
+		  sendTransportListener.onProduceDataExpectedTimesCalled ==
+		  ++sendTransportListener.onProduceDataExpectedTimesCalled);
+
+		REQUIRE(dataProducer->GetId() == sendTransportListener.dataProducerId);
+		REQUIRE(!dataProducer->IsClosed());
+		REQUIRE(dataProducer->GetAppData() == appData);
+	}
+
 	SECTION("transport.produce() without track throws")
 	{
 		REQUIRE_THROWS_AS(
-		  sendTransport->Produce(&producerListener, nullptr, nullptr, nullptr), MediaSoupClientTypeError);
+		  sendTransport->Produce(&producerListener, nullptr, nullptr, nullptr, nullptr),
+		  MediaSoupClientTypeError);
+	}
+
+	SECTION("transport.produceData() on transport without sctpParameters throws")
+	{
+		/* clang-format off */
+		json appData =
+		{
+			{ "tdr", "TDR" }
+		};
+		/* clang-format on */
+
+		REQUIRE_NOTHROW(sendTransportNoSctp.reset(device->CreateSendTransport(
+		  &sendTransportListener,
+		  TransportRemoteParameters["id"],
+		  TransportRemoteParameters["iceParameters"],
+		  TransportRemoteParameters["iceCandidates"],
+		  TransportRemoteParameters["dtlsParameters"],
+		  nullptr,
+		  appData)));
+
+		REQUIRE_THROWS_AS(
+		  sendTransportNoSctp->ProduceData(&producerListener, "", "", true, 0, 0, appData),
+		  MediaSoupClientError);
 	}
 
 	SECTION("transport.consume() succeeds")
@@ -711,7 +767,7 @@ TEST_CASE("mediasoupclient", "[mediasoupclient]")
 		REQUIRE_THROWS_AS(
 			sendTransport->Produce(
 				&producerListener,
-				audioTrack, nullptr, nullptr),
+				audioTrack, nullptr,  nullptr, nullptr),
 			MediaSoupClientError);
 	}
 
