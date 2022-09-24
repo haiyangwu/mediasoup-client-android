@@ -18,10 +18,10 @@
  *    before stun binding completed will trigger IPC socket layer to shutdown
  *    the connection.
  *
- *  - PendingTCP: |connection_pending_| indicates whether there is an
+ *  - PendingTCP: `connection_pending_` indicates whether there is an
  *    outstanding TCP connection in progress.
  *
- *  - PretendWri: Tracked by |pretending_to_be_writable_|. Marking connection as
+ *  - PretendWri: Tracked by `pretending_to_be_writable_`. Marking connection as
  *    WRITE_TIMEOUT will cause the connection be deleted. Instead, we're
  *    "pretending" we're still writable for a period of time such that reconnect
  *    could work.
@@ -122,7 +122,8 @@ Connection* TCPPort::CreateConnection(const Candidate& address,
     return NULL;
   }
 
-  if (address.tcptype() == TCPTYPE_ACTIVE_STR ||
+  if ((address.tcptype() == TCPTYPE_ACTIVE_STR &&
+       address.type() != PRFLX_PORT_TYPE) ||
       (address.tcptype().empty() && address.address().port() == 0)) {
     // It's active only candidate, we should not try to create connections
     // for these candidates.
@@ -211,14 +212,24 @@ int TCPPort::SendTo(const void* data,
       return SOCKET_ERROR;
     }
     socket = conn->socket();
+    if (!socket) {
+      // The failure to initialize should have been logged elsewhere,
+      // so this log is not important.
+      RTC_LOG(LS_INFO) << ToString()
+                       << ": Attempted to send to an uninitialized socket: "
+                       << addr.ToSensitiveString();
+      error_ = EHOSTUNREACH;
+      return SOCKET_ERROR;
+    }
   } else {
     socket = GetIncoming(addr);
-  }
-  if (!socket) {
-    RTC_LOG(LS_ERROR) << ToString()
-                      << ": Attempted to send to an unknown destination: "
-                      << addr.ToSensitiveString();
-    return SOCKET_ERROR;  // TODO(tbd): Set error_
+    if (!socket) {
+      RTC_LOG(LS_ERROR) << ToString()
+                        << ": Attempted to send to an unknown destination: "
+                        << addr.ToSensitiveString();
+      error_ = EHOSTUNREACH;
+      return SOCKET_ERROR;
+    }
   }
   rtc::PacketOptions modified_options(options);
   CopyPortInformationToPacketInfo(&modified_options.info_signaled_after_sent);
@@ -331,8 +342,8 @@ void TCPPort::OnAddressReady(rtc::AsyncPacketSocket* socket,
              0, "", true);
 }
 
-// TODO(qingsi): |CONNECTION_WRITE_CONNECT_TIMEOUT| is overriden by
-// |ice_unwritable_timeout| in IceConfig when determining the writability state.
+// TODO(qingsi): `CONNECTION_WRITE_CONNECT_TIMEOUT` is overriden by
+// `ice_unwritable_timeout` in IceConfig when determining the writability state.
 // Replace this constant with the config parameter assuming the default value if
 // we decide it is also applicable here.
 TCPConnection::TCPConnection(TCPPort* port,
@@ -392,12 +403,14 @@ int TCPConnection::Send(const void* data,
   static_cast<TCPPort*>(port_)->CopyPortInformationToPacketInfo(
       &modified_options.info_signaled_after_sent);
   int sent = socket_->Send(data, size, modified_options);
+  int64_t now = rtc::TimeMillis();
   if (sent < 0) {
     stats_.sent_discarded_packets++;
     error_ = socket_->GetError();
   } else {
-    send_rate_tracker_.AddSamples(sent);
+    send_rate_tracker_.AddSamplesAtTime(now, sent);
   }
+  last_send_data_ = now;
   return sent;
 }
 
@@ -493,7 +506,7 @@ void TCPConnection::OnClose(rtc::AsyncPacketSocket* socket, int error) {
                                   MSG_TCPCONNECTION_DELAYED_ONCLOSE);
   } else if (!pretending_to_be_writable_) {
     // OnClose could be called when the underneath socket times out during the
-    // initial connect() (i.e. |pretending_to_be_writable_| is false) . We have
+    // initial connect() (i.e. `pretending_to_be_writable_` is false) . We have
     // to manually destroy here as this connection, as never connected, will not
     // be scheduled for ping to trigger destroy.
     Destroy();
@@ -509,6 +522,9 @@ void TCPConnection::OnMessage(rtc::Message* pmsg) {
       if (pretending_to_be_writable_) {
         Destroy();
       }
+      break;
+    case MSG_TCPCONNECTION_FAILED_CREATE_SOCKET:
+      FailAndPrune();
       break;
     default:
       Connection::OnMessage(pmsg);
@@ -546,7 +562,6 @@ void TCPConnection::OnReadyToSend(rtc::AsyncPacketSocket* socket) {
 
 void TCPConnection::CreateOutgoingTcpSocket() {
   RTC_DCHECK(outgoing_);
-  // TODO(guoweis): Handle failures here (unlikely since TCP).
   int opts = (remote_candidate().protocol() == SSLTCP_PROTOCOL_NAME)
                  ? rtc::PacketSocketFactory::OPT_TLS_FAKE
                  : 0;
@@ -567,6 +582,13 @@ void TCPConnection::CreateOutgoingTcpSocket() {
   } else {
     RTC_LOG(LS_WARNING) << ToString() << ": Failed to create connection to "
                         << remote_candidate().address().ToSensitiveString();
+    // We can't FailAndPrune directly here. FailAndPrune and deletes all
+    // the StunRequests from the request_map_. And if this is in the stack
+    // of Connection::Ping(), we are still using the request.
+    // Unwind the stack and defer the FailAndPrune.
+    set_state(IceCandidatePairState::FAILED);
+    port()->thread()->Post(RTC_FROM_HERE, this,
+                           MSG_TCPCONNECTION_FAILED_CREATE_SOCKET);
   }
 }
 

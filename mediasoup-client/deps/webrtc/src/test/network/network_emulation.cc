@@ -13,29 +13,262 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <utility>
 
+#include "absl/types/optional.h"
+#include "api/numerics/samples_stats_counter.h"
+#include "api/test/network_emulation/network_emulation_interfaces.h"
 #include "api/units/data_size.h"
-#include "rtc_base/bind.h"
 #include "rtc_base/logging.h"
 
 namespace webrtc {
 
-namespace {
-constexpr size_t kIPv4HeaderSize = 20;
-constexpr size_t kIPv6HeaderSize = 40;
-}  // namespace
+DataRate EmulatedNetworkOutgoingStatsImpl::AverageSendRate() const {
+  RTC_DCHECK_GE(packets_sent_, 2);
+  RTC_DCHECK(first_packet_sent_time_.IsFinite());
+  RTC_DCHECK(last_packet_sent_time_.IsFinite());
+  return (bytes_sent_ - first_sent_packet_size_) /
+         (last_packet_sent_time_ - first_packet_sent_time_);
+}
 
-EmulatedIpPacket::EmulatedIpPacket(const rtc::SocketAddress& from,
-                                   const rtc::SocketAddress& to,
-                                   rtc::CopyOnWriteBuffer data,
-                                   Timestamp arrival_time)
-    : from(from),
-      to(to),
-      data(data),
-      ip_header_size((to.family() == AF_INET) ? kIPv4HeaderSize
-                                              : kIPv6HeaderSize),
-      arrival_time(arrival_time) {
-  RTC_DCHECK(to.family() == AF_INET || to.family() == AF_INET6);
+DataRate EmulatedNetworkIncomingStatsImpl::AverageReceiveRate() const {
+  RTC_DCHECK_GE(packets_received_, 2);
+  RTC_DCHECK(first_packet_received_time_.IsFinite());
+  RTC_DCHECK(last_packet_received_time_.IsFinite());
+  return (bytes_received_ - first_received_packet_size_) /
+         (last_packet_received_time_ - first_packet_received_time_);
+}
+
+std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+EmulatedNetworkStatsImpl::OutgoingStatsPerDestination() const {
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>> out;
+  for (const auto& entry : outgoing_stats_per_destination_) {
+    out.emplace(entry.first, std::make_unique<EmulatedNetworkOutgoingStatsImpl>(
+                                 *entry.second));
+  }
+  return out;
+}
+
+std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+EmulatedNetworkStatsImpl::IncomingStatsPerSource() const {
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>> out;
+  for (const auto& entry : incoming_stats_per_source_) {
+    out.emplace(entry.first, std::make_unique<EmulatedNetworkIncomingStatsImpl>(
+                                 *entry.second));
+  }
+  return out;
+}
+
+std::unique_ptr<EmulatedNetworkOutgoingStats>
+EmulatedNetworkStatsImpl::GetOverallOutgoingStats() const {
+  EmulatedNetworkOutgoingStatsBuilder builder;
+  for (const auto& entry : outgoing_stats_per_destination_) {
+    builder.AddOutgoingStats(*entry.second);
+  }
+  return builder.Build();
+}
+
+std::unique_ptr<EmulatedNetworkIncomingStats>
+EmulatedNetworkStatsImpl::GetOverallIncomingStats() const {
+  EmulatedNetworkIncomingStatsBuilder builder;
+  for (const auto& entry : incoming_stats_per_source_) {
+    builder.AddIncomingStats(*entry.second);
+  }
+  return builder.Build();
+}
+
+EmulatedNetworkOutgoingStatsBuilder::EmulatedNetworkOutgoingStatsBuilder() {
+  sequence_checker_.Detach();
+}
+
+void EmulatedNetworkOutgoingStatsBuilder::OnPacketSent(
+    Timestamp sent_time,
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_CHECK_GE(packet_size, DataSize::Zero());
+  if (first_packet_sent_time_.IsInfinite()) {
+    first_packet_sent_time_ = sent_time;
+    first_sent_packet_size_ = packet_size;
+  }
+  last_packet_sent_time_ = sent_time;
+  packets_sent_++;
+  bytes_sent_ += packet_size;
+  if (mode == EmulatedEndpointConfig::StatsGatheringMode::kDebug) {
+    sent_packets_size_counter_.AddSample(packet_size.bytes());
+  }
+}
+
+void EmulatedNetworkOutgoingStatsBuilder::AddOutgoingStats(
+    const EmulatedNetworkOutgoingStats& stats) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  packets_sent_ += stats.PacketsSent();
+  bytes_sent_ += stats.BytesSent();
+  sent_packets_size_counter_.AddSamples(stats.SentPacketsSizeCounter());
+  if (first_packet_sent_time_ > stats.FirstPacketSentTime()) {
+    first_packet_sent_time_ = stats.FirstPacketSentTime();
+    first_sent_packet_size_ = stats.FirstSentPacketSize();
+  }
+  if (last_packet_sent_time_ < stats.LastPacketSentTime()) {
+    last_packet_sent_time_ = stats.LastPacketSentTime();
+  }
+}
+
+std::unique_ptr<EmulatedNetworkOutgoingStats>
+EmulatedNetworkOutgoingStatsBuilder::Build() const {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  return std::make_unique<EmulatedNetworkOutgoingStatsImpl>(
+      packets_sent_, bytes_sent_, sent_packets_size_counter_,
+      first_sent_packet_size_, first_packet_sent_time_, last_packet_sent_time_);
+}
+
+EmulatedNetworkIncomingStatsBuilder::EmulatedNetworkIncomingStatsBuilder() {
+  sequence_checker_.Detach();
+}
+
+void EmulatedNetworkIncomingStatsBuilder::OnPacketDropped(
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  packets_dropped_++;
+  bytes_dropped_ += packet_size;
+  if (mode == EmulatedEndpointConfig::StatsGatheringMode::kDebug) {
+    dropped_packets_size_counter_.AddSample(packet_size.bytes());
+  }
+}
+
+void EmulatedNetworkIncomingStatsBuilder::OnPacketReceived(
+    Timestamp received_time,
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_CHECK_GE(packet_size, DataSize::Zero());
+  if (first_packet_received_time_.IsInfinite()) {
+    first_packet_received_time_ = received_time;
+    first_received_packet_size_ = packet_size;
+  }
+  last_packet_received_time_ = received_time;
+  packets_received_++;
+  bytes_received_ += packet_size;
+  if (mode == EmulatedEndpointConfig::StatsGatheringMode::kDebug) {
+    received_packets_size_counter_.AddSample(packet_size.bytes());
+  }
+}
+
+void EmulatedNetworkIncomingStatsBuilder::AddIncomingStats(
+    const EmulatedNetworkIncomingStats& stats) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  packets_received_ += stats.PacketsReceived();
+  bytes_received_ += stats.BytesReceived();
+  received_packets_size_counter_.AddSamples(stats.ReceivedPacketsSizeCounter());
+  packets_dropped_ += stats.PacketsDropped();
+  bytes_dropped_ += stats.BytesDropped();
+  dropped_packets_size_counter_.AddSamples(stats.DroppedPacketsSizeCounter());
+  if (first_packet_received_time_ > stats.FirstPacketReceivedTime()) {
+    first_packet_received_time_ = stats.FirstPacketReceivedTime();
+    first_received_packet_size_ = stats.FirstReceivedPacketSize();
+  }
+  if (last_packet_received_time_ < stats.LastPacketReceivedTime()) {
+    last_packet_received_time_ = stats.LastPacketReceivedTime();
+  }
+}
+
+std::unique_ptr<EmulatedNetworkIncomingStats>
+EmulatedNetworkIncomingStatsBuilder::Build() const {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  return std::make_unique<EmulatedNetworkIncomingStatsImpl>(
+      packets_received_, bytes_received_, received_packets_size_counter_,
+      packets_dropped_, bytes_dropped_, dropped_packets_size_counter_,
+      first_received_packet_size_, first_packet_received_time_,
+      last_packet_received_time_);
+}
+
+EmulatedNetworkStatsBuilder::EmulatedNetworkStatsBuilder() {
+  sequence_checker_.Detach();
+}
+
+EmulatedNetworkStatsBuilder::EmulatedNetworkStatsBuilder(
+    rtc::IPAddress local_ip) {
+  local_addresses_.push_back(local_ip);
+  sequence_checker_.Detach();
+}
+
+void EmulatedNetworkStatsBuilder::OnPacketSent(
+    Timestamp queued_time,
+    Timestamp sent_time,
+    rtc::IPAddress destination_ip,
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  if (mode == EmulatedEndpointConfig::StatsGatheringMode::kDebug) {
+    sent_packets_queue_wait_time_us_.AddSample((sent_time - queued_time).us());
+  }
+  outgoing_stats_per_destination_[destination_ip].OnPacketSent(
+      sent_time, packet_size, mode);
+}
+
+void EmulatedNetworkStatsBuilder::OnPacketDropped(
+    rtc::IPAddress source_ip,
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  incoming_stats_per_source_[source_ip].OnPacketDropped(packet_size, mode);
+}
+
+void EmulatedNetworkStatsBuilder::OnPacketReceived(
+    Timestamp received_time,
+    rtc::IPAddress source_ip,
+    DataSize packet_size,
+    EmulatedEndpointConfig::StatsGatheringMode mode) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  incoming_stats_per_source_[source_ip].OnPacketReceived(received_time,
+                                                         packet_size, mode);
+}
+
+void EmulatedNetworkStatsBuilder::AddEmulatedNetworkStats(
+    const EmulatedNetworkStats& stats) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+
+  // Append IPs from other endpoints stats to the builder.
+  for (const rtc::IPAddress& addr : stats.LocalAddresses()) {
+    local_addresses_.push_back(addr);
+  }
+
+  sent_packets_queue_wait_time_us_.AddSamples(
+      stats.SentPacketsQueueWaitTimeUs());
+
+  // Add outgoing stats from other endpoints to the builder.
+  const std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+      outgoing_stats_per_destination = stats.OutgoingStatsPerDestination();
+  for (const auto& entry : outgoing_stats_per_destination) {
+    outgoing_stats_per_destination_[entry.first].AddOutgoingStats(
+        *entry.second);
+  }
+
+  // Add incoming stats from other endpoints to the builder.
+  const std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+      incoming_stats_per_source = stats.IncomingStatsPerSource();
+  for (const auto& entry : incoming_stats_per_source) {
+    incoming_stats_per_source_[entry.first].AddIncomingStats(*entry.second);
+  }
+}
+
+std::unique_ptr<EmulatedNetworkStats> EmulatedNetworkStatsBuilder::Build()
+    const {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+      outgoing_stats;
+  for (const auto& entry : outgoing_stats_per_destination_) {
+    outgoing_stats.emplace(entry.first, entry.second.Build());
+  }
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+      incoming_stats;
+  for (const auto& entry : incoming_stats_per_source_) {
+    incoming_stats.emplace(entry.first, entry.second.Build());
+  }
+  return std::make_unique<EmulatedNetworkStatsImpl>(
+      local_addresses_, sent_packets_queue_wait_time_us_,
+      std::move(outgoing_stats), std::move(incoming_stats));
 }
 
 void LinkEmulation::OnPacketReceived(EmulatedIpPacket packet) {
@@ -58,7 +291,7 @@ void LinkEmulation::OnPacketReceived(EmulatedIpPacket packet) {
     process_task_ = RepeatingTaskHandle::DelayedStart(
         task_queue_->Get(),
         std::max(TimeDelta::Zero(),
-                 Timestamp::us(*next_time_us) - current_time),
+                 Timestamp::Micros(*next_time_us) - current_time),
         [this]() {
           RTC_DCHECK_RUN_ON(task_queue_);
           Timestamp current_time = clock_->CurrentTime();
@@ -70,7 +303,7 @@ void LinkEmulation::OnPacketReceived(EmulatedIpPacket packet) {
             return TimeDelta::Zero();  // This is ignored.
           }
           RTC_DCHECK_GE(*next_time_us, current_time.us());
-          return Timestamp::us(*next_time_us) - current_time;
+          return Timestamp::Micros(*next_time_us) - current_time;
         });
   });
 }
@@ -92,7 +325,7 @@ void LinkEmulation::Process(Timestamp at_time) {
 
     if (delivery_info.receive_time_us != PacketDeliveryInfo::kNotReceived) {
       packet->packet.arrival_time =
-          Timestamp::us(delivery_info.receive_time_us);
+          Timestamp::Micros(delivery_info.receive_time_us);
       receiver_->OnPacketReceived(std::move(packet->packet));
     }
     while (!packets_.empty() && packets_.front().removed) {
@@ -109,8 +342,15 @@ void NetworkRouterNode::OnPacketReceived(EmulatedIpPacket packet) {
   if (watcher_) {
     watcher_(packet);
   }
+  if (filter_) {
+    if (!filter_(packet))
+      return;
+  }
   auto receiver_it = routing_.find(packet.to.ipaddr());
   if (receiver_it == routing_.end()) {
+    if (default_receiver_.has_value()) {
+      (*default_receiver_)->OnPacketReceived(std::move(packet));
+    }
     return;
   }
   RTC_CHECK(receiver_it != routing_.end());
@@ -119,7 +359,7 @@ void NetworkRouterNode::OnPacketReceived(EmulatedIpPacket packet) {
 }
 
 void NetworkRouterNode::SetReceiver(
-    rtc::IPAddress dest_ip,
+    const rtc::IPAddress& dest_ip,
     EmulatedNetworkReceiverInterface* receiver) {
   task_queue_->PostTask([=] {
     RTC_DCHECK_RUN_ON(task_queue_);
@@ -130,9 +370,26 @@ void NetworkRouterNode::SetReceiver(
   });
 }
 
-void NetworkRouterNode::RemoveReceiver(rtc::IPAddress dest_ip) {
+void NetworkRouterNode::RemoveReceiver(const rtc::IPAddress& dest_ip) {
   RTC_DCHECK_RUN_ON(task_queue_);
   routing_.erase(dest_ip);
+}
+
+void NetworkRouterNode::SetDefaultReceiver(
+    EmulatedNetworkReceiverInterface* receiver) {
+  task_queue_->PostTask([=] {
+    RTC_DCHECK_RUN_ON(task_queue_);
+    if (default_receiver_.has_value()) {
+      RTC_CHECK_EQ(*default_receiver_, receiver)
+          << "Router already default receiver";
+    }
+    default_receiver_ = receiver;
+  });
+}
+
+void NetworkRouterNode::RemoveDefaultReceiver() {
+  RTC_DCHECK_RUN_ON(task_queue_);
+  default_receiver_ = absl::nullopt;
 }
 
 void NetworkRouterNode::SetWatcher(
@@ -140,6 +397,14 @@ void NetworkRouterNode::SetWatcher(
   task_queue_->PostTask([=] {
     RTC_DCHECK_RUN_ON(task_queue_);
     watcher_ = watcher;
+  });
+}
+
+void NetworkRouterNode::SetFilter(
+    std::function<bool(const EmulatedIpPacket&)> filter) {
+  task_queue_->PostTask([=] {
+    RTC_DCHECK_RUN_ON(task_queue_);
+    filter_ = filter;
   });
 }
 
@@ -155,7 +420,7 @@ void EmulatedNetworkNode::OnPacketReceived(EmulatedIpPacket packet) {
 }
 
 void EmulatedNetworkNode::CreateRoute(
-    rtc::IPAddress receiver_ip,
+    const rtc::IPAddress& receiver_ip,
     std::vector<EmulatedNetworkNode*> nodes,
     EmulatedNetworkReceiverInterface* receiver) {
   RTC_CHECK(!nodes.empty());
@@ -164,7 +429,7 @@ void EmulatedNetworkNode::CreateRoute(
   nodes.back()->router()->SetReceiver(receiver_ip, receiver);
 }
 
-void EmulatedNetworkNode::ClearRoute(rtc::IPAddress receiver_ip,
+void EmulatedNetworkNode::ClearRoute(const rtc::IPAddress& receiver_ip,
                                      std::vector<EmulatedNetworkNode*> nodes) {
   for (EmulatedNetworkNode* node : nodes)
     node->router()->RemoveReceiver(receiver_ip);
@@ -172,66 +437,96 @@ void EmulatedNetworkNode::ClearRoute(rtc::IPAddress receiver_ip,
 
 EmulatedNetworkNode::~EmulatedNetworkNode() = default;
 
-EmulatedEndpoint::EmulatedEndpoint(uint64_t id,
-                                   const rtc::IPAddress& ip,
-                                   bool is_enabled,
-                                   rtc::TaskQueue* task_queue,
-                                   Clock* clock)
-    : id_(id),
-      peer_local_addr_(ip),
+EmulatedEndpointImpl::Options::Options(uint64_t id,
+                                       const rtc::IPAddress& ip,
+                                       const EmulatedEndpointConfig& config)
+    : id(id),
+      ip(ip),
+      stats_gathering_mode(config.stats_gathering_mode),
+      type(config.type),
+      allow_send_packet_with_different_source_ip(
+          config.allow_send_packet_with_different_source_ip),
+      allow_receive_packets_with_different_dest_ip(
+          config.allow_receive_packets_with_different_dest_ip),
+      log_name(ip.ToString() + " (" + config.name.value_or("") + ")") {}
+
+EmulatedEndpointImpl::EmulatedEndpointImpl(const Options& options,
+                                           bool is_enabled,
+                                           rtc::TaskQueue* task_queue,
+                                           Clock* clock)
+    : options_(options),
       is_enabled_(is_enabled),
       clock_(clock),
       task_queue_(task_queue),
       router_(task_queue_),
-      next_port_(kFirstEphemeralPort) {
+      next_port_(kFirstEphemeralPort),
+      stats_builder_(options_.ip) {
   constexpr int kIPv4NetworkPrefixLength = 24;
   constexpr int kIPv6NetworkPrefixLength = 64;
 
   int prefix_length = 0;
-  if (ip.family() == AF_INET) {
+  if (options_.ip.family() == AF_INET) {
     prefix_length = kIPv4NetworkPrefixLength;
-  } else if (ip.family() == AF_INET6) {
+  } else if (options_.ip.family() == AF_INET6) {
     prefix_length = kIPv6NetworkPrefixLength;
   }
-  rtc::IPAddress prefix = TruncateIP(ip, prefix_length);
+  rtc::IPAddress prefix = TruncateIP(options_.ip, prefix_length);
   network_ = std::make_unique<rtc::Network>(
-      ip.ToString(), "Endpoint id=" + std::to_string(id_), prefix,
-      prefix_length, rtc::AdapterType::ADAPTER_TYPE_UNKNOWN);
-  network_->AddIP(ip);
+      options_.ip.ToString(), "Endpoint id=" + std::to_string(options_.id),
+      prefix, prefix_length, options_.type);
+  network_->AddIP(options_.ip);
 
   enabled_state_checker_.Detach();
+  RTC_LOG(INFO) << "Created emulated endpoint " << options_.log_name
+                << "; id=" << options_.id;
 }
-EmulatedEndpoint::~EmulatedEndpoint() = default;
+EmulatedEndpointImpl::~EmulatedEndpointImpl() = default;
 
-uint64_t EmulatedEndpoint::GetId() const {
-  return id_;
+uint64_t EmulatedEndpointImpl::GetId() const {
+  return options_.id;
 }
 
-void EmulatedEndpoint::SendPacket(const rtc::SocketAddress& from,
-                                  const rtc::SocketAddress& to,
-                                  rtc::CopyOnWriteBuffer packet_data) {
-  RTC_CHECK(from.ipaddr() == peer_local_addr_);
+void EmulatedEndpointImpl::SendPacket(const rtc::SocketAddress& from,
+                                      const rtc::SocketAddress& to,
+                                      rtc::CopyOnWriteBuffer packet_data,
+                                      uint16_t application_overhead) {
+  if (!options_.allow_send_packet_with_different_source_ip) {
+    RTC_CHECK(from.ipaddr() == options_.ip);
+  }
   EmulatedIpPacket packet(from, to, std::move(packet_data),
-                          clock_->CurrentTime());
+                          clock_->CurrentTime(), application_overhead);
   task_queue_->PostTask([this, packet = std::move(packet)]() mutable {
     RTC_DCHECK_RUN_ON(task_queue_);
-    Timestamp current_time = clock_->CurrentTime();
-    if (stats_.first_packet_sent_time.IsInfinite()) {
-      stats_.first_packet_sent_time = current_time;
-      stats_.first_sent_packet_size = DataSize::bytes(packet.ip_packet_size());
-    }
-    stats_.last_packet_sent_time = current_time;
-    stats_.packets_sent++;
-    stats_.bytes_sent += DataSize::bytes(packet.ip_packet_size());
+    stats_builder_.OnPacketSent(packet.arrival_time, clock_->CurrentTime(),
+                                packet.to.ipaddr(),
+                                DataSize::Bytes(packet.ip_packet_size()),
+                                options_.stats_gathering_mode);
 
-    router_.OnPacketReceived(std::move(packet));
+    if (packet.to.ipaddr() == options_.ip) {
+      OnPacketReceived(std::move(packet));
+    } else {
+      router_.OnPacketReceived(std::move(packet));
+    }
   });
 }
 
-absl::optional<uint16_t> EmulatedEndpoint::BindReceiver(
+absl::optional<uint16_t> EmulatedEndpointImpl::BindReceiver(
     uint16_t desired_port,
     EmulatedNetworkReceiverInterface* receiver) {
-  rtc::CritScope crit(&receiver_lock_);
+  return BindReceiverInternal(desired_port, receiver, /*is_one_shot=*/false);
+}
+
+absl::optional<uint16_t> EmulatedEndpointImpl::BindOneShotReceiver(
+    uint16_t desired_port,
+    EmulatedNetworkReceiverInterface* receiver) {
+  return BindReceiverInternal(desired_port, receiver, /*is_one_shot=*/true);
+}
+
+absl::optional<uint16_t> EmulatedEndpointImpl::BindReceiverInternal(
+    uint16_t desired_port,
+    EmulatedNetworkReceiverInterface* receiver,
+    bool is_one_shot) {
+  MutexLock lock(&receiver_lock_);
   uint16_t port = desired_port;
   if (port == 0) {
     // Because client can specify its own port, next_port_ can be already in
@@ -247,19 +542,21 @@ absl::optional<uint16_t> EmulatedEndpoint::BindReceiver(
     }
   }
   RTC_CHECK(port != 0) << "Can't find free port for receiver in endpoint "
-                       << id_;
-  bool result = port_to_receiver_.insert({port, receiver}).second;
+                       << options_.log_name << "; id=" << options_.id;
+  bool result =
+      port_to_receiver_.insert({port, {receiver, is_one_shot}}).second;
   if (!result) {
     RTC_LOG(INFO) << "Can't bind receiver to used port " << desired_port
-                  << " in endpoint " << id_;
+                  << " in endpoint " << options_.log_name
+                  << "; id=" << options_.id;
     return absl::nullopt;
   }
-  RTC_LOG(INFO) << "New receiver is binded to endpoint " << id_ << " on port "
-                << port;
+  RTC_LOG(INFO) << "New receiver is binded to endpoint " << options_.log_name
+                << "; id=" << options_.id << " on port " << port;
   return port;
 }
 
-uint16_t EmulatedEndpoint::NextPort() {
+uint16_t EmulatedEndpointImpl::NextPort() {
   uint16_t out = next_port_;
   if (next_port_ == std::numeric_limits<uint16_t>::max()) {
     next_port_ = kFirstEphemeralPort;
@@ -269,80 +566,101 @@ uint16_t EmulatedEndpoint::NextPort() {
   return out;
 }
 
-void EmulatedEndpoint::UnbindReceiver(uint16_t port) {
-  rtc::CritScope crit(&receiver_lock_);
+void EmulatedEndpointImpl::UnbindReceiver(uint16_t port) {
+  MutexLock lock(&receiver_lock_);
+  RTC_LOG(INFO) << "Receiver is removed on port " << port << " from endpoint "
+                << options_.log_name << "; id=" << options_.id;
   port_to_receiver_.erase(port);
 }
 
-rtc::IPAddress EmulatedEndpoint::GetPeerLocalAddress() const {
-  return peer_local_addr_;
+void EmulatedEndpointImpl::BindDefaultReceiver(
+    EmulatedNetworkReceiverInterface* receiver) {
+  MutexLock lock(&receiver_lock_);
+  RTC_CHECK(!default_receiver_.has_value())
+      << "Endpoint " << options_.log_name << "; id=" << options_.id
+      << " already has default receiver";
+  RTC_LOG(INFO) << "Default receiver is binded to endpoint "
+                << options_.log_name << "; id=" << options_.id;
+  default_receiver_ = receiver;
 }
 
-void EmulatedEndpoint::OnPacketReceived(EmulatedIpPacket packet) {
+void EmulatedEndpointImpl::UnbindDefaultReceiver() {
+  MutexLock lock(&receiver_lock_);
+  RTC_LOG(INFO) << "Default receiver is removed from endpoint "
+                << options_.log_name << "; id=" << options_.id;
+  default_receiver_ = absl::nullopt;
+}
+
+rtc::IPAddress EmulatedEndpointImpl::GetPeerLocalAddress() const {
+  return options_.ip;
+}
+
+void EmulatedEndpointImpl::OnPacketReceived(EmulatedIpPacket packet) {
   RTC_DCHECK_RUN_ON(task_queue_);
-  RTC_CHECK(packet.to.ipaddr() == peer_local_addr_)
-      << "Routing error: wrong destination endpoint. Packet.to.ipaddr()=: "
-      << packet.to.ipaddr().ToString()
-      << "; Receiver peer_local_addr_=" << peer_local_addr_.ToString();
-  rtc::CritScope crit(&receiver_lock_);
-  UpdateReceiveStats(packet);
+  if (!options_.allow_receive_packets_with_different_dest_ip) {
+    RTC_CHECK(packet.to.ipaddr() == options_.ip)
+        << "Routing error: wrong destination endpoint. Packet.to.ipaddr()=: "
+        << packet.to.ipaddr().ToString()
+        << "; Receiver options_.ip=" << options_.ip.ToString();
+  }
+  MutexLock lock(&receiver_lock_);
+  stats_builder_.OnPacketReceived(clock_->CurrentTime(), packet.from.ipaddr(),
+                                  DataSize::Bytes(packet.ip_packet_size()),
+                                  options_.stats_gathering_mode);
   auto it = port_to_receiver_.find(packet.to.port());
   if (it == port_to_receiver_.end()) {
+    if (default_receiver_.has_value()) {
+      (*default_receiver_)->OnPacketReceived(std::move(packet));
+      return;
+    }
     // It can happen, that remote peer closed connection, but there still some
     // packets, that are going to it. It can happen during peer connection close
     // process: one peer closed connection, second still sending data.
-    RTC_LOG(INFO) << "Drop packet: no receiver registered in " << id_
-                  << " on port " << packet.to.port();
-    stats_.packets_dropped++;
-    stats_.bytes_dropped += DataSize::bytes(packet.ip_packet_size());
+    RTC_LOG(INFO) << "Drop packet: no receiver registered in "
+                  << options_.log_name << "; id=" << options_.id << " on port "
+                  << packet.to.port();
+    stats_builder_.OnPacketDropped(packet.from.ipaddr(),
+                                   DataSize::Bytes(packet.ip_packet_size()),
+                                   options_.stats_gathering_mode);
     return;
   }
-  // Endpoint assumes frequent calls to bind and unbind methods, so it holds
-  // lock during packet processing to ensure that receiver won't be deleted
-  // before call to OnPacketReceived.
-  it->second->OnPacketReceived(std::move(packet));
+  // Endpoint holds lock during packet processing to ensure that a call to
+  // UnbindReceiver followed by a delete of the receiver cannot race with this
+  // call to OnPacketReceived.
+  it->second.receiver->OnPacketReceived(std::move(packet));
+
+  if (it->second.is_one_shot) {
+    port_to_receiver_.erase(it);
+  }
 }
 
-void EmulatedEndpoint::Enable() {
+void EmulatedEndpointImpl::Enable() {
   RTC_DCHECK_RUN_ON(&enabled_state_checker_);
   RTC_CHECK(!is_enabled_);
   is_enabled_ = true;
 }
 
-void EmulatedEndpoint::Disable() {
+void EmulatedEndpointImpl::Disable() {
   RTC_DCHECK_RUN_ON(&enabled_state_checker_);
   RTC_CHECK(is_enabled_);
   is_enabled_ = false;
 }
 
-bool EmulatedEndpoint::Enabled() const {
+bool EmulatedEndpointImpl::Enabled() const {
   RTC_DCHECK_RUN_ON(&enabled_state_checker_);
   return is_enabled_;
 }
 
-EmulatedNetworkStats EmulatedEndpoint::stats() {
+std::unique_ptr<EmulatedNetworkStats> EmulatedEndpointImpl::stats() const {
   RTC_DCHECK_RUN_ON(task_queue_);
-  return stats_;
-}
-
-void EmulatedEndpoint::UpdateReceiveStats(const EmulatedIpPacket& packet) {
-  RTC_DCHECK_RUN_ON(task_queue_);
-  Timestamp current_time = clock_->CurrentTime();
-  if (stats_.first_packet_received_time.IsInfinite()) {
-    stats_.first_packet_received_time = current_time;
-    stats_.first_received_packet_size =
-        DataSize::bytes(packet.ip_packet_size());
-  }
-  stats_.last_packet_received_time = current_time;
-  stats_.packets_received++;
-  stats_.bytes_received += DataSize::bytes(packet.ip_packet_size());
+  return stats_builder_.Build();
 }
 
 EndpointsContainer::EndpointsContainer(
-    const std::vector<EmulatedEndpoint*>& endpoints)
+    const std::vector<EmulatedEndpointImpl*>& endpoints)
     : endpoints_(endpoints) {}
 
-EmulatedEndpoint* EndpointsContainer::LookupByLocalAddress(
+EmulatedEndpointImpl* EndpointsContainer::LookupByLocalAddress(
     const rtc::IPAddress& local_ip) const {
   for (auto* endpoint : endpoints_) {
     rtc::IPAddress peer_local_address = endpoint->GetPeerLocalAddress();
@@ -353,7 +671,7 @@ EmulatedEndpoint* EndpointsContainer::LookupByLocalAddress(
   RTC_CHECK(false) << "No network found for address" << local_ip.ToString();
 }
 
-bool EndpointsContainer::HasEndpoint(EmulatedEndpoint* endpoint) const {
+bool EndpointsContainer::HasEndpoint(EmulatedEndpointImpl* endpoint) const {
   for (auto* e : endpoints_) {
     if (e->GetId() == endpoint->GetId()) {
       return true;
@@ -374,39 +692,16 @@ EndpointsContainer::GetEnabledNetworks() const {
   return networks;
 }
 
-EmulatedNetworkStats EndpointsContainer::GetStats() const {
-  EmulatedNetworkStats stats;
+std::vector<EmulatedEndpoint*> EndpointsContainer::GetEndpoints() const {
+  return std::vector<EmulatedEndpoint*>(endpoints_.begin(), endpoints_.end());
+}
+
+std::unique_ptr<EmulatedNetworkStats> EndpointsContainer::GetStats() const {
+  EmulatedNetworkStatsBuilder stats_builder;
   for (auto* endpoint : endpoints_) {
-    EmulatedNetworkStats endpoint_stats = endpoint->stats();
-    stats.packets_sent += endpoint_stats.packets_sent;
-    stats.bytes_sent += endpoint_stats.bytes_sent;
-    stats.packets_received += endpoint_stats.packets_received;
-    stats.bytes_received += endpoint_stats.bytes_received;
-    stats.packets_dropped += endpoint_stats.packets_dropped;
-    stats.bytes_dropped += endpoint_stats.bytes_dropped;
-    if (stats.first_packet_received_time >
-        endpoint_stats.first_packet_received_time) {
-      stats.first_packet_received_time =
-          endpoint_stats.first_packet_received_time;
-      stats.first_received_packet_size =
-          endpoint_stats.first_received_packet_size;
-    }
-    if (stats.first_packet_sent_time > endpoint_stats.first_packet_sent_time) {
-      stats.first_packet_sent_time = endpoint_stats.first_packet_sent_time;
-      stats.first_sent_packet_size = endpoint_stats.first_sent_packet_size;
-    }
-    if (stats.last_packet_received_time.IsInfinite() ||
-        stats.last_packet_received_time <
-            endpoint_stats.last_packet_received_time) {
-      stats.last_packet_received_time =
-          endpoint_stats.last_packet_received_time;
-    }
-    if (stats.last_packet_sent_time.IsInfinite() ||
-        stats.last_packet_sent_time < endpoint_stats.last_packet_sent_time) {
-      stats.last_packet_sent_time = endpoint_stats.last_packet_sent_time;
-    }
+    stats_builder.AddEmulatedNetworkStats(*endpoint->stats());
   }
-  return stats;
+  return stats_builder.Build();
 }
 
 }  // namespace webrtc

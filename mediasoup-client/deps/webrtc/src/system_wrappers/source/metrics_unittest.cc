@@ -17,6 +17,7 @@ using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 
+#if RTC_METRICS_ENABLED
 namespace webrtc {
 namespace {
 const int kSample = 22;
@@ -113,7 +114,8 @@ TEST_F(MetricsTest, RtcHistogramsCounts_AddSample) {
 }
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
-TEST_F(MetricsTest, RtcHistogramsCounts_InvalidIndex) {
+using MetricsDeathTest = MetricsTest;
+TEST_F(MetricsDeathTest, RtcHistogramsCounts_InvalidIndex) {
   EXPECT_DEATH(RTC_HISTOGRAMS_COUNTS_1000(-1, "Name", kSample), "");
   EXPECT_DEATH(RTC_HISTOGRAMS_COUNTS_1000(3, "Name", kSample), "");
   EXPECT_DEATH(RTC_HISTOGRAMS_COUNTS_1000(3u, "Name", kSample), "");
@@ -130,3 +132,4 @@ TEST_F(MetricsTest, RtcHistogramSparse_NonConstantNameWorks) {
 }
 
 }  // namespace webrtc
+#endif

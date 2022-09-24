@@ -43,7 +43,7 @@ constexpr int kMinReorderingTimeMs = 200;
 constexpr int kFactor = 100;
 constexpr float kMinReorderingSquareDistance = 1.0f / kFactor / kFactor;
 
-// |kMinUplinkBandwidthBps| and |kMaxUplinkBandwidthBps| are copied from
+// `kMinUplinkBandwidthBps` and `kMaxUplinkBandwidthBps` are copied from
 // controller_manager.cc
 constexpr int kMinUplinkBandwidthBps = 0;
 constexpr int kMaxUplinkBandwidthBps = 120000;
@@ -82,7 +82,7 @@ ControllerManagerStates CreateControllerManager() {
   return states;
 }
 
-// |expected_order| contains the expected indices of all controllers in the
+// `expected_order` contains the expected indices of all controllers in the
 // vector of controllers returned by GetSortedControllers(). A negative index
 // means that we do not care about its exact place, but we do check that it
 // exists in the vector.
@@ -112,8 +112,8 @@ void CheckControllersOrder(
 TEST(ControllerManagerTest, GetControllersReturnAllControllers) {
   auto states = CreateControllerManager();
   auto check = states.controller_manager->GetControllers();
-  // Verify that controllers in |check| are one-to-one mapped to those in
-  // |mock_controllers_|.
+  // Verify that controllers in `check` are one-to-one mapped to those in
+  // `mock_controllers_`.
   EXPECT_EQ(states.mock_controllers.size(), check.size());
   for (auto& controller : check)
     EXPECT_NE(states.mock_controllers.end(),
@@ -123,7 +123,7 @@ TEST(ControllerManagerTest, GetControllersReturnAllControllers) {
 
 TEST(ControllerManagerTest, ControllersInDefaultOrderOnEmptyNetworkMetrics) {
   auto states = CreateControllerManager();
-  // |network_metrics| are empty, and the controllers are supposed to follow the
+  // `network_metrics` are empty, and the controllers are supposed to follow the
   // default order.
   CheckControllersOrder(&states, absl::nullopt, absl::nullopt, {0, 1, 2, 3});
 }
@@ -147,7 +147,7 @@ TEST(ControllerManagerTest, DoNotReorderBeforeMinReordingTime) {
   CheckControllersOrder(&states, kChracteristicBandwithBps[0],
                         kChracteristicPacketLossFraction[0],
                         {kNumControllers - 2, kNumControllers - 1, 0, 1});
-  fake_clock.AdvanceTime(TimeDelta::ms(kMinReorderingTimeMs - 1));
+  fake_clock.AdvanceTime(TimeDelta::Millis(kMinReorderingTimeMs - 1));
   // Move uplink bandwidth and packet loss fraction to the other controller's
   // characteristic point, which would cause controller manager to reorder the
   // controllers if time had reached min reordering time.
@@ -168,7 +168,7 @@ TEST(ControllerManagerTest, ReorderBeyondMinReordingTimeAndMinDistance) {
   // of two controllers.
   CheckControllersOrder(&states, kBandwidthBps, kPacketLossFraction,
                         {kNumControllers - 2, kNumControllers - 1, 0, 1});
-  fake_clock.AdvanceTime(TimeDelta::ms(kMinReorderingTimeMs));
+  fake_clock.AdvanceTime(TimeDelta::Millis(kMinReorderingTimeMs));
   // Then let network metrics move a little towards the other controller.
   CheckControllersOrder(&states, kBandwidthBps - kMinBandwithChangeBps - 1,
                         kPacketLossFraction,
@@ -187,7 +187,7 @@ TEST(ControllerManagerTest, DoNotReorderIfNetworkMetricsChangeTooSmall) {
   // of two controllers.
   CheckControllersOrder(&states, kBandwidthBps, kPacketLossFraction,
                         {kNumControllers - 2, kNumControllers - 1, 0, 1});
-  fake_clock.AdvanceTime(TimeDelta::ms(kMinReorderingTimeMs));
+  fake_clock.AdvanceTime(TimeDelta::Millis(kMinReorderingTimeMs));
   // Then let network metrics move a little towards the other controller.
   CheckControllersOrder(&states, kBandwidthBps - kMinBandwithChangeBps + 1,
                         kPacketLossFraction,
@@ -260,6 +260,14 @@ void AddFrameLengthControllerConfig(
       kChracteristicPacketLossFraction[1]);
 }
 
+void AddFrameLengthControllerV2Config(
+    audio_network_adaptor::config::ControllerManager* config) {
+  auto controller =
+      config->add_controllers()->mutable_frame_length_controller_v2();
+  controller->set_min_payload_bitrate_bps(16000);
+  controller->set_use_slow_adaptation(true);
+}
+
 constexpr int kInitialBitrateBps = 24000;
 constexpr size_t kIntialChannelsToEncode = 1;
 constexpr bool kInitialDtxEnabled = true;
@@ -296,7 +304,7 @@ void CheckControllersOrder(const std::vector<Controller*>& controllers,
 
   for (size_t i = 0; i < controllers.size(); ++i) {
     AudioEncoderRuntimeConfig encoder_config;
-    // We check the order of |controllers| by judging their decisions.
+    // We check the order of `controllers` by judging their decisions.
     controllers[i]->MakeDecision(&encoder_config);
 
     // Since controllers are not provided with network metrics, they give the
@@ -349,7 +357,7 @@ TEST(ControllerManagerTest, DebugDumpLoggedWhenCreateFromConfigString) {
 
   constexpr int64_t kClockInitialTimeMs = 12345678;
   rtc::ScopedFakeClock fake_clock;
-  fake_clock.AdvanceTime(TimeDelta::ms(kClockInitialTimeMs));
+  fake_clock.AdvanceTime(TimeDelta::Millis(kClockInitialTimeMs));
   auto debug_dump_writer =
       std::unique_ptr<MockDebugDumpWriter>(new NiceMock<MockDebugDumpWriter>());
   EXPECT_CALL(*debug_dump_writer, Die());
@@ -446,7 +454,7 @@ TEST(ControllerManagerTest, CreateFromConfigStringAndCheckReordering) {
 
   metrics.uplink_bandwidth_bps = kChracteristicBandwithBps[1];
   metrics.uplink_packet_loss_fraction = kChracteristicPacketLossFraction[1];
-  fake_clock.AdvanceTime(TimeDelta::ms(kMinReorderingTimeMs - 1));
+  fake_clock.AdvanceTime(TimeDelta::Millis(kMinReorderingTimeMs - 1));
   controllers = states.controller_manager->GetSortedControllers(metrics);
   // Should not reorder since min reordering time is not met.
   CheckControllersOrder(controllers,
@@ -455,7 +463,7 @@ TEST(ControllerManagerTest, CreateFromConfigStringAndCheckReordering) {
                             ControllerType::CHANNEL, ControllerType::DTX,
                             ControllerType::BIT_RATE});
 
-  fake_clock.AdvanceTime(TimeDelta::ms(1));
+  fake_clock.AdvanceTime(TimeDelta::Millis(1));
   controllers = states.controller_manager->GetSortedControllers(metrics);
   // Reorder now.
   CheckControllersOrder(controllers,
@@ -463,6 +471,14 @@ TEST(ControllerManagerTest, CreateFromConfigStringAndCheckReordering) {
                             ControllerType::FRAME_LENGTH, ControllerType::FEC,
                             ControllerType::CHANNEL, ControllerType::DTX,
                             ControllerType::BIT_RATE});
+}
+
+TEST(ControllerManagerTest, CreateFrameLengthControllerV2) {
+  audio_network_adaptor::config::ControllerManager config;
+  AddFrameLengthControllerV2Config(&config);
+  auto states = CreateControllerManager(config.SerializeAsString());
+  auto controllers = states.controller_manager->GetControllers();
+  EXPECT_TRUE(controllers.size() == 1);
 }
 #endif  // WEBRTC_ENABLE_PROTOBUF
 

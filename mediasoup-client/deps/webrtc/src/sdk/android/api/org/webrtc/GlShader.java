@@ -78,16 +78,16 @@ public class GlShader {
   }
 
   /**
-   * Enable and upload a vertex array for attribute |label|. The vertex data is specified in
-   * |buffer| with |dimension| number of components per vertex.
+   * Enable and upload a vertex array for attribute `label`. The vertex data is specified in
+   * `buffer` with `dimension` number of components per vertex.
    */
   public void setVertexAttribArray(String label, int dimension, FloatBuffer buffer) {
     setVertexAttribArray(label, dimension, 0 /* stride */, buffer);
   }
 
   /**
-   * Enable and upload a vertex array for attribute |label|. The vertex data is specified in
-   * |buffer| with |dimension| number of components per vertex and specified |stride|.
+   * Enable and upload a vertex array for attribute `label`. The vertex data is specified in
+   * `buffer` with `dimension` number of components per vertex and specified `stride`.
    */
   public void setVertexAttribArray(String label, int dimension, int stride, FloatBuffer buffer) {
     if (program == -1) {
@@ -114,7 +114,9 @@ public class GlShader {
     if (program == -1) {
       throw new RuntimeException("The program has been released");
     }
-    GLES20.glUseProgram(program);
+    synchronized (EglBase.lock) {
+      GLES20.glUseProgram(program);
+    }
     GlUtil.checkNoGLES2Error("glUseProgram");
   }
 

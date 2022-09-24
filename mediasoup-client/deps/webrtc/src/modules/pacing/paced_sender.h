@@ -32,7 +32,7 @@
 #include "modules/rtp_rtcp/include/rtp_packet_sender.h"
 #include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "modules/utility/include/process_thread.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
 
 namespace webrtc {
@@ -43,8 +43,7 @@ class RtcEventLog;
 // updating dependencies.
 class PacedSender : public Module,
                     public RtpPacketPacer,
-                    public RtpPacketSender,
-                    private PacingController::PacketSender {
+                    public RtpPacketSender {
  public:
   // Expected max pacer delay in ms. If ExpectedQueueTime() is higher than
   // this value, the packet producers should wait (eg drop frames rather than
@@ -58,7 +57,7 @@ class PacedSender : public Module,
   // overshoots from the encoder.
   static const float kDefaultPaceMultiplier;
 
-  // TODO(bugs.webrtc.org/10937): Make the |process_thread| argument be non
+  // TODO(bugs.webrtc.org/10937): Make the `process_thread` argument be non
   // optional once all callers have been updated.
   PacedSender(Clock* clock,
               PacketRouter* packet_router,
@@ -97,6 +96,9 @@ class PacedSender : public Module,
   // at high priority.
   void SetAccountForAudioPackets(bool account_for_audio) override;
 
+  void SetIncludeOverhead() override;
+  void SetTransportOverhead(DataSize overhead_per_packet) override;
+
   // Returns the time since the oldest queued packet was enqueued.
   TimeDelta OldestPacketWaitTime() const override;
 
@@ -134,15 +136,8 @@ class PacedSender : public Module,
   // Called when the prober is associated with a process thread.
   void ProcessThreadAttached(ProcessThread* process_thread) override;
 
- private:
-  // Methods implementing PacedSenderController:PacketSender.
-
-  void SendRtpPacket(std::unique_ptr<RtpPacketToSend> packet,
-                     const PacedPacketInfo& cluster_info) override
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(critsect_);
-
-  std::vector<std::unique_ptr<RtpPacketToSend>> GeneratePadding(
-      DataSize size) override RTC_EXCLUSIVE_LOCKS_REQUIRED(critsect_);
+  // In dynamic process mode, refreshes the next process time.
+  void MaybeWakupProcessThread();
 
   // Private implementation of Module to not expose those implementation details
   // publicly and control when the class is registered/deregistered.
@@ -162,10 +157,11 @@ class PacedSender : public Module,
     PacedSender* const delegate_;
   } module_proxy_{this};
 
-  rtc::CriticalSection critsect_;
-  PacingController pacing_controller_ RTC_GUARDED_BY(critsect_);
+  mutable Mutex mutex_;
+  const PacingController::ProcessMode process_mode_;
+  PacingController pacing_controller_ RTC_GUARDED_BY(mutex_);
 
-  PacketRouter* const packet_router_;
+  Clock* const clock_;
   ProcessThread* const process_thread_;
 };
 }  // namespace webrtc

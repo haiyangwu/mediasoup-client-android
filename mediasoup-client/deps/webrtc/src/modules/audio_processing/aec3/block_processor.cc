@@ -52,6 +52,7 @@ class BlockProcessorImpl final : public BlockProcessor {
   void ProcessCapture(
       bool echo_path_gain_change,
       bool capture_signal_saturation,
+      std::vector<std::vector<std::vector<float>>>* linear_output,
       std::vector<std::vector<std::vector<float>>>* capture_block) override;
 
   void BufferRender(
@@ -61,7 +62,8 @@ class BlockProcessorImpl final : public BlockProcessor {
 
   void GetMetrics(EchoControl::Metrics* metrics) const override;
 
-  void SetAudioBufferDelay(size_t delay_ms) override;
+  void SetAudioBufferDelay(int delay_ms) override;
+  void SetCaptureOutputUsage(bool capture_output_used) override;
 
  private:
   static int instance_count_;
@@ -105,6 +107,7 @@ BlockProcessorImpl::~BlockProcessorImpl() = default;
 void BlockProcessorImpl::ProcessCapture(
     bool echo_path_gain_change,
     bool capture_signal_saturation,
+    std::vector<std::vector<std::vector<float>>>* linear_output,
     std::vector<std::vector<std::vector<float>>>* capture_block) {
   RTC_DCHECK(capture_block);
   RTC_DCHECK_EQ(NumBandsForRate(sample_rate_hz_), capture_block->size());
@@ -126,6 +129,7 @@ void BlockProcessorImpl::ProcessCapture(
     }
   } else {
     // If no render data has yet arrived, do not process the capture signal.
+    render_buffer_->HandleSkippedCaptureProcessing();
     return;
   }
 
@@ -191,7 +195,7 @@ void BlockProcessorImpl::ProcessCapture(
   if (has_delay_estimator || render_buffer_->HasReceivedBufferDelay()) {
     echo_remover_->ProcessCapture(
         echo_path_variability, capture_signal_saturation, estimated_delay_,
-        render_buffer_->GetRenderBuffer(), capture_block);
+        render_buffer_->GetRenderBuffer(), linear_output, capture_block);
   }
 
   // Update the metrics.
@@ -230,8 +234,12 @@ void BlockProcessorImpl::GetMetrics(EchoControl::Metrics* metrics) const {
   metrics->delay_ms = delay ? static_cast<int>(*delay) * block_size_ms : 0;
 }
 
-void BlockProcessorImpl::SetAudioBufferDelay(size_t delay_ms) {
+void BlockProcessorImpl::SetAudioBufferDelay(int delay_ms) {
   render_buffer_->SetAudioBufferDelay(delay_ms);
+}
+
+void BlockProcessorImpl::SetCaptureOutputUsage(bool capture_output_used) {
+  echo_remover_->SetCaptureOutputUsage(capture_output_used);
 }
 
 }  // namespace
@@ -244,8 +252,8 @@ BlockProcessor* BlockProcessor::Create(const EchoCanceller3Config& config,
       RenderDelayBuffer::Create(config, sample_rate_hz, num_render_channels));
   std::unique_ptr<RenderDelayController> delay_controller;
   if (!config.delay.use_external_delay_estimator) {
-    delay_controller.reset(
-        RenderDelayController::Create(config, sample_rate_hz));
+    delay_controller.reset(RenderDelayController::Create(config, sample_rate_hz,
+                                                         num_capture_channels));
   }
   std::unique_ptr<EchoRemover> echo_remover(EchoRemover::Create(
       config, sample_rate_hz, num_render_channels, num_capture_channels));
@@ -262,8 +270,8 @@ BlockProcessor* BlockProcessor::Create(
     std::unique_ptr<RenderDelayBuffer> render_buffer) {
   std::unique_ptr<RenderDelayController> delay_controller;
   if (!config.delay.use_external_delay_estimator) {
-    delay_controller.reset(
-        RenderDelayController::Create(config, sample_rate_hz));
+    delay_controller.reset(RenderDelayController::Create(config, sample_rate_hz,
+                                                         num_capture_channels));
   }
   std::unique_ptr<EchoRemover> echo_remover(EchoRemover::Create(
       config, sample_rate_hz, num_render_channels, num_capture_channels));

@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "api/proxy.h"
+#include "pc/proxy.h"
 
 #include <memory>
 #include <string>
@@ -43,19 +43,19 @@ class FakeInterface : public rtc::RefCountInterface {
 class Fake : public FakeInterface {
  public:
   static rtc::scoped_refptr<Fake> Create() {
-    return new rtc::RefCountedObject<Fake>();
+    return rtc::make_ref_counted<Fake>();
   }
   // Used to verify destructor is called on the correct thread.
-  MOCK_METHOD0(Destroy, void());
+  MOCK_METHOD(void, Destroy, ());
 
-  MOCK_METHOD0(VoidMethod0, void());
-  MOCK_METHOD0(Method0, std::string());
-  MOCK_CONST_METHOD0(ConstMethod0, std::string());
+  MOCK_METHOD(void, VoidMethod0, (), (override));
+  MOCK_METHOD(std::string, Method0, (), (override));
+  MOCK_METHOD(std::string, ConstMethod0, (), (const, override));
 
-  MOCK_METHOD1(Method1, std::string(std::string));
-  MOCK_CONST_METHOD1(ConstMethod1, std::string(std::string));
+  MOCK_METHOD(std::string, Method1, (std::string), (override));
+  MOCK_METHOD(std::string, ConstMethod1, (std::string), (const, override));
 
-  MOCK_METHOD2(Method2, std::string(std::string, std::string));
+  MOCK_METHOD(std::string, Method2, (std::string, std::string), (override));
 
  protected:
   Fake() {}
@@ -64,27 +64,27 @@ class Fake : public FakeInterface {
 
 // Proxies for the test interface.
 BEGIN_PROXY_MAP(Fake)
-PROXY_WORKER_THREAD_DESTRUCTOR()
+PROXY_SECONDARY_THREAD_DESTRUCTOR()
 PROXY_METHOD0(void, VoidMethod0)
 PROXY_METHOD0(std::string, Method0)
 PROXY_CONSTMETHOD0(std::string, ConstMethod0)
-PROXY_WORKER_METHOD1(std::string, Method1, std::string)
+PROXY_SECONDARY_METHOD1(std::string, Method1, std::string)
 PROXY_CONSTMETHOD1(std::string, ConstMethod1, std::string)
-PROXY_WORKER_METHOD2(std::string, Method2, std::string, std::string)
-END_PROXY_MAP()
+PROXY_SECONDARY_METHOD2(std::string, Method2, std::string, std::string)
+END_PROXY_MAP(Fake)
 
 // Preprocessor hack to get a proxy class a name different than FakeProxy.
 #define FakeProxy FakeSignalingProxy
 #define FakeProxyWithInternal FakeSignalingProxyWithInternal
-BEGIN_SIGNALING_PROXY_MAP(Fake)
-PROXY_SIGNALING_THREAD_DESTRUCTOR()
+BEGIN_PRIMARY_PROXY_MAP(Fake)
+PROXY_PRIMARY_THREAD_DESTRUCTOR()
 PROXY_METHOD0(void, VoidMethod0)
 PROXY_METHOD0(std::string, Method0)
 PROXY_CONSTMETHOD0(std::string, ConstMethod0)
 PROXY_METHOD1(std::string, Method1, std::string)
 PROXY_CONSTMETHOD1(std::string, ConstMethod1, std::string)
 PROXY_METHOD2(std::string, Method2, std::string, std::string)
-END_PROXY_MAP()
+END_PROXY_MAP(Fake)
 #undef FakeProxy
 
 class SignalingProxyTest : public ::testing::Test {
@@ -266,13 +266,13 @@ class FooInterface {
 class Foo : public FooInterface {
  public:
   Foo() {}
-  MOCK_METHOD0(Bar, void());
+  MOCK_METHOD(void, Bar, (), (override));
 };
 
 BEGIN_OWNED_PROXY_MAP(Foo)
-PROXY_SIGNALING_THREAD_DESTRUCTOR()
+PROXY_PRIMARY_THREAD_DESTRUCTOR()
 PROXY_METHOD0(void, Bar)
-END_PROXY_MAP()
+END_PROXY_MAP(Foo)
 
 class OwnedProxyTest : public ::testing::Test {
  public:

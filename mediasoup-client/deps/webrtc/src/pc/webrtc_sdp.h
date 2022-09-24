@@ -22,11 +22,21 @@
 
 #include <string>
 
+#include "api/candidate.h"
+#include "api/jsep.h"
+#include "api/jsep_ice_candidate.h"
+#include "api/jsep_session_description.h"
+#include "media/base/codec.h"
+#include "rtc_base/strings/string_builder.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace cricket {
 class Candidate;
 }  // namespace cricket
+
+namespace rtc {
+class StringBuilder;
+}  // namespace rtc
 
 namespace webrtc {
 class IceCandidateInterface;
@@ -84,16 +94,23 @@ RTC_EXPORT bool SdpDeserializeCandidate(const std::string& transport_name,
                                         cricket::Candidate* candidate,
                                         SdpParseError* error);
 
-// Parses |message| according to the grammar defined in RFC 5245, Section 15.1
-// and, if successful, stores the result in |candidate| and returns true.
-// If unsuccessful, returns false and stores error information in |error| if
-// |error| is not null.
-// If |is_raw| is false, |message| is expected to be prefixed with "a=".
-// If |is_raw| is true, no prefix is expected in |messaage|.
+// Parses `message` according to the grammar defined in RFC 5245, Section 15.1
+// and, if successful, stores the result in `candidate` and returns true.
+// If unsuccessful, returns false and stores error information in `error` if
+// `error` is not null.
+// If `is_raw` is false, `message` is expected to be prefixed with "a=".
+// If `is_raw` is true, no prefix is expected in `messaage`.
 RTC_EXPORT bool ParseCandidate(const std::string& message,
                                cricket::Candidate* candidate,
                                SdpParseError* error,
                                bool is_raw);
+
+// Generates an FMTP line based on `parameters`. Please note that some
+// parameters are not considered to be part of the FMTP line, see the function
+// IsFmtpParam(). Returns true if the set of FMTP parameters is nonempty, false
+// otherwise.
+bool WriteFmtpParameters(const cricket::CodecParameterMap& parameters,
+                         rtc::StringBuilder* os);
 
 }  // namespace webrtc
 

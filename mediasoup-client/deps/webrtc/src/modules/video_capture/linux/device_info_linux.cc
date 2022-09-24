@@ -42,16 +42,22 @@ int32_t DeviceInfoLinux::Init() {
 DeviceInfoLinux::~DeviceInfoLinux() {}
 
 uint32_t DeviceInfoLinux::NumberOfDevices() {
-  RTC_LOG(LS_INFO) << __FUNCTION__;
-
   uint32_t count = 0;
   char device[20];
   int fd = -1;
+  struct v4l2_capability cap;
 
   /* detect /dev/video [0-63]VideoCaptureModule entries */
   for (int n = 0; n < 64; n++) {
     sprintf(device, "/dev/video%d", n);
     if ((fd = open(device, O_RDONLY)) != -1) {
+      // query device capabilities and make sure this is a video capture device
+      if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0 ||
+          !(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
+        close(fd);
+        continue;
+      }
+
       close(fd);
       count++;
     }
@@ -67,16 +73,21 @@ int32_t DeviceInfoLinux::GetDeviceName(uint32_t deviceNumber,
                                        uint32_t deviceUniqueIdUTF8Length,
                                        char* /*productUniqueIdUTF8*/,
                                        uint32_t /*productUniqueIdUTF8Length*/) {
-  RTC_LOG(LS_INFO) << __FUNCTION__;
-
   // Travel through /dev/video [0-63]
   uint32_t count = 0;
   char device[20];
   int fd = -1;
   bool found = false;
+  struct v4l2_capability cap;
   for (int n = 0; n < 64; n++) {
     sprintf(device, "/dev/video%d", n);
     if ((fd = open(device, O_RDONLY)) != -1) {
+      // query device capabilities and make sure this is a video capture device
+      if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0 ||
+          !(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
+        close(fd);
+        continue;
+      }
       if (count == deviceNumber) {
         // Found the device
         found = true;
@@ -92,7 +103,6 @@ int32_t DeviceInfoLinux::GetDeviceName(uint32_t deviceNumber,
     return -1;
 
   // query device capabilities
-  struct v4l2_capability cap;
   if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
     RTC_LOG(LS_INFO) << "error in querying the device capability for device "
                      << device << ". errno = " << errno;
@@ -106,7 +116,7 @@ int32_t DeviceInfoLinux::GetDeviceName(uint32_t deviceNumber,
   memset(deviceNameUTF8, 0, deviceNameLength);
   memcpy(cameraName, cap.card, sizeof(cap.card));
 
-  if (deviceNameLength >= strlen(cameraName)) {
+  if (deviceNameLength > strlen(cameraName)) {
     memcpy(deviceNameUTF8, cameraName, strlen(cameraName));
   } else {
     RTC_LOG(LS_INFO) << "buffer passed is too small";
@@ -116,7 +126,7 @@ int32_t DeviceInfoLinux::GetDeviceName(uint32_t deviceNumber,
   if (cap.bus_info[0] != 0)  // may not available in all drivers
   {
     // copy device id
-    if (deviceUniqueIdUTF8Length >= strlen((const char*)cap.bus_info)) {
+    if (deviceUniqueIdUTF8Length > strlen((const char*)cap.bus_info)) {
       memset(deviceUniqueIdUTF8, 0, deviceUniqueIdUTF8Length);
       memcpy(deviceUniqueIdUTF8, cap.bus_info,
              strlen((const char*)cap.bus_info));
@@ -136,7 +146,7 @@ int32_t DeviceInfoLinux::CreateCapabilityMap(const char* deviceUniqueIdUTF8) {
 
   const int32_t deviceUniqueIdUTF8Length =
       (int32_t)strlen((char*)deviceUniqueIdUTF8);
-  if (deviceUniqueIdUTF8Length > kVideoCaptureUniqueNameLength) {
+  if (deviceUniqueIdUTF8Length >= kVideoCaptureUniqueNameLength) {
     RTC_LOG(LS_INFO) << "Device name too long";
     return -1;
   }
@@ -153,6 +163,11 @@ int32_t DeviceInfoLinux::CreateCapabilityMap(const char* deviceUniqueIdUTF8) {
     // query device capabilities
     struct v4l2_capability cap;
     if (ioctl(fd, VIDIOC_QUERYCAP, &cap) == 0) {
+      // skip devices without video capture capability
+      if (!(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
+        continue;
+      }
+
       if (cap.bus_info[0] != 0) {
         if (strncmp((const char*)cap.bus_info, (const char*)deviceUniqueIdUTF8,
                     strlen((const char*)deviceUniqueIdUTF8)) ==

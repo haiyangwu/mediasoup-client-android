@@ -15,6 +15,8 @@
 
 #include "modules/audio_processing/utility/delay_estimator.h"
 
+namespace webrtc {
+
 typedef union {
   float float_;
   int32_t int32_;
@@ -23,7 +25,7 @@ typedef union {
 typedef struct {
   // Pointers to mean values of spectrum.
   SpectrumType* mean_far_spectrum;
-  // |mean_far_spectrum| initialization indicator.
+  // `mean_far_spectrum` initialization indicator.
   int far_spectrum_initialized;
 
   int spectrum_size;
@@ -35,7 +37,7 @@ typedef struct {
 typedef struct {
   // Pointers to mean values of spectrum.
   SpectrumType* mean_near_spectrum;
-  // |mean_near_spectrum| initialization indicator.
+  // `mean_near_spectrum` initialization indicator.
   int near_spectrum_initialized;
 
   int spectrum_size;
@@ -43,5 +45,7 @@ typedef struct {
   // Binary spectrum based delay estimator
   BinaryDelayEstimator* binary_handle;
 } DelayEstimator;
+
+}  // namespace webrtc
 
 #endif  // MODULES_AUDIO_PROCESSING_UTILITY_DELAY_ESTIMATOR_INTERNAL_H_

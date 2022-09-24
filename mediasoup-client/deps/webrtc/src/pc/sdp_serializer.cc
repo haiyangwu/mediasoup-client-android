@@ -10,12 +10,14 @@
 
 #include "pc/sdp_serializer.h"
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "api/jsep.h"
+#include "absl/types/optional.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/string_encode.h"
@@ -247,7 +249,7 @@ RTCErrorOr<SimulcastDescription> SdpSerializer::DeserializeSimulcastDescription(
 
   // Set the layers according to which pair is send and which is recv
   // At this point if the simulcast is unidirectional then
-  // either |list1| or |list2| will be in 'error' state indicating that
+  // either `list1` or `list2` will be in 'error' state indicating that
   // the value should not be used.
   SimulcastDescription simulcast;
   if (list1.ok()) {
@@ -360,8 +362,8 @@ RTCErrorOr<RidDescription> SdpSerializer::DeserializeRidDescription(
         return ParseError("Invalid format for restriction: " + restriction);
       }
 
-      // |parts| contains at least one value and it does not contain a space.
-      // Note: |parts| and other values might still contain tab, newline,
+      // `parts` contains at least one value and it does not contain a space.
+      // Note: `parts` and other values might still contain tab, newline,
       // unprintable characters, etc. which will not generate errors here but
       // will (most-likely) be ignored by components down stream.
       if (parts[0] == kPayloadType) {
@@ -374,7 +376,7 @@ RTCErrorOr<RidDescription> SdpSerializer::DeserializeRidDescription(
         continue;
       }
 
-      // Parse |parts| as a key=value pair which allows unspecified values.
+      // Parse `parts` as a key=value pair which allows unspecified values.
       if (rid_description.restrictions.find(parts[0]) !=
           rid_description.restrictions.end()) {
         return ParseError("Duplicate restriction specified: " + parts[0]);

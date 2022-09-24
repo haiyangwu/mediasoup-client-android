@@ -31,7 +31,7 @@ typedef NS_ENUM(NSUInteger, RTCVideoContentType) {
 
 /** Represents an encoded frame. Corresponds to webrtc::EncodedImage. */
 RTC_OBJC_EXPORT
-@interface RTCEncodedImage : NSObject
+@interface RTC_OBJC_TYPE (RTCEncodedImage) : NSObject
 
 @property(nonatomic, strong) NSData *buffer;
 @property(nonatomic, assign) int32_t encodedWidth;
@@ -44,7 +44,6 @@ RTC_OBJC_EXPORT
 @property(nonatomic, assign) int64_t encodeFinishMs;
 @property(nonatomic, assign) RTCFrameType frameType;
 @property(nonatomic, assign) RTCVideoRotation rotation;
-@property(nonatomic, assign) BOOL completeFrame;
 @property(nonatomic, strong) NSNumber *qp;
 @property(nonatomic, assign) RTCVideoContentType contentType;
 

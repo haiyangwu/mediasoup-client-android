@@ -14,7 +14,6 @@
 
 #include <algorithm>  // min
 
-#include "api/audio_codecs/audio_decoder.h"
 #include "common_audio/signal_processing/include/signal_processing_library.h"
 #include "modules/audio_coding/neteq/audio_multi_vector.h"
 #include "modules/audio_coding/neteq/background_noise.h"
@@ -26,7 +25,7 @@ namespace webrtc {
 
 int Normal::Process(const int16_t* input,
                     size_t length,
-                    Modes last_mode,
+                    NetEq::Mode last_mode,
                     AudioMultiVector* output) {
   if (length == 0) {
     // Nothing to process.
@@ -46,13 +45,20 @@ int Normal::Process(const int16_t* input,
   const int fs_mult = fs_hz_ / 8000;
   RTC_DCHECK_GT(fs_mult, 0);
   // fs_shift = log2(fs_mult), rounded down.
-  // Note that |fs_shift| is not "exact" for 48 kHz.
+  // Note that `fs_shift` is not "exact" for 48 kHz.
   // TODO(hlundin): Investigate this further.
   const int fs_shift = 30 - WebRtcSpl_NormW32(fs_mult);
 
+  // If last call resulted in a CodedPlc we don't need to do cross-fading but we
+  // need to report the end of the interruption once we are back to normal
+  // operation.
+  if (last_mode == NetEq::Mode::kCodecPlc) {
+    statistics_->EndExpandEvent(fs_hz_);
+  }
+
   // Check if last RecOut call resulted in an Expand. If so, we have to take
   // care of some cross-fading and unmuting.
-  if (last_mode == kModeExpand) {
+  if (last_mode == NetEq::Mode::kExpand) {
     // Generate interpolation data using Expand.
     // First, set Expand parameters to appropriate values.
     expand_->SetParametersForNormalAfterExpand();
@@ -77,7 +83,7 @@ int Normal::Process(const int16_t* input,
       size_t energy_length =
           std::min(static_cast<size_t>(fs_mult * 64), length_per_channel);
       int scaling = 6 + fs_shift - WebRtcSpl_NormW32(decoded_max * decoded_max);
-      scaling = std::max(scaling, 0);  // |scaling| should always be >= 0.
+      scaling = std::max(scaling, 0);  // `scaling` should always be >= 0.
       int32_t energy = WebRtcSpl_DotProductWithScale(signal.get(), signal.get(),
                                                      energy_length, scaling);
       int32_t scaled_energy_length =
@@ -144,7 +150,7 @@ int Normal::Process(const int16_t* input,
       RTC_DCHECK_GT(win_up_Q14,
                     (1 << 14) - 32);  // Worst case rouding is a length of 34
     }
-  } else if (last_mode == kModeRfc3389Cng) {
+  } else if (last_mode == NetEq::Mode::kRfc3389Cng) {
     RTC_DCHECK_EQ(output->Channels(), 1);  // Not adapted for multi-channel yet.
     static const size_t kCngLength = 48;
     RTC_DCHECK_LE(8 * fs_mult, kCngLength);

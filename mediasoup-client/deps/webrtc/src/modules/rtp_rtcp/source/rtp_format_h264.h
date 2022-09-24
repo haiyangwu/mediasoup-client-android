@@ -19,7 +19,6 @@
 #include <queue>
 
 #include "api/array_view.h"
-#include "modules/include/module_common_types.h"
 #include "modules/rtp_rtcp/source/rtp_format.h"
 #include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "modules/video_coding/codecs/h264/include/h264_globals.h"
@@ -34,15 +33,14 @@ class RtpPacketizerH264 : public RtpPacketizer {
   // The payload_data must be exactly one encoded H264 frame.
   RtpPacketizerH264(rtc::ArrayView<const uint8_t> payload,
                     PayloadSizeLimits limits,
-                    H264PacketizationMode packetization_mode,
-                    const RTPFragmentationHeader& fragmentation);
+                    H264PacketizationMode packetization_mode);
 
   ~RtpPacketizerH264() override;
 
   size_t NumPackets() const override;
 
   // Get the next payload with H264 payload header.
-  // Write payload and set marker bit of the |packet|.
+  // Write payload and set marker bit of the `packet`.
   // Returns true on success, false otherwise.
   bool NextPacket(RtpPacketToSend* rtp_packet) override;
 
@@ -86,27 +84,6 @@ class RtpPacketizerH264 : public RtpPacketizer {
   std::queue<PacketUnit> packets_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(RtpPacketizerH264);
-};
-
-// Depacketizer for H264.
-class RtpDepacketizerH264 : public RtpDepacketizer {
- public:
-  RtpDepacketizerH264();
-  ~RtpDepacketizerH264() override;
-
-  bool Parse(ParsedPayload* parsed_payload,
-             const uint8_t* payload_data,
-             size_t payload_data_length) override;
-
- private:
-  bool ParseFuaNalu(RtpDepacketizer::ParsedPayload* parsed_payload,
-                    const uint8_t* payload_data);
-  bool ProcessStapAOrSingleNalu(RtpDepacketizer::ParsedPayload* parsed_payload,
-                                const uint8_t* payload_data);
-
-  size_t offset_;
-  size_t length_;
-  std::unique_ptr<rtc::Buffer> modified_buffer_;
 };
 }  // namespace webrtc
 #endif  // MODULES_RTP_RTCP_SOURCE_RTP_FORMAT_H264_H_

@@ -245,6 +245,11 @@ void DegradedCall::DestroyFlexfecReceiveStream(
   call_->DestroyFlexfecReceiveStream(receive_stream);
 }
 
+void DegradedCall::AddAdaptationResource(
+    rtc::scoped_refptr<Resource> resource) {
+  call_->AddAdaptationResource(std::move(resource));
+}
+
 PacketReceiver* DegradedCall::Receiver() {
   if (receive_config_) {
     return this;
@@ -261,6 +266,18 @@ Call::Stats DegradedCall::GetStats() const {
   return call_->GetStats();
 }
 
+const WebRtcKeyValueConfig& DegradedCall::trials() const {
+  return call_->trials();
+}
+
+TaskQueueBase* DegradedCall::network_thread() const {
+  return call_->network_thread();
+}
+
+TaskQueueBase* DegradedCall::worker_thread() const {
+  return call_->worker_thread();
+}
+
 void DegradedCall::SignalChannelNetworkState(MediaType media,
                                              NetworkState state) {
   call_->SignalChannelNetworkState(media, state);
@@ -269,6 +286,16 @@ void DegradedCall::SignalChannelNetworkState(MediaType media,
 void DegradedCall::OnAudioTransportOverheadChanged(
     int transport_overhead_per_packet) {
   call_->OnAudioTransportOverheadChanged(transport_overhead_per_packet);
+}
+
+void DegradedCall::OnLocalSsrcUpdated(AudioReceiveStream& stream,
+                                      uint32_t local_ssrc) {
+  call_->OnLocalSsrcUpdated(stream, local_ssrc);
+}
+
+void DegradedCall::OnUpdateSyncGroup(AudioReceiveStream& stream,
+                                     const std::string& sync_group) {
+  call_->OnUpdateSyncGroup(stream, sync_group);
 }
 
 void DegradedCall::OnSentPacket(const rtc::SentPacket& sent_packet) {

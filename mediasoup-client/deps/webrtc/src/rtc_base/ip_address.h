@@ -80,12 +80,12 @@ class RTC_EXPORT IPAddress {
   bool operator<(const IPAddress& other) const;
   bool operator>(const IPAddress& other) const;
 
-#ifdef UNIT_TEST
+#ifdef WEBRTC_UNIT_TEST
   inline std::ostream& operator<<(  // no-presubmit-check TODO(webrtc:8982)
       std::ostream& os) {           // no-presubmit-check TODO(webrtc:8982)
     return os << ToString();
   }
-#endif  // UNIT_TEST
+#endif  // WEBRTC_UNIT_TEST
 
   int family() const { return family_; }
   in_addr ipv4_address() const;
@@ -110,6 +110,9 @@ class RTC_EXPORT IPAddress {
 
   // For socketaddress' benefit. Returns the IP in host byte order.
   uint32_t v4AddressAsHostOrderInteger() const;
+
+  // Get the network layer overhead per packet based on the IP address family.
+  int overhead() const;
 
   // Whether this is an unspecified IP address.
   bool IsNil() const;
@@ -137,6 +140,7 @@ class RTC_EXPORT InterfaceAddress : public IPAddress {
   InterfaceAddress(const in6_addr& ip6, int ipv6_flags)
       : IPAddress(ip6), ipv6_flags_(ipv6_flags) {}
 
+  InterfaceAddress(const InterfaceAddress& other) = default;
   const InterfaceAddress& operator=(const InterfaceAddress& other);
 
   bool operator==(const InterfaceAddress& other) const;
@@ -193,7 +197,7 @@ IPAddress GetAnyIP(int family);
 // Returns the number of contiguously set bits, counting from the MSB in network
 // byte order, in this IPAddress. Bits after the first 0 encountered are not
 // counted.
-int CountIPMaskBits(IPAddress mask);
+int CountIPMaskBits(const IPAddress& mask);
 
 }  // namespace rtc
 

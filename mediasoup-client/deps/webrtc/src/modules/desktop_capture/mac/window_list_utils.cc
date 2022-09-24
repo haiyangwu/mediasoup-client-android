@@ -15,8 +15,11 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <map>
+#include <memory>
+#include <utility>
 
 #include "rtc_base/checks.h"
 
@@ -41,15 +44,15 @@ bool ToUtf8(const CFStringRef str16, std::string* str8) {
   return true;
 }
 
-// Get CFDictionaryRef from |id| and call |on_window| against it. This function
-// returns false if native APIs fail, typically it indicates that the |id| does
-// not represent a window. |on_window| will not be called if false is returned
+// Get CFDictionaryRef from `id` and call `on_window` against it. This function
+// returns false if native APIs fail, typically it indicates that the `id` does
+// not represent a window. `on_window` will not be called if false is returned
 // from this function.
 bool GetWindowRef(CGWindowID id,
                   rtc::FunctionView<void(CFDictionaryRef)> on_window) {
   RTC_DCHECK(on_window);
 
-  // TODO(zijiehe): |id| is a 32-bit integer, casting it to an array seems not
+  // TODO(zijiehe): `id` is a 32-bit integer, casting it to an array seems not
   // safe enough. Maybe we should create a new
   // const void* arr[] = {
   //   reinterpret_cast<void*>(id) }
@@ -78,7 +81,8 @@ bool GetWindowRef(CGWindowID id,
 }  // namespace
 
 bool GetWindowList(rtc::FunctionView<bool(CFDictionaryRef)> on_window,
-                   bool ignore_minimized) {
+                   bool ignore_minimized,
+                   bool only_zero_layer) {
   RTC_DCHECK(on_window);
 
   // Only get on screen, non-desktop windows.
@@ -122,7 +126,7 @@ bool GetWindowList(rtc::FunctionView<bool(CFDictionaryRef)> on_window,
     if (!CFNumberGetValue(window_layer, kCFNumberIntType, &layer)) {
       continue;
     }
-    if (layer != 0) {
+    if (only_zero_layer && layer != 0) {
       continue;
     }
 
@@ -151,7 +155,8 @@ bool GetWindowList(rtc::FunctionView<bool(CFDictionaryRef)> on_window,
 }
 
 bool GetWindowList(DesktopCapturer::SourceList* windows,
-                   bool ignore_minimized) {
+                   bool ignore_minimized,
+                   bool only_zero_layer) {
   // Use a std::list so that iterators are preversed upon insertion and
   // deletion.
   std::list<DesktopCapturer::Source> sources;
@@ -201,7 +206,7 @@ bool GetWindowList(DesktopCapturer::SourceList* windows,
         }
         return true;
       },
-      ignore_minimized);
+      ignore_minimized, only_zero_layer);
 
   if (!ret)
     return false;
@@ -236,6 +241,15 @@ bool IsWindowFullScreen(const MacDesktopConfiguration& desktop_config,
     }
   }
 
+  return fullscreen;
+}
+
+bool IsWindowFullScreen(const MacDesktopConfiguration& desktop_config,
+                        CGWindowID id) {
+  bool fullscreen = false;
+  GetWindowRef(id, [&](CFDictionaryRef window) {
+    fullscreen = IsWindowFullScreen(desktop_config, window);
+  });
   return fullscreen;
 }
 
@@ -289,7 +303,7 @@ std::string GetWindowOwnerName(CFDictionaryRef window) {
 std::string GetWindowOwnerName(CGWindowID id) {
   std::string owner_name;
   if (GetWindowRef(id, [&owner_name](CFDictionaryRef window) {
-        owner_name = GetWindowOwnerPid(window);
+        owner_name = GetWindowOwnerName(window);
       })) {
     return owner_name;
   }

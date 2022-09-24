@@ -27,19 +27,30 @@ class BalancedDegradationSettings {
 
   struct CodecTypeSpecific {
     CodecTypeSpecific() {}
-    CodecTypeSpecific(int qp_low, int qp_high, int fps)
-        : qp_low(qp_low), qp_high(qp_high), fps(fps) {}
+    CodecTypeSpecific(int qp_low, int qp_high, int fps, int kbps, int kbps_res)
+        : qp_low(qp_low),
+          qp_high(qp_high),
+          fps(fps),
+          kbps(kbps),
+          kbps_res(kbps_res) {}
 
     bool operator==(const CodecTypeSpecific& o) const {
-      return qp_low == o.qp_low && qp_high == o.qp_high && fps == o.fps;
+      return qp_low == o.qp_low && qp_high == o.qp_high && fps == o.fps &&
+             kbps == o.kbps && kbps_res == o.kbps_res;
     }
 
     absl::optional<int> GetQpLow() const;
     absl::optional<int> GetQpHigh() const;
     absl::optional<int> GetFps() const;
+    absl::optional<int> GetKbps() const;
+    absl::optional<int> GetKbpsRes() const;
+
+    // Optional settings.
     int qp_low = 0;
     int qp_high = 0;
-    int fps = 0;
+    int fps = 0;       // If unset, defaults to `fps` in Config.
+    int kbps = 0;      // If unset, defaults to `kbps` in Config.
+    int kbps_res = 0;  // If unset, defaults to `kbps_res` in Config.
   };
 
   struct Config {
@@ -52,47 +63,68 @@ class BalancedDegradationSettings {
            CodecTypeSpecific vp8,
            CodecTypeSpecific vp9,
            CodecTypeSpecific h264,
+           CodecTypeSpecific av1,
            CodecTypeSpecific generic);
 
     bool operator==(const Config& o) const {
       return pixels == o.pixels && fps == o.fps && kbps == o.kbps &&
              kbps_res == o.kbps_res && fps_diff == o.fps_diff && vp8 == o.vp8 &&
-             vp9 == o.vp9 && h264 == o.h264 && generic == o.generic;
+             vp9 == o.vp9 && h264 == o.h264 && av1 == o.av1 &&
+             generic == o.generic;
     }
 
+    // Example:
+    // WebRTC-Video-BalancedDegradationSettings/pixels:100|200|300,fps:5|15|25/
+    // pixels <= 100 -> min framerate: 5 fps
+    // pixels <= 200 -> min framerate: 15 fps
+    // pixels <= 300 -> min framerate: 25 fps
+    //
+    // WebRTC-Video-BalancedDegradationSettings/pixels:100|200|300,
+    // fps:5|15|25,       // Min framerate.
+    // kbps:0|60|70,      // Min bitrate needed to adapt up.
+    // kbps_res:0|65|75/  // Min bitrate needed to adapt up in resolution.
+    //
+    // pixels: fps:  kbps:     kbps_res:
+    // 300     30    -         -
+    // 300     25    70 kbps   75 kbps
+    // 200     25    70 kbps   -
+    // 200     15    60 kbps   65 kbps
+    // 100     15    60 kbps   -
+    // 100      5
+    //               optional  optional
+
     int pixels = 0;  // Video frame size.
-    // If the frame size is less than or equal to |pixels|:
+    // If the frame size is less than or equal to `pixels`:
     int fps = 0;   // Min framerate to be used.
     int kbps = 0;  // Min bitrate needed to adapt up (resolution/fps).
     int kbps_res = 0;           // Min bitrate needed to adapt up in resolution.
-    int fps_diff = kNoFpsDiff;  // Min fps reduction needed (input fps - |fps|)
+    int fps_diff = kNoFpsDiff;  // Min fps reduction needed (input fps - `fps`)
                                 // w/o triggering a new subsequent downgrade
                                 // check.
     CodecTypeSpecific vp8;
     CodecTypeSpecific vp9;
     CodecTypeSpecific h264;
+    CodecTypeSpecific av1;
     CodecTypeSpecific generic;
   };
 
   // Returns configurations from field trial on success (default on failure).
   std::vector<Config> GetConfigs() const;
 
-  // Gets the min/max framerate from |configs_| based on |pixels|.
+  // Gets the min/max framerate from `configs_` based on `pixels`.
   int MinFps(VideoCodecType type, int pixels) const;
   int MaxFps(VideoCodecType type, int pixels) const;
 
-  // Gets the bitrate for the first resolution above |pixels|.
-  absl::optional<int> NextHigherBitrateKbps(int pixels) const;
-  absl::optional<int> ResolutionNextHigherBitrateKbps(int pixels) const;
+  // Checks if quality can be increased based on `pixels` and `bitrate_bps`.
+  bool CanAdaptUp(VideoCodecType type, int pixels, uint32_t bitrate_bps) const;
+  bool CanAdaptUpResolution(VideoCodecType type,
+                            int pixels,
+                            uint32_t bitrate_bps) const;
 
-  // Checks if quality can be increased based on |pixels| and |bitrate_bps|.
-  bool CanAdaptUp(int pixels, uint32_t bitrate_bps) const;
-  bool CanAdaptUpResolution(int pixels, uint32_t bitrate_bps) const;
-
-  // Gets the min framerate diff from |configs_| based on |pixels|.
+  // Gets the min framerate diff from `configs_` based on `pixels`.
   absl::optional<int> MinFpsDiff(int pixels) const;
 
-  // Gets QpThresholds for the codec |type| based on |pixels|.
+  // Gets QpThresholds for the codec `type` based on `pixels`.
   absl::optional<VideoEncoder::QpThresholds> GetQpThresholds(
       VideoCodecType type,
       int pixels) const;

@@ -12,12 +12,14 @@ package org.webrtc;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.webrtc.RendererCommon.ScalingType.*;
+import static org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_BALANCED;
+import static org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL;
+import static org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT;
 import static org.webrtc.RendererCommon.getDisplaySize;
 import static org.webrtc.RendererCommon.getLayoutMatrix;
 
 import android.graphics.Point;
-import android.support.test.filters.SmallTest;
+import androidx.test.filters.SmallTest;
 import org.chromium.base.test.BaseJUnit4ClassRunner;
 import org.junit.Test;
 import org.junit.runner.RunWith;

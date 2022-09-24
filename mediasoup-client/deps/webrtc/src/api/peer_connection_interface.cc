@@ -10,8 +10,7 @@
 
 #include "api/peer_connection_interface.h"
 
-#include "api/dtls_transport_interface.h"
-#include "api/sctp_transport_interface.h"
+#include <utility>
 
 namespace webrtc {
 
@@ -53,27 +52,6 @@ RTCError PeerConnectionInterface::SetConfiguration(
   return RTCError();
 }
 
-RTCError PeerConnectionInterface::SetBitrate(const BitrateSettings& bitrate) {
-  BitrateParameters bitrate_parameters;
-  bitrate_parameters.min_bitrate_bps = bitrate.min_bitrate_bps;
-  bitrate_parameters.current_bitrate_bps = bitrate.start_bitrate_bps;
-  bitrate_parameters.max_bitrate_bps = bitrate.max_bitrate_bps;
-  return SetBitrate(bitrate_parameters);
-}
-
-RTCError PeerConnectionInterface::SetBitrate(
-    const BitrateParameters& bitrate_parameters) {
-  BitrateSettings bitrate;
-  bitrate.min_bitrate_bps = bitrate_parameters.min_bitrate_bps;
-  bitrate.start_bitrate_bps = bitrate_parameters.current_bitrate_bps;
-  bitrate.max_bitrate_bps = bitrate_parameters.max_bitrate_bps;
-  return SetBitrate(bitrate);
-}
-
-PeerConnectionInterface::BitrateParameters::BitrateParameters() = default;
-
-PeerConnectionInterface::BitrateParameters::~BitrateParameters() = default;
-
 PeerConnectionDependencies::PeerConnectionDependencies(
     PeerConnectionObserver* observer_in)
     : observer(observer_in) {}
@@ -98,14 +76,34 @@ PeerConnectionFactoryInterface::CreatePeerConnection(
     std::unique_ptr<cricket::PortAllocator> allocator,
     std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator,
     PeerConnectionObserver* observer) {
-  return nullptr;
+  PeerConnectionDependencies dependencies(observer);
+  dependencies.allocator = std::move(allocator);
+  dependencies.cert_generator = std::move(cert_generator);
+  auto result =
+      CreatePeerConnectionOrError(configuration, std::move(dependencies));
+  if (!result.ok()) {
+    return nullptr;
+  }
+  return result.MoveValue();
 }
 
 rtc::scoped_refptr<PeerConnectionInterface>
 PeerConnectionFactoryInterface::CreatePeerConnection(
     const PeerConnectionInterface::RTCConfiguration& configuration,
     PeerConnectionDependencies dependencies) {
-  return nullptr;
+  auto result =
+      CreatePeerConnectionOrError(configuration, std::move(dependencies));
+  if (!result.ok()) {
+    return nullptr;
+  }
+  return result.MoveValue();
+}
+
+RTCErrorOr<rtc::scoped_refptr<PeerConnectionInterface>>
+PeerConnectionFactoryInterface::CreatePeerConnectionOrError(
+    const PeerConnectionInterface::RTCConfiguration& configuration,
+    PeerConnectionDependencies dependencies) {
+  return RTCError(RTCErrorType::INTERNAL_ERROR);
 }
 
 RtpCapabilities PeerConnectionFactoryInterface::GetRtpSenderCapabilities(

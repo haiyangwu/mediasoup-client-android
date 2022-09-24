@@ -13,6 +13,8 @@
 
 #include <memory>
 
+#include "rtc_base/checks.h"
+
 namespace webrtc {
 
 class AudioBuffer;
@@ -27,7 +29,12 @@ class EchoControl {
   virtual void AnalyzeCapture(AudioBuffer* capture) = 0;
 
   // Processes the capture signal in order to remove the echo.
-  virtual void ProcessCapture(AudioBuffer* capture, bool echo_path_change) = 0;
+  virtual void ProcessCapture(AudioBuffer* capture, bool level_change) = 0;
+
+  // As above, but also returns the linear filter output.
+  virtual void ProcessCapture(AudioBuffer* capture,
+                              AudioBuffer* linear_output,
+                              bool level_change) = 0;
 
   struct Metrics {
     double echo_return_loss;
@@ -39,7 +46,14 @@ class EchoControl {
   virtual Metrics GetMetrics() const = 0;
 
   // Provides an optional external estimate of the audio buffer delay.
-  virtual void SetAudioBufferDelay(size_t delay_ms) = 0;
+  virtual void SetAudioBufferDelay(int delay_ms) = 0;
+
+  // Specifies whether the capture output will be used. The purpose of this is
+  // to allow the echo controller to deactivate some of the processing when the
+  // resulting output is anyway not used, for instance when the endpoint is
+  // muted.
+  // TODO(b/177830919): Make pure virtual.
+  virtual void SetCaptureOutputUsage(bool capture_output_used) {}
 
   // Returns wheter the signal is altered.
   virtual bool ActiveProcessing() const = 0;
@@ -50,7 +64,10 @@ class EchoControl {
 // Interface for a factory that creates EchoControllers.
 class EchoControlFactory {
  public:
-  virtual std::unique_ptr<EchoControl> Create(int sample_rate_hz) = 0;
+  virtual std::unique_ptr<EchoControl> Create(int sample_rate_hz,
+                                              int num_render_channels,
+                                              int num_capture_channels) = 0;
+
   virtual ~EchoControlFactory() = default;
 };
 }  // namespace webrtc

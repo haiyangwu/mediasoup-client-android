@@ -20,9 +20,9 @@
 #include "api/crypto/frame_encryptor_interface.h"
 #include "api/dtls_transport_interface.h"
 #include "api/dtmf_sender_interface.h"
+#include "api/frame_transformer_interface.h"
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
-#include "api/proxy.h"
 #include "api/rtc_error.h"
 #include "api/rtp_parameters.h"
 #include "api/scoped_refptr.h"
@@ -93,33 +93,12 @@ class RTC_EXPORT RtpSenderInterface : public rtc::RefCountInterface {
   // user. This can be used to update the state of the object.
   virtual rtc::scoped_refptr<FrameEncryptorInterface> GetFrameEncryptor() const;
 
+  virtual void SetEncoderToPacketizerFrameTransformer(
+      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer);
+
  protected:
   ~RtpSenderInterface() override = default;
 };
-
-// Define proxy for RtpSenderInterface.
-// TODO(deadbeef): Move this to .cc file and out of api/. What threads methods
-// are called on is an implementation detail.
-BEGIN_SIGNALING_PROXY_MAP(RtpSender)
-PROXY_SIGNALING_THREAD_DESTRUCTOR()
-PROXY_METHOD1(bool, SetTrack, MediaStreamTrackInterface*)
-PROXY_CONSTMETHOD0(rtc::scoped_refptr<MediaStreamTrackInterface>, track)
-PROXY_CONSTMETHOD0(rtc::scoped_refptr<DtlsTransportInterface>, dtls_transport)
-PROXY_CONSTMETHOD0(uint32_t, ssrc)
-PROXY_CONSTMETHOD0(cricket::MediaType, media_type)
-PROXY_CONSTMETHOD0(std::string, id)
-PROXY_CONSTMETHOD0(std::vector<std::string>, stream_ids)
-PROXY_CONSTMETHOD0(std::vector<RtpEncodingParameters>, init_send_encodings)
-PROXY_CONSTMETHOD0(RtpParameters, GetParameters)
-PROXY_METHOD1(RTCError, SetParameters, const RtpParameters&)
-PROXY_CONSTMETHOD0(rtc::scoped_refptr<DtmfSenderInterface>, GetDtmfSender)
-PROXY_METHOD1(void,
-              SetFrameEncryptor,
-              rtc::scoped_refptr<FrameEncryptorInterface>)
-PROXY_CONSTMETHOD0(rtc::scoped_refptr<FrameEncryptorInterface>,
-                   GetFrameEncryptor)
-PROXY_METHOD1(void, SetStreams, const std::vector<std::string>&)
-END_PROXY_MAP()
 
 }  // namespace webrtc
 

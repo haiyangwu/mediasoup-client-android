@@ -70,7 +70,7 @@ namespace {
 using MediaType = webrtc::ParsedRtcEventLog::MediaType;
 
 // Parses the input string for a valid SSRC. If a valid SSRC is found, it is
-// written to the output variable |ssrc|, and true is returned. Otherwise,
+// written to the output variable `ssrc`, and true is returned. Otherwise,
 // false is returned.
 // The empty string must be validated as true, because it is the default value
 // of the command-line flag. In this case, no value is written to the output
@@ -186,8 +186,10 @@ int main(int argc, char* argv[]) {
   }
 
   webrtc::ParsedRtcEventLog parsed_stream;
-  if (!parsed_stream.ParseFile(input_file)) {
-    std::cerr << "Error while parsing input file: " << input_file << std::endl;
+  auto status = parsed_stream.ParseFile(input_file);
+  if (!status.ok()) {
+    std::cerr << "Failed to parse event log " << input_file << ": "
+              << status.message() << std::endl;
     return -1;
   }
 
@@ -238,7 +240,7 @@ int main(int argc, char* argv[]) {
       continue;
     event_processor.AddEvents(stream.incoming_packets, handle_rtp);
   }
-  // Note that |packet_ssrc| is the sender SSRC. An RTCP message may contain
+  // Note that `packet_ssrc` is the sender SSRC. An RTCP message may contain
   // report blocks for many streams, thus several SSRCs and they don't
   // necessarily have to be of the same media type. We therefore don't
   // support filtering of RTCP based on SSRC and media type.
@@ -247,7 +249,9 @@ int main(int argc, char* argv[]) {
   event_processor.ProcessEventsInOrder();
 
   std::cout << "Wrote " << rtp_counter << (header_only ? " header-only" : "")
-            << " RTP packets and " << rtcp_counter << " RTCP packets to the "
-            << "output file." << std::endl;
+            << " RTP packets and " << rtcp_counter
+            << " RTCP packets to the "
+               "output file."
+            << std::endl;
   return 0;
 }

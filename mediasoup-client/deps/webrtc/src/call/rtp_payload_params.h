@@ -12,12 +12,16 @@
 #define CALL_RTP_PAYLOAD_PARAMS_H_
 
 #include <array>
+#include <vector>
 
 #include "absl/types/optional.h"
+#include "api/transport/webrtc_key_value_config.h"
 #include "api/video_codecs/video_encoder.h"
 #include "call/rtp_config.h"
 #include "modules/rtp_rtcp/source/rtp_generic_frame_descriptor.h"
 #include "modules/rtp_rtcp/source/rtp_video_header.h"
+#include "modules/video_coding/chain_diff_calculator.h"
+#include "modules/video_coding/frame_dependencies_calculator.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 
 namespace webrtc {
@@ -28,13 +32,23 @@ class RtpRtcp;
 // TODO(nisse): Make these properties not codec specific.
 class RtpPayloadParams final {
  public:
-  RtpPayloadParams(const uint32_t ssrc, const RtpPayloadState* state);
+  RtpPayloadParams(const uint32_t ssrc,
+                   const RtpPayloadState* state,
+                   const WebRtcKeyValueConfig& trials);
   RtpPayloadParams(const RtpPayloadParams& other);
   ~RtpPayloadParams();
 
   RTPVideoHeader GetRtpVideoHeader(const EncodedImage& image,
                                    const CodecSpecificInfo* codec_specific_info,
                                    int64_t shared_frame_id);
+
+  // Returns structure that aligns with simulated generic info for VP9.
+  // The templates allow to produce valid dependency descriptor for any vp9
+  // stream with up to 4 temporal layers. The set of the templates is not tuned
+  // for any paricular structure thus dependency descriptor would use more bytes
+  // on the wire than with tuned templates.
+  static FrameDependencyStructure MinimalisticVp9Structure(
+      const CodecSpecificInfoVP9& vp9);
 
   uint32_t ssrc() const;
 
@@ -43,6 +57,9 @@ class RtpPayloadParams final {
  private:
   void SetCodecSpecific(RTPVideoHeader* rtp_video_header,
                         bool first_frame_in_picture);
+  RTPVideoHeader::GenericDescriptorInfo GenericDescriptorFromFrameInfo(
+      const GenericFrameInfo& frame_info,
+      int64_t frame_id);
   void SetGeneric(const CodecSpecificInfo* codec_specific_info,
                   int64_t frame_id,
                   bool is_keyframe,
@@ -52,6 +69,10 @@ class RtpPayloadParams final {
                     int64_t shared_frame_id,
                     bool is_keyframe,
                     RTPVideoHeader* rtp_video_header);
+
+  void Vp9ToGeneric(const CodecSpecificInfoVP9& vp9_info,
+                    int64_t shared_frame_id,
+                    RTPVideoHeader& rtp_video_header);
 
   void H264ToGeneric(const CodecSpecificInfoH264& h264_info,
                      int64_t shared_frame_id,
@@ -79,11 +100,20 @@ class RtpPayloadParams final {
                              bool layer_sync,
                              RTPVideoHeader::GenericDescriptorInfo* generic);
 
+  FrameDependenciesCalculator dependencies_calculator_;
+  ChainDiffCalculator chains_calculator_;
   // TODO(bugs.webrtc.org/10242): Remove once all encoder-wrappers are updated.
   // Holds the last shared frame id for a given (spatial, temporal) layer.
   std::array<std::array<int64_t, RtpGenericFrameDescriptor::kMaxTemporalLayers>,
              RtpGenericFrameDescriptor::kMaxSpatialLayers>
       last_shared_frame_id_;
+  // circular buffer of frame ids for the last 128 vp9 pictures.
+  // ids for the `picture_id` are stored at the index `picture_id % 128`.
+  std::vector<std::array<int64_t, RtpGenericFrameDescriptor::kMaxSpatialLayers>>
+      last_vp9_frame_id_;
+  // Last frame id for each chain
+  std::array<int64_t, RtpGenericFrameDescriptor::kMaxSpatialLayers>
+      chain_last_frame_id_;
 
   // TODO(eladalon): When additional codecs are supported,
   // set kMaxCodecBuffersCount to the max() of these codecs' buffer count.
@@ -103,7 +133,7 @@ class RtpPayloadParams final {
   RtpPayloadState state_;
 
   const bool generic_picture_id_experiment_;
-  const bool generic_descriptor_experiment_;
+  const bool simulate_generic_vp9_;
 };
 }  // namespace webrtc
 #endif  // CALL_RTP_PAYLOAD_PARAMS_H_

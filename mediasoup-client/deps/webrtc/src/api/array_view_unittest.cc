@@ -38,7 +38,7 @@ void CallFixed(ArrayView<T, N> av) {}
 
 }  // namespace
 
-TEST(ArrayViewTest, TestConstructFromPtrAndArray) {
+TEST(ArrayViewDeathTest, TestConstructFromPtrAndArray) {
   char arr[] = "Arrr!";
   const char carr[] = "Carrr!";
   EXPECT_EQ(6u, Call<const char>(arr));
@@ -82,7 +82,7 @@ TEST(ArrayViewTest, TestConstructFromPtrAndArray) {
   // ArrayView<float> n(arr + 2, 2);
 }
 
-TEST(ArrayViewTest, TestCopyConstructorVariable) {
+TEST(ArrayViewTest, TestCopyConstructorVariableLvalue) {
   char arr[] = "Arrr!";
   ArrayView<char> x = arr;
   EXPECT_EQ(6u, x.size());
@@ -99,7 +99,24 @@ TEST(ArrayViewTest, TestCopyConstructorVariable) {
   // ArrayView<char> v = z;  // Compile error, because can't drop const.
 }
 
-TEST(ArrayViewTest, TestCopyConstructorFixed) {
+TEST(ArrayViewTest, TestCopyConstructorVariableRvalue) {
+  char arr[] = "Arrr!";
+  ArrayView<char> x = arr;
+  EXPECT_EQ(6u, x.size());
+  EXPECT_EQ(arr, x.data());
+  ArrayView<char> y = std::move(x);  // Copy non-const -> non-const.
+  EXPECT_EQ(6u, y.size());
+  EXPECT_EQ(arr, y.data());
+  ArrayView<const char> z = std::move(x);  // Copy non-const -> const.
+  EXPECT_EQ(6u, z.size());
+  EXPECT_EQ(arr, z.data());
+  ArrayView<const char> w = std::move(z);  // Copy const -> const.
+  EXPECT_EQ(6u, w.size());
+  EXPECT_EQ(arr, w.data());
+  // ArrayView<char> v = std::move(z);  // Error, because can't drop const.
+}
+
+TEST(ArrayViewTest, TestCopyConstructorFixedLvalue) {
   char arr[] = "Arrr!";
   ArrayView<char, 6> x = arr;
   static_assert(x.size() == 6, "");
@@ -130,7 +147,38 @@ TEST(ArrayViewTest, TestCopyConstructorFixed) {
   // ArrayView<char> vv = z;  // Compile error, because can't drop const.
 }
 
-TEST(ArrayViewTest, TestCopyAssignmentVariable) {
+TEST(ArrayViewTest, TestCopyConstructorFixedRvalue) {
+  char arr[] = "Arrr!";
+  ArrayView<char, 6> x = arr;
+  static_assert(x.size() == 6, "");
+  EXPECT_EQ(arr, x.data());
+
+  // Copy fixed -> fixed.
+  ArrayView<char, 6> y = std::move(x);  // Copy non-const -> non-const.
+  static_assert(y.size() == 6, "");
+  EXPECT_EQ(arr, y.data());
+  ArrayView<const char, 6> z = std::move(x);  // Copy non-const -> const.
+  static_assert(z.size() == 6, "");
+  EXPECT_EQ(arr, z.data());
+  ArrayView<const char, 6> w = std::move(z);  // Copy const -> const.
+  static_assert(w.size() == 6, "");
+  EXPECT_EQ(arr, w.data());
+  // ArrayView<char, 6> v = std::move(z);  // Error, because can't drop const.
+
+  // Copy fixed -> variable.
+  ArrayView<char> yv = std::move(x);  // Copy non-const -> non-const.
+  EXPECT_EQ(6u, yv.size());
+  EXPECT_EQ(arr, yv.data());
+  ArrayView<const char> zv = std::move(x);  // Copy non-const -> const.
+  EXPECT_EQ(6u, zv.size());
+  EXPECT_EQ(arr, zv.data());
+  ArrayView<const char> wv = std::move(z);  // Copy const -> const.
+  EXPECT_EQ(6u, wv.size());
+  EXPECT_EQ(arr, wv.data());
+  // ArrayView<char> vv = std::move(z);  // Error, because can't drop const.
+}
+
+TEST(ArrayViewTest, TestCopyAssignmentVariableLvalue) {
   char arr[] = "Arrr!";
   ArrayView<char> x(arr);
   EXPECT_EQ(6u, x.size());
@@ -151,7 +199,28 @@ TEST(ArrayViewTest, TestCopyAssignmentVariable) {
   // v = z;  // Compile error, because can't drop const.
 }
 
-TEST(ArrayViewTest, TestCopyAssignmentFixed) {
+TEST(ArrayViewTest, TestCopyAssignmentVariableRvalue) {
+  char arr[] = "Arrr!";
+  ArrayView<char> x(arr);
+  EXPECT_EQ(6u, x.size());
+  EXPECT_EQ(arr, x.data());
+  ArrayView<char> y;
+  y = std::move(x);  // Copy non-const -> non-const.
+  EXPECT_EQ(6u, y.size());
+  EXPECT_EQ(arr, y.data());
+  ArrayView<const char> z;
+  z = std::move(x);  // Copy non-const -> const.
+  EXPECT_EQ(6u, z.size());
+  EXPECT_EQ(arr, z.data());
+  ArrayView<const char> w;
+  w = std::move(z);  // Copy const -> const.
+  EXPECT_EQ(6u, w.size());
+  EXPECT_EQ(arr, w.data());
+  // ArrayView<char> v;
+  // v = std::move(z);  // Compile error, because can't drop const.
+}
+
+TEST(ArrayViewTest, TestCopyAssignmentFixedLvalue) {
   char arr[] = "Arrr!";
   char init[] = "Init!";
   ArrayView<char, 6> x(arr);
@@ -185,6 +254,42 @@ TEST(ArrayViewTest, TestCopyAssignmentFixed) {
   EXPECT_EQ(arr, wv.data());
   // ArrayView<char> v;
   // v = z;  // Compile error, because can't drop const.
+}
+
+TEST(ArrayViewTest, TestCopyAssignmentFixedRvalue) {
+  char arr[] = "Arrr!";
+  char init[] = "Init!";
+  ArrayView<char, 6> x(arr);
+  EXPECT_EQ(arr, x.data());
+
+  // Copy fixed -> fixed.
+  ArrayView<char, 6> y(init);
+  y = std::move(x);  // Copy non-const -> non-const.
+  EXPECT_EQ(arr, y.data());
+  ArrayView<const char, 6> z(init);
+  z = std::move(x);  // Copy non-const -> const.
+  EXPECT_EQ(arr, z.data());
+  ArrayView<const char, 6> w(init);
+  w = std::move(z);  // Copy const -> const.
+  EXPECT_EQ(arr, w.data());
+  // ArrayView<char, 6> v(init);
+  // v = std::move(z);  // Compile error, because can't drop const.
+
+  // Copy fixed -> variable.
+  ArrayView<char> yv;
+  yv = std::move(x);  // Copy non-const -> non-const.
+  EXPECT_EQ(6u, yv.size());
+  EXPECT_EQ(arr, yv.data());
+  ArrayView<const char> zv;
+  zv = std::move(x);  // Copy non-const -> const.
+  EXPECT_EQ(6u, zv.size());
+  EXPECT_EQ(arr, zv.data());
+  ArrayView<const char> wv;
+  wv = std::move(z);  // Copy const -> const.
+  EXPECT_EQ(6u, wv.size());
+  EXPECT_EQ(arr, wv.data());
+  // ArrayView<char> v;
+  // v = std::move(z);  // Compile error, because can't drop const.
 }
 
 TEST(ArrayViewTest, TestStdArray) {
@@ -304,7 +409,7 @@ TEST(FixArrayViewTest, TestSwapFixed) {
   // swap(x, w);  // Compile error, because different sizes.
 }
 
-TEST(ArrayViewTest, TestIndexing) {
+TEST(ArrayViewDeathTest, TestIndexing) {
   char arr[] = "abcdefg";
   ArrayView<char> x(arr);
   const ArrayView<char> y(arr);
@@ -346,6 +451,20 @@ TEST(ArrayViewTest, TestIterationEmpty) {
   }
 }
 
+TEST(ArrayViewTest, TestReverseIterationEmpty) {
+  // Variable-size.
+  ArrayView<std::vector<std::vector<std::vector<std::string>>>> av;
+  EXPECT_EQ(av.rbegin(), av.rend());
+  EXPECT_EQ(av.crbegin(), av.crend());
+  EXPECT_TRUE(av.empty());
+
+  // Fixed-size.
+  ArrayView<std::vector<std::vector<std::vector<std::string>>>, 0> af;
+  EXPECT_EQ(af.begin(), af.end());
+  EXPECT_EQ(af.cbegin(), af.cend());
+  EXPECT_TRUE(af.empty());
+}
+
 TEST(ArrayViewTest, TestIterationVariable) {
   char arr[] = "Arrr!";
   ArrayView<char> av(arr);
@@ -367,6 +486,25 @@ TEST(ArrayViewTest, TestIterationVariable) {
   }
 }
 
+TEST(ArrayViewTest, TestReverseIterationVariable) {
+  char arr[] = "Arrr!";
+  ArrayView<char> av(arr);
+  EXPECT_EQ('\0', *av.rbegin());
+  EXPECT_EQ('\0', *av.crbegin());
+  EXPECT_EQ('A', *(av.rend() - 1));
+  EXPECT_EQ('A', *(av.crend() - 1));
+
+  const char* cit = av.cend() - 1;
+  for (auto crit = av.crbegin(); crit != av.crend(); ++crit, --cit) {
+    EXPECT_EQ(*cit, *crit);
+  }
+
+  char* it = av.end() - 1;
+  for (auto rit = av.rbegin(); rit != av.rend(); ++rit, --it) {
+    EXPECT_EQ(*it, *rit);
+  }
+}
+
 TEST(ArrayViewTest, TestIterationFixed) {
   char arr[] = "Arrr!";
   ArrayView<char, 6> av(arr);
@@ -385,6 +523,25 @@ TEST(ArrayViewTest, TestIterationFixed) {
     EXPECT_EQ(arr + i, &e);
     // e = 'q' + i;  // Compile error, because e is a const char&.
     ++i;
+  }
+}
+
+TEST(ArrayViewTest, TestReverseIterationFixed) {
+  char arr[] = "Arrr!";
+  ArrayView<char, 6> av(arr);
+  EXPECT_EQ('\0', *av.rbegin());
+  EXPECT_EQ('\0', *av.crbegin());
+  EXPECT_EQ('A', *(av.rend() - 1));
+  EXPECT_EQ('A', *(av.crend() - 1));
+
+  const char* cit = av.cend() - 1;
+  for (auto crit = av.crbegin(); crit != av.crend(); ++crit, --cit) {
+    EXPECT_EQ(*cit, *crit);
+  }
+
+  char* it = av.end() - 1;
+  for (auto rit = av.rbegin(); rit != av.rend(); ++rit, --it) {
+    EXPECT_EQ(*it, *rit);
   }
 }
 

@@ -17,6 +17,7 @@
 #include "api/test/videocodec_test_stats.h"
 #include "api/video_codecs/video_decoder_factory.h"
 #include "api/video_codecs/video_encoder_factory.h"
+#include "media/base/h264_profile_level_id.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 
 namespace webrtc {
@@ -58,7 +59,7 @@ class VideoCodecTestFixture {
   class EncodedFrameChecker {
    public:
     virtual ~EncodedFrameChecker() = default;
-    virtual void CheckEncodedFrame(webrtc::VideoCodecType codec,
+    virtual void CheckEncodedFrame(VideoCodecType codec,
                                    const EncodedImage& encoded_frame) const = 0;
   };
 
@@ -87,6 +88,17 @@ class VideoCodecTestFixture {
 
     // Plain name of YUV file to process without file extension.
     std::string filename;
+    // Dimensions of test clip. Falls back to (codec_settings.width/height) if
+    // not set.
+    absl::optional<int> clip_width;
+    absl::optional<int> clip_height;
+    // Framerate of input clip. Defaults to 30fps if not set.
+    absl::optional<int> clip_fps;
+
+    // The resolution at which psnr/ssim comparisons should be made. Frames
+    // will be scaled to this size if different.
+    absl::optional<int> reference_width;
+    absl::optional<int> reference_height;
 
     // File to process. This must be a video file in the YUV format.
     std::string filepath;
@@ -111,16 +123,16 @@ class VideoCodecTestFixture {
     bool encode_in_real_time = false;
 
     // Codec settings to use.
-    webrtc::VideoCodec codec_settings;
+    VideoCodec codec_settings;
 
     // Name of the codec being tested.
     std::string codec_name;
 
     // H.264 specific settings.
     struct H264CodecSettings {
-      H264::Profile profile = H264::kProfileConstrainedBaseline;
+      H264Profile profile = H264Profile::kProfileConstrainedBaseline;
       H264PacketizationMode packetization_mode =
-          webrtc::H264PacketizationMode::NonInterleaved;
+          H264PacketizationMode::NonInterleaved;
     } h264_codec_settings;
 
     // Custom checker that will be called for each frame.
@@ -129,11 +141,17 @@ class VideoCodecTestFixture {
     // Print out frame level stats.
     bool print_frame_level_stats = false;
 
+    // Path to a directory where encoded or/and decoded video should be saved.
+    std::string output_path;
+
     // Should video be saved persistently to disk for post-run visualization?
     struct VisualizationParams {
       bool save_encoded_ivf = false;
       bool save_decoded_y4m = false;
     } visualization_params;
+
+    // Enables quality analysis for dropped frames.
+    bool analyze_quality_of_dropped_frames = false;
   };
 
   virtual ~VideoCodecTestFixture() = default;

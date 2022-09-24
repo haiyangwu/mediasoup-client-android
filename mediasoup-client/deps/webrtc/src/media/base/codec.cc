@@ -12,12 +12,13 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
-#include "media/base/h264_profile_level_id.h"
-#include "media/base/vp9_profile.h"
+#include "api/video_codecs/h264_profile_level_id.h"
+#include "api/video_codecs/vp9_profile.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/string_encode.h"
 #include "rtc_base/strings/string_builder.h"
+#include "system_wrappers/include/field_trial.h"
 
 namespace cricket {
 namespace {
@@ -50,10 +51,10 @@ bool IsSameCodecSpecific(const std::string& name1,
            absl::EqualsIgnoreCase(name, name2);
   };
   if (either_name_matches(kH264CodecName))
-    return webrtc::H264::IsSameH264Profile(params1, params2) &&
+    return webrtc::H264IsSameProfile(params1, params2) &&
            IsSameH264PacketizationMode(params1, params2);
   if (either_name_matches(kVp9CodecName))
-    return webrtc::IsSameVP9Profile(params1, params2);
+    return webrtc::VP9IsSameProfile(params1, params2);
   return true;
 }
 
@@ -80,7 +81,7 @@ void FeedbackParams::Add(const FeedbackParam& param) {
     return;
   }
   if (Has(param)) {
-    // Param already in |this|.
+    // Param already in `this`.
     return;
   }
   params_.push_back(param);
@@ -131,10 +132,32 @@ bool Codec::operator==(const Codec& c) const {
 bool Codec::Matches(const Codec& codec) const {
   // Match the codec id/name based on the typical static/dynamic name rules.
   // Matching is case-insensitive.
-  const int kMaxStaticPayloadId = 95;
-  return (id <= kMaxStaticPayloadId || codec.id <= kMaxStaticPayloadId)
-             ? (id == codec.id)
-             : (absl::EqualsIgnoreCase(name, codec.name));
+
+  // Legacy behaviour with killswitch.
+  if (webrtc::field_trial::IsDisabled(
+          "WebRTC-PayloadTypes-Lower-Dynamic-Range")) {
+    const int kMaxStaticPayloadId = 95;
+    return (id <= kMaxStaticPayloadId || codec.id <= kMaxStaticPayloadId)
+               ? (id == codec.id)
+               : (absl::EqualsIgnoreCase(name, codec.name));
+  }
+  // We support the ranges [96, 127] and more recently [35, 65].
+  // https://www.iana.org/assignments/rtp-parameters/rtp-parameters.xhtml#rtp-parameters-1
+  // Within those ranges we match by codec name, outside by codec id.
+  const int kLowerDynamicRangeMin = 35;
+  const int kLowerDynamicRangeMax = 65;
+  const int kUpperDynamicRangeMin = 96;
+  const int kUpperDynamicRangeMax = 127;
+  const bool is_id_in_dynamic_range =
+      (id >= kLowerDynamicRangeMin && id <= kLowerDynamicRangeMax) ||
+      (id >= kUpperDynamicRangeMin && id <= kUpperDynamicRangeMax);
+  const bool is_codec_id_in_dynamic_range =
+      (codec.id >= kLowerDynamicRangeMin &&
+       codec.id <= kLowerDynamicRangeMax) ||
+      (codec.id >= kUpperDynamicRangeMin && codec.id <= kUpperDynamicRangeMax);
+  return is_id_in_dynamic_range && is_codec_id_in_dynamic_range
+             ? (absl::EqualsIgnoreCase(name, codec.name))
+             : (id == codec.id);
 }
 
 bool Codec::MatchesCapability(
@@ -250,7 +273,11 @@ webrtc::RtpCodecParameters AudioCodec::ToCodecParameters() const {
 std::string VideoCodec::ToString() const {
   char buf[256];
   rtc::SimpleStringBuilder sb(buf);
-  sb << "VideoCodec[" << id << ":" << name << "]";
+  sb << "VideoCodec[" << id << ":" << name;
+  if (packetization.has_value()) {
+    sb << ":" << *packetization;
+  }
+  sb << "]";
   return sb.str();
 }
 
@@ -357,25 +384,6 @@ bool VideoCodec::ValidateCodecFormat() const {
   return true;
 }
 
-RtpDataCodec::RtpDataCodec(int id, const std::string& name)
-    : Codec(id, name, kDataCodecClockrate) {}
-
-RtpDataCodec::RtpDataCodec() : Codec() {
-  clockrate = kDataCodecClockrate;
-}
-
-RtpDataCodec::RtpDataCodec(const RtpDataCodec& c) = default;
-RtpDataCodec::RtpDataCodec(RtpDataCodec&& c) = default;
-RtpDataCodec& RtpDataCodec::operator=(const RtpDataCodec& c) = default;
-RtpDataCodec& RtpDataCodec::operator=(RtpDataCodec&& c) = default;
-
-std::string RtpDataCodec::ToString() const {
-  char buf[256];
-  rtc::SimpleStringBuilder sb(buf);
-  sb << "RtpDataCodec[" << id << ":" << name << "]";
-  return sb.str();
-}
-
 bool HasLntf(const Codec& codec) {
   return codec.HasFeedbackParam(
       FeedbackParam(kRtcpFbParamLntf, kParamValueEmpty));
@@ -413,6 +421,8 @@ const VideoCodec* FindMatchingCodec(
   return nullptr;
 }
 
+// TODO(crbug.com/1187565): Remove once downstream projects stopped using this
+// method in favor of SdpVideoFormat::IsSameCodec().
 bool IsSameCodec(const std::string& name1,
                  const CodecParameterMap& params1,
                  const std::string& name2,
@@ -421,6 +431,46 @@ bool IsSameCodec(const std::string& name1,
   // and certain codec-specific parameters match.
   return absl::EqualsIgnoreCase(name1, name2) &&
          IsSameCodecSpecific(name1, params1, name2, params2);
+}
+
+// If a decoder supports any H264 profile, it is implicitly assumed to also
+// support constrained base line even though it's not explicitly listed.
+void AddH264ConstrainedBaselineProfileToSupportedFormats(
+    std::vector<webrtc::SdpVideoFormat>* supported_formats) {
+  std::vector<webrtc::SdpVideoFormat> cbr_supported_formats;
+
+  // For any H264 supported profile, add the corresponding constrained baseline
+  // profile.
+  for (auto it = supported_formats->cbegin(); it != supported_formats->cend();
+       ++it) {
+    if (it->name == cricket::kH264CodecName) {
+      const absl::optional<webrtc::H264ProfileLevelId> profile_level_id =
+          webrtc::ParseSdpForH264ProfileLevelId(it->parameters);
+      if (profile_level_id &&
+          profile_level_id->profile !=
+              webrtc::H264Profile::kProfileConstrainedBaseline) {
+        webrtc::SdpVideoFormat cbp_format = *it;
+        webrtc::H264ProfileLevelId cbp_profile = *profile_level_id;
+        cbp_profile.profile = webrtc::H264Profile::kProfileConstrainedBaseline;
+        cbp_format.parameters[cricket::kH264FmtpProfileLevelId] =
+            *webrtc::H264ProfileLevelIdToString(cbp_profile);
+        cbr_supported_formats.push_back(cbp_format);
+      }
+    }
+  }
+
+  size_t original_size = supported_formats->size();
+  // ...if it's not already in the list.
+  std::copy_if(cbr_supported_formats.begin(), cbr_supported_formats.end(),
+               std::back_inserter(*supported_formats),
+               [supported_formats](const webrtc::SdpVideoFormat& format) {
+                 return !format.IsCodecInList(*supported_formats);
+               });
+
+  if (supported_formats->size() > original_size) {
+    RTC_LOG(LS_WARNING) << "Explicitly added H264 constrained baseline to list "
+                           "of supported formats.";
+  }
 }
 
 }  // namespace cricket

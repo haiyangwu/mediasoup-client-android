@@ -15,13 +15,13 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "api/array_view.h"
-#include "rtc_base/numerics/samples_stats_counter.h"
+#include "api/numerics/samples_stats_counter.h"
 
 namespace webrtc {
 namespace test {
 
-// Metrics improver direction.
 enum class ImproveDirection {
   // Direction is undefined.
   kNone,
@@ -31,82 +31,91 @@ enum class ImproveDirection {
   kBiggerIsBetter,
 };
 
-// Prints numerical information to stdout in a controlled format, for
-// post-processing. |measurement| is a description of the quantity being
-// measured, e.g. "vm_peak"; |modifier| is provided as a convenience and
-// will be appended directly to the name of the |measurement|, e.g.
-// "_browser"; |trace| is a description of the particular data point, e.g.
-// "reference"; |value| is the measured value; and |units| is a description
-// of the units of measure, e.g. "bytes". If |important| is true, the output
-// line will be specially marked, to notify the post-processor. The strings
-// may be empty.  They should not contain any colons (:) or equals signs (=).
-// A typical post-processing step would be to produce graphs of the data
-// produced for various builds, using the combined |measurement| + |modifier|
-// string to specify a particular graph and the |trace| to identify a trace
-// (i.e., data series) on that graph.
-void PrintResult(const std::string& measurement,
-                 const std::string& modifier,
-                 const std::string& trace,
+// Prints a performance test result.
+//
+// For example,
+// PrintResult("ramp_up_time_", "turn_over_tcp",
+//             "bwe_15s", 1234.2, "ms", false);
+//
+// will show up in the http://chromeperf.appspot.com under
+//
+// (test binary name) > (bot) > ramp_up_time_turn_over_tcp > bwe_15s.
+//
+// The `measurement` + `modifier` is what we're measuring. `user_story` is the
+// scenario we're testing under.
+//
+// The binary this runs in must be hooked up as a perf test in the WebRTC
+// recipes for this to actually be uploaded to chromeperf.appspot.com.
+void PrintResult(absl::string_view measurement,
+                 absl::string_view modifier,
+                 absl::string_view user_story,
                  const double value,
-                 const std::string& units,
+                 absl::string_view units,
                  bool important,
                  ImproveDirection improve_direction = ImproveDirection::kNone);
 
 // Like PrintResult(), but prints a (mean, standard deviation) result pair.
 // The |<values>| should be two comma-separated numbers, the mean and
 // standard deviation (or other error metric) of the measurement.
+// DEPRECATED: soon unsupported.
 void PrintResultMeanAndError(
-    const std::string& measurement,
-    const std::string& modifier,
-    const std::string& trace,
+    absl::string_view measurement,
+    absl::string_view modifier,
+    absl::string_view user_story,
     const double mean,
     const double error,
-    const std::string& units,
+    absl::string_view units,
     bool important,
     ImproveDirection improve_direction = ImproveDirection::kNone);
 
-// Like PrintResult(), but prints an entire list of results. The |values|
+// Like PrintResult(), but prints an entire list of results. The `values`
 // will generally be a list of comma-separated numbers. A typical
 // post-processing step might produce plots of their mean and standard
 // deviation.
 void PrintResultList(
-    const std::string& measurement,
-    const std::string& modifier,
-    const std::string& trace,
+    absl::string_view measurement,
+    absl::string_view modifier,
+    absl::string_view user_story,
     rtc::ArrayView<const double> values,
-    const std::string& units,
+    absl::string_view units,
     bool important,
     ImproveDirection improve_direction = ImproveDirection::kNone);
 
 // Like PrintResult(), but prints a (mean, standard deviation) from stats
 // counter. Also add specified metric to the plotable metrics output.
-void PrintResult(const std::string& measurement,
-                 const std::string& modifier,
-                 const std::string& trace,
+void PrintResult(absl::string_view measurement,
+                 absl::string_view modifier,
+                 absl::string_view user_story,
                  const SamplesStatsCounter& counter,
-                 const std::string& units,
+                 absl::string_view units,
                  const bool important,
                  ImproveDirection improve_direction = ImproveDirection::kNone);
 
-// Returns all perf results to date in a JSON string formatted as described in
-// https://github.com/catapult-project/catapult/blob/master/dashboard/docs/data-format.md
-std::string GetPerfResultsJSON();
+// Returns a string-encoded proto as described in
+// tracing/tracing/proto/histogram.proto in
+// https://github.com/catapult-project/catapult/blob/master/.
+// If you want to print the proto in human readable format, use
+// tracing/bin/proto2json from third_party/catapult in your WebRTC checkout.
+std::string GetPerfResults();
 
 // Print into stdout plottable metrics for further post processing.
-// |desired_graphs| - list of metrics, that should be plotted. If empty - all
-// available metrics will be plotted. If some of |desired_graphs| are missing
+// `desired_graphs` - list of metrics, that should be plotted. If empty - all
+// available metrics will be plotted. If some of `desired_graphs` are missing
 // they will be skipped.
 void PrintPlottableResults(const std::vector<std::string>& desired_graphs);
 
-// Writes the JSON representation of the perf results returned by
-// GetPerfResultsJSON() to the file in output_path.
-void WritePerfResults(const std::string& output_path);
+// Call GetPerfResults() and write its output to a file. Returns false if we
+// failed to write to the file. If you want to print the proto in human readable
+// format, use tracing/bin/proto2json from third_party/catapult in your WebRTC
+// checkout.
+bool WritePerfResults(const std::string& output_path);
 
-// By default, perf results are printed to stdout. Set the FILE* to where they
-// should be printing instead.
+// By default, human-readable perf results are printed to stdout. Set the FILE*
+// to where they should be printing instead. These results are not used to
+// upload to the dashboard, however - this is only through WritePerfResults.
 void SetPerfResultsOutput(FILE* output);
 
-// You shouldn't use this function. It's only used to test the functions above.
+// Only for use by tests.
 void ClearPerfResults();
 
 }  // namespace test

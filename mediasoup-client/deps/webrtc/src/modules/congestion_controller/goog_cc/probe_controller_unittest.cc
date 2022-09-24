@@ -55,7 +55,7 @@ class ProbeControllerTest : public ::testing::Test {
 
   std::vector<ProbeClusterConfig> SetNetworkAvailable(bool available) {
     NetworkAvailability msg;
-    msg.at_time = Timestamp::ms(NowMs());
+    msg.at_time = Timestamp::Millis(NowMs());
     msg.network_available = available;
     return probe_controller_->OnNetworkAvailability(msg);
   }
@@ -279,7 +279,7 @@ TEST_F(ProbeControllerTest, PeriodicProbingAfterReset) {
                                           kMaxBitrateBps, NowMs());
   EXPECT_EQ(probes.size(), 2u);
 
-  // Make sure we use |kStartBitrateBps| as the estimated bitrate
+  // Make sure we use `kStartBitrateBps` as the estimated bitrate
   // until SetEstimatedBitrate is called with an updated estimate.
   clock_.AdvanceTimeMilliseconds(10000);
   probes = probe_controller_->Process(NowMs());

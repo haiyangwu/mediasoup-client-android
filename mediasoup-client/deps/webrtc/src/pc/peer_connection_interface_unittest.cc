@@ -43,6 +43,7 @@
 #include "api/rtp_transceiver_interface.h"
 #include "api/scoped_refptr.h"
 #include "api/task_queue/default_task_queue_factory.h"
+#include "api/transport/field_trial_based_config.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "api/video_codecs/video_decoder_factory.h"
@@ -503,7 +504,7 @@ void SetSsrcToZero(std::string* sdp) {
   }
 }
 
-// Check if |streams| contains the specified track.
+// Check if `streams` contains the specified track.
 bool ContainsTrack(const std::vector<cricket::StreamParams>& streams,
                    const std::string& stream_id,
                    const std::string& track_id) {
@@ -515,7 +516,7 @@ bool ContainsTrack(const std::vector<cricket::StreamParams>& streams,
   return false;
 }
 
-// Check if |senders| contains the specified sender, by id.
+// Check if `senders` contains the specified sender, by id.
 bool ContainsSender(
     const std::vector<rtc::scoped_refptr<RtpSenderInterface>>& senders,
     const std::string& id) {
@@ -527,7 +528,7 @@ bool ContainsSender(
   return false;
 }
 
-// Check if |senders| contains the specified sender, by id and stream id.
+// Check if `senders` contains the specified sender, by id and stream id.
 bool ContainsSender(
     const std::vector<rtc::scoped_refptr<RtpSenderInterface>>& senders,
     const std::string& id,
@@ -627,7 +628,7 @@ class MockTrackObserver : public ObserverInterface {
     }
   }
 
-  MOCK_METHOD0(OnChanged, void());
+  MOCK_METHOD(void, OnChanged, (), (override));
 
  private:
   NotifierInterface* notifier_;
@@ -646,19 +647,21 @@ class PeerConnectionFactoryForTest : public webrtc::PeerConnectionFactory {
     dependencies.network_thread = rtc::Thread::Current();
     dependencies.signaling_thread = rtc::Thread::Current();
     dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
+    dependencies.trials = std::make_unique<FieldTrialBasedConfig>();
     cricket::MediaEngineDependencies media_deps;
     media_deps.task_queue_factory = dependencies.task_queue_factory.get();
     // Use fake audio device module since we're only testing the interface
     // level, and using a real one could make tests flaky when run in parallel.
     media_deps.adm = FakeAudioCaptureModule::Create();
     SetMediaEngineDefaults(&media_deps);
+    media_deps.trials = dependencies.trials.get();
     dependencies.media_engine =
         cricket::CreateMediaEngine(std::move(media_deps));
     dependencies.call_factory = webrtc::CreateCallFactory();
     dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>(
         dependencies.task_queue_factory.get());
 
-    return new rtc::RefCountedObject<PeerConnectionFactoryForTest>(
+    return rtc::make_ref_counted<PeerConnectionFactoryForTest>(
         std::move(dependencies));
   }
 
@@ -680,7 +683,7 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
 #endif
   }
 
-  virtual void SetUp() {
+  void SetUp() override {
     // Use fake audio capture module since we're only testing the interface
     // level, and using a real one could make tests flaky when run in parallel.
     fake_audio_capture_module_ = FakeAudioCaptureModule::Create();
@@ -696,7 +699,11 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
     ASSERT_TRUE(pc_factory_);
     pc_factory_for_test_ =
         PeerConnectionFactoryForTest::CreatePeerConnectionFactoryForTest();
-    pc_factory_for_test_->Initialize();
+  }
+
+  void TearDown() override {
+    if (pc_)
+      pc_->Close();
   }
 
   void CreatePeerConnection() {
@@ -732,6 +739,10 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   }
 
   void CreatePeerConnection(const RTCConfiguration& config) {
+    if (pc_) {
+      pc_->Close();
+      pc_ = nullptr;
+    }
     std::unique_ptr<cricket::FakePortAllocator> port_allocator(
         new cricket::FakePortAllocator(rtc::Thread::Current(), nullptr));
     port_allocator_ = port_allocator.get();
@@ -868,8 +879,8 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   bool DoCreateOfferAnswer(std::unique_ptr<SessionDescriptionInterface>* desc,
                            const RTCOfferAnswerOptions* options,
                            bool offer) {
-    rtc::scoped_refptr<MockCreateSessionDescriptionObserver> observer(
-        new rtc::RefCountedObject<MockCreateSessionDescriptionObserver>());
+    auto observer =
+        rtc::make_ref_counted<MockCreateSessionDescriptionObserver>();
     if (offer) {
       pc_->CreateOffer(observer, options ? *options : RTCOfferAnswerOptions());
     } else {
@@ -893,8 +904,7 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   bool DoSetSessionDescription(
       std::unique_ptr<SessionDescriptionInterface> desc,
       bool local) {
-    rtc::scoped_refptr<MockSetSessionDescriptionObserver> observer(
-        new rtc::RefCountedObject<MockSetSessionDescriptionObserver>());
+    auto observer = rtc::make_ref_counted<MockSetSessionDescriptionObserver>();
     if (local) {
       pc_->SetLocalDescription(observer, desc.release());
     } else {
@@ -920,8 +930,7 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   // It does not verify the values in the StatReports since a RTCP packet might
   // be required.
   bool DoGetStats(MediaStreamTrackInterface* track) {
-    rtc::scoped_refptr<MockStatsObserver> observer(
-        new rtc::RefCountedObject<MockStatsObserver>());
+    auto observer = rtc::make_ref_counted<MockStatsObserver>();
     if (!pc_->GetStats(observer, track,
                        PeerConnectionInterface::kStatsOutputLevelStandard))
       return false;
@@ -931,8 +940,8 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
 
   // Call the standards-compliant GetStats function.
   bool DoGetRTCStats() {
-    rtc::scoped_refptr<webrtc::MockRTCStatsCollectorCallback> callback(
-        new rtc::RefCountedObject<webrtc::MockRTCStatsCollectorCallback>());
+    auto callback =
+        rtc::make_ref_counted<webrtc::MockRTCStatsCollectorCallback>();
     pc_->GetStats(callback);
     EXPECT_TRUE_WAIT(callback->called(), kTimeout);
     return callback->called();
@@ -1087,10 +1096,10 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   }
 
   // This function creates a MediaStream with label kStreams[0] and
-  // |number_of_audio_tracks| and |number_of_video_tracks| tracks and the
+  // `number_of_audio_tracks` and `number_of_video_tracks` tracks and the
   // corresponding SessionDescriptionInterface. The SessionDescriptionInterface
   // is returned and the MediaStream is stored in
-  // |reference_collection_|
+  // `reference_collection_`
   std::unique_ptr<SessionDescriptionInterface>
   CreateSessionDescriptionAndReference(size_t number_of_audio_tracks,
                                        size_t number_of_video_tracks) {
@@ -1187,8 +1196,8 @@ class PeerConnectionInterfaceBaseTest : public ::testing::Test {
   std::unique_ptr<SessionDescriptionInterface> CreateOfferWithOptions(
       const RTCOfferAnswerOptions& offer_answer_options) {
     RTC_DCHECK(pc_);
-    rtc::scoped_refptr<MockCreateSessionDescriptionObserver> observer(
-        new rtc::RefCountedObject<MockCreateSessionDescriptionObserver>());
+    auto observer =
+        rtc::make_ref_counted<MockCreateSessionDescriptionObserver>();
     pc_->CreateOffer(observer, offer_answer_options);
     EXPECT_EQ_WAIT(true, observer->called(), kTimeout);
     return observer->MoveDescription();
@@ -1421,15 +1430,11 @@ TEST_P(PeerConnectionInterfaceTest, GetConfigurationAfterSetConfiguration) {
 
   PeerConnectionInterface::RTCConfiguration config = pc_->GetConfiguration();
   config.type = PeerConnectionInterface::kRelay;
-  config.use_media_transport = true;
-  config.use_media_transport_for_data_channels = true;
   EXPECT_TRUE(pc_->SetConfiguration(config).ok());
 
   PeerConnectionInterface::RTCConfiguration returned_config =
       pc_->GetConfiguration();
   EXPECT_EQ(PeerConnectionInterface::kRelay, returned_config.type);
-  EXPECT_TRUE(returned_config.use_media_transport);
-  EXPECT_TRUE(returned_config.use_media_transport_for_data_channels);
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetConfigurationFailsAfterClose) {
@@ -1894,179 +1899,6 @@ TEST_P(PeerConnectionInterfaceTest, GetRTCStatsBeforeAndAfterCalling) {
   EXPECT_TRUE(DoGetRTCStats());
 }
 
-// This test setup two RTP data channels in loop back.
-TEST_P(PeerConnectionInterfaceTest, TestDataChannel) {
-  RTCConfiguration config;
-  config.enable_rtp_data_channel = true;
-  config.enable_dtls_srtp = false;
-  CreatePeerConnection(config);
-  rtc::scoped_refptr<DataChannelInterface> data1 =
-      pc_->CreateDataChannel("test1", NULL);
-  rtc::scoped_refptr<DataChannelInterface> data2 =
-      pc_->CreateDataChannel("test2", NULL);
-  ASSERT_TRUE(data1 != NULL);
-  std::unique_ptr<MockDataChannelObserver> observer1(
-      new MockDataChannelObserver(data1));
-  std::unique_ptr<MockDataChannelObserver> observer2(
-      new MockDataChannelObserver(data2));
-
-  EXPECT_EQ(DataChannelInterface::kConnecting, data1->state());
-  EXPECT_EQ(DataChannelInterface::kConnecting, data2->state());
-  std::string data_to_send1 = "testing testing";
-  std::string data_to_send2 = "testing something else";
-  EXPECT_FALSE(data1->Send(DataBuffer(data_to_send1)));
-
-  CreateOfferReceiveAnswer();
-  EXPECT_TRUE_WAIT(observer1->IsOpen(), kTimeout);
-  EXPECT_TRUE_WAIT(observer2->IsOpen(), kTimeout);
-
-  EXPECT_EQ(DataChannelInterface::kOpen, data1->state());
-  EXPECT_EQ(DataChannelInterface::kOpen, data2->state());
-  EXPECT_TRUE(data1->Send(DataBuffer(data_to_send1)));
-  EXPECT_TRUE(data2->Send(DataBuffer(data_to_send2)));
-
-  EXPECT_EQ_WAIT(data_to_send1, observer1->last_message(), kTimeout);
-  EXPECT_EQ_WAIT(data_to_send2, observer2->last_message(), kTimeout);
-
-  data1->Close();
-  EXPECT_EQ(DataChannelInterface::kClosing, data1->state());
-  CreateOfferReceiveAnswer();
-  EXPECT_FALSE(observer1->IsOpen());
-  EXPECT_EQ(DataChannelInterface::kClosed, data1->state());
-  EXPECT_TRUE(observer2->IsOpen());
-
-  data_to_send2 = "testing something else again";
-  EXPECT_TRUE(data2->Send(DataBuffer(data_to_send2)));
-
-  EXPECT_EQ_WAIT(data_to_send2, observer2->last_message(), kTimeout);
-}
-
-// This test verifies that sendnig binary data over RTP data channels should
-// fail.
-TEST_P(PeerConnectionInterfaceTest, TestSendBinaryOnRtpDataChannel) {
-  RTCConfiguration config;
-  config.enable_rtp_data_channel = true;
-  config.enable_dtls_srtp = false;
-  CreatePeerConnection(config);
-  rtc::scoped_refptr<DataChannelInterface> data1 =
-      pc_->CreateDataChannel("test1", NULL);
-  rtc::scoped_refptr<DataChannelInterface> data2 =
-      pc_->CreateDataChannel("test2", NULL);
-  ASSERT_TRUE(data1 != NULL);
-  std::unique_ptr<MockDataChannelObserver> observer1(
-      new MockDataChannelObserver(data1));
-  std::unique_ptr<MockDataChannelObserver> observer2(
-      new MockDataChannelObserver(data2));
-
-  EXPECT_EQ(DataChannelInterface::kConnecting, data1->state());
-  EXPECT_EQ(DataChannelInterface::kConnecting, data2->state());
-
-  CreateOfferReceiveAnswer();
-  EXPECT_TRUE_WAIT(observer1->IsOpen(), kTimeout);
-  EXPECT_TRUE_WAIT(observer2->IsOpen(), kTimeout);
-
-  EXPECT_EQ(DataChannelInterface::kOpen, data1->state());
-  EXPECT_EQ(DataChannelInterface::kOpen, data2->state());
-
-  rtc::CopyOnWriteBuffer buffer("test", 4);
-  EXPECT_FALSE(data1->Send(DataBuffer(buffer, true)));
-}
-
-// This test setup a RTP data channels in loop back and test that a channel is
-// opened even if the remote end answer with a zero SSRC.
-TEST_P(PeerConnectionInterfaceTest, TestSendOnlyDataChannel) {
-  RTCConfiguration config;
-  config.enable_rtp_data_channel = true;
-  config.enable_dtls_srtp = false;
-  CreatePeerConnection(config);
-  rtc::scoped_refptr<DataChannelInterface> data1 =
-      pc_->CreateDataChannel("test1", NULL);
-  std::unique_ptr<MockDataChannelObserver> observer1(
-      new MockDataChannelObserver(data1));
-
-  CreateOfferReceiveAnswerWithoutSsrc();
-
-  EXPECT_TRUE_WAIT(observer1->IsOpen(), kTimeout);
-
-  data1->Close();
-  EXPECT_EQ(DataChannelInterface::kClosing, data1->state());
-  CreateOfferReceiveAnswerWithoutSsrc();
-  EXPECT_EQ(DataChannelInterface::kClosed, data1->state());
-  EXPECT_FALSE(observer1->IsOpen());
-}
-
-// This test that if a data channel is added in an answer a receive only channel
-// channel is created.
-TEST_P(PeerConnectionInterfaceTest, TestReceiveOnlyDataChannel) {
-  RTCConfiguration config;
-  config.enable_rtp_data_channel = true;
-  config.enable_dtls_srtp = false;
-
-  CreatePeerConnection(config);
-
-  std::string offer_label = "offer_channel";
-  rtc::scoped_refptr<DataChannelInterface> offer_channel =
-      pc_->CreateDataChannel(offer_label, NULL);
-
-  CreateOfferAsLocalDescription();
-
-  // Replace the data channel label in the offer and apply it as an answer.
-  std::string receive_label = "answer_channel";
-  std::string sdp;
-  EXPECT_TRUE(pc_->local_description()->ToString(&sdp));
-  absl::StrReplaceAll({{offer_label, receive_label}}, &sdp);
-  CreateAnswerAsRemoteDescription(sdp);
-
-  // Verify that a new incoming data channel has been created and that
-  // it is open but can't we written to.
-  ASSERT_TRUE(observer_.last_datachannel_ != NULL);
-  DataChannelInterface* received_channel = observer_.last_datachannel_;
-  EXPECT_EQ(DataChannelInterface::kConnecting, received_channel->state());
-  EXPECT_EQ(receive_label, received_channel->label());
-  EXPECT_FALSE(received_channel->Send(DataBuffer("something")));
-
-  // Verify that the channel we initially offered has been rejected.
-  EXPECT_EQ(DataChannelInterface::kClosed, offer_channel->state());
-
-  // Do another offer / answer exchange and verify that the data channel is
-  // opened.
-  CreateOfferReceiveAnswer();
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, received_channel->state(),
-                 kTimeout);
-}
-
-// This test that no data channel is returned if a reliable channel is
-// requested.
-// TODO(perkj): Remove this test once reliable channels are implemented.
-TEST_P(PeerConnectionInterfaceTest, CreateReliableRtpDataChannelShouldFail) {
-  RTCConfiguration rtc_config;
-  rtc_config.enable_rtp_data_channel = true;
-  CreatePeerConnection(rtc_config);
-
-  std::string label = "test";
-  webrtc::DataChannelInit config;
-  config.reliable = true;
-  rtc::scoped_refptr<DataChannelInterface> channel =
-      pc_->CreateDataChannel(label, &config);
-  EXPECT_TRUE(channel == NULL);
-}
-
-// Verifies that duplicated label is not allowed for RTP data channel.
-TEST_P(PeerConnectionInterfaceTest, RtpDuplicatedLabelNotAllowed) {
-  RTCConfiguration config;
-  config.enable_rtp_data_channel = true;
-  CreatePeerConnection(config);
-
-  std::string label = "test";
-  rtc::scoped_refptr<DataChannelInterface> channel =
-      pc_->CreateDataChannel(label, nullptr);
-  EXPECT_NE(channel, nullptr);
-
-  rtc::scoped_refptr<DataChannelInterface> dup_channel =
-      pc_->CreateDataChannel(label, nullptr);
-  EXPECT_EQ(dup_channel, nullptr);
-}
-
 // This tests that a SCTP data channel is returned using different
 // DataChannelInit configurations.
 TEST_P(PeerConnectionInterfaceTest, CreateSctpDataChannel) {
@@ -2184,80 +2016,8 @@ TEST_P(PeerConnectionInterfaceTest, SctpDuplicatedLabelAllowed) {
   EXPECT_NE(dup_channel, nullptr);
 }
 
-// This test verifies that OnRenegotiationNeeded is fired for every new RTP
-// DataChannel.
-TEST_P(PeerConnectionInterfaceTest, RenegotiationNeededForNewRtpDataChannel) {
-  RTCConfiguration rtc_config;
-  rtc_config.enable_rtp_data_channel = true;
-  rtc_config.enable_dtls_srtp = false;
-  CreatePeerConnection(rtc_config);
 
-  rtc::scoped_refptr<DataChannelInterface> dc1 =
-      pc_->CreateDataChannel("test1", NULL);
-  EXPECT_TRUE(observer_.renegotiation_needed_);
-  observer_.renegotiation_needed_ = false;
-
-  CreateOfferReceiveAnswer();
-
-  rtc::scoped_refptr<DataChannelInterface> dc2 =
-      pc_->CreateDataChannel("test2", NULL);
-  EXPECT_EQ(observer_.renegotiation_needed_,
-            GetParam() == SdpSemantics::kPlanB);
-}
-
-// This test that a data channel closes when a PeerConnection is deleted/closed.
-TEST_P(PeerConnectionInterfaceTest, DataChannelCloseWhenPeerConnectionClose) {
-  RTCConfiguration rtc_config;
-  rtc_config.enable_rtp_data_channel = true;
-  rtc_config.enable_dtls_srtp = false;
-  CreatePeerConnection(rtc_config);
-
-  rtc::scoped_refptr<DataChannelInterface> data1 =
-      pc_->CreateDataChannel("test1", NULL);
-  rtc::scoped_refptr<DataChannelInterface> data2 =
-      pc_->CreateDataChannel("test2", NULL);
-  ASSERT_TRUE(data1 != NULL);
-  std::unique_ptr<MockDataChannelObserver> observer1(
-      new MockDataChannelObserver(data1));
-  std::unique_ptr<MockDataChannelObserver> observer2(
-      new MockDataChannelObserver(data2));
-
-  CreateOfferReceiveAnswer();
-  EXPECT_TRUE_WAIT(observer1->IsOpen(), kTimeout);
-  EXPECT_TRUE_WAIT(observer2->IsOpen(), kTimeout);
-
-  ReleasePeerConnection();
-  EXPECT_EQ(DataChannelInterface::kClosed, data1->state());
-  EXPECT_EQ(DataChannelInterface::kClosed, data2->state());
-}
-
-// This tests that RTP data channels can be rejected in an answer.
-TEST_P(PeerConnectionInterfaceTest, TestRejectRtpDataChannelInAnswer) {
-  RTCConfiguration rtc_config;
-  rtc_config.enable_rtp_data_channel = true;
-  rtc_config.enable_dtls_srtp = false;
-  CreatePeerConnection(rtc_config);
-
-  rtc::scoped_refptr<DataChannelInterface> offer_channel(
-      pc_->CreateDataChannel("offer_channel", NULL));
-
-  CreateOfferAsLocalDescription();
-
-  // Create an answer where the m-line for data channels are rejected.
-  std::string sdp;
-  EXPECT_TRUE(pc_->local_description()->ToString(&sdp));
-  std::unique_ptr<SessionDescriptionInterface> answer(
-      webrtc::CreateSessionDescription(SdpType::kAnswer, sdp));
-  ASSERT_TRUE(answer);
-  cricket::ContentInfo* data_info =
-      cricket::GetFirstDataContent(answer->description());
-  data_info->rejected = true;
-
-  DoSetRemoteDescription(std::move(answer));
-  EXPECT_EQ(DataChannelInterface::kClosed, offer_channel->state());
-}
-
-#ifdef HAVE_SCTP
+#ifdef WEBRTC_HAVE_SCTP
 // This tests that SCTP data channels can be rejected in an answer.
 TEST_P(PeerConnectionInterfaceTest, TestRejectSctpDataChannelInAnswer)
 #else
@@ -2312,7 +2072,7 @@ TEST_P(PeerConnectionInterfaceTest, ReceiveFireFoxOffer) {
       cricket::GetFirstVideoContent(pc_->local_description()->description());
   ASSERT_TRUE(content != NULL);
   EXPECT_FALSE(content->rejected);
-#ifdef HAVE_SCTP
+#ifdef WEBRTC_HAVE_SCTP
   content =
       cricket::GetFirstDataContent(pc_->local_description()->description());
   ASSERT_TRUE(content != NULL);
@@ -2672,23 +2432,24 @@ TEST_P(PeerConnectionInterfaceTest, CloseAndTestStreamsAndStates) {
     EXPECT_EQ(1u, pc_->local_streams()->count());
     EXPECT_EQ(1u, pc_->remote_streams()->count());
   } else {
-    // Verify that the RtpTransceivers are still present but all stopped.
+    // Verify that the RtpTransceivers are still returned.
     EXPECT_EQ(2u, pc_->GetTransceivers().size());
-    for (const auto& transceiver : pc_->GetTransceivers()) {
-      EXPECT_TRUE(transceiver->stopped());
-    }
   }
 
   auto audio_receiver = GetFirstReceiverOfType(cricket::MEDIA_TYPE_AUDIO);
-  ASSERT_TRUE(audio_receiver);
   auto video_receiver = GetFirstReceiverOfType(cricket::MEDIA_TYPE_VIDEO);
-  ASSERT_TRUE(video_receiver);
-
-  // Track state may be updated asynchronously.
-  EXPECT_EQ_WAIT(MediaStreamTrackInterface::kEnded,
-                 audio_receiver->track()->state(), kTimeout);
-  EXPECT_EQ_WAIT(MediaStreamTrackInterface::kEnded,
-                 video_receiver->track()->state(), kTimeout);
+  if (sdp_semantics_ == SdpSemantics::kPlanB) {
+    ASSERT_TRUE(audio_receiver);
+    ASSERT_TRUE(video_receiver);
+    // Track state may be updated asynchronously.
+    EXPECT_EQ_WAIT(MediaStreamTrackInterface::kEnded,
+                   audio_receiver->track()->state(), kTimeout);
+    EXPECT_EQ_WAIT(MediaStreamTrackInterface::kEnded,
+                   video_receiver->track()->state(), kTimeout);
+  } else {
+    ASSERT_FALSE(audio_receiver);
+    ASSERT_FALSE(video_receiver);
+  }
 }
 
 // Test that PeerConnection methods fails gracefully after
@@ -3456,7 +3217,7 @@ TEST_P(PeerConnectionInterfaceTest, CurrentAndPendingDescriptions) {
 // Tests that it won't crash when calling StartRtcEventLog or StopRtcEventLog
 // after the PeerConnection is closed.
 // This version tests the StartRtcEventLog version that receives an object
-// of type |RtcEventLogOutput|.
+// of type `RtcEventLogOutput`.
 TEST_P(PeerConnectionInterfaceTest,
        StartAndStopLoggingToOutputAfterPeerConnectionClosed) {
   CreatePeerConnection();
@@ -3485,7 +3246,10 @@ TEST_P(PeerConnectionInterfaceTest, OffersAndAnswersHaveTrickleIceOption) {
   EXPECT_TRUE(desc->transport_infos()[1].description.HasOption("trickle"));
 
   // Apply the offer as a remote description, then create an answer.
+  EXPECT_FALSE(pc_->can_trickle_ice_candidates());
   EXPECT_TRUE(DoSetRemoteDescription(std::move(offer)));
+  ASSERT_TRUE(pc_->can_trickle_ice_candidates());
+  EXPECT_TRUE(*(pc_->can_trickle_ice_candidates()));
   std::unique_ptr<SessionDescriptionInterface> answer;
   ASSERT_TRUE(DoCreateAnswer(&answer, &options));
   desc = answer->description();
@@ -3591,12 +3355,12 @@ TEST_F(PeerConnectionInterfaceTestPlanB,
 
 // Test that negotiation can succeed with a data channel only, and with the max
 // bundle policy. Previously there was a bug that prevented this.
-#ifdef HAVE_SCTP
+#ifdef WEBRTC_HAVE_SCTP
 TEST_P(PeerConnectionInterfaceTest, DataChannelOnlyOfferWithMaxBundlePolicy) {
 #else
 TEST_P(PeerConnectionInterfaceTest,
        DISABLED_DataChannelOnlyOfferWithMaxBundlePolicy) {
-#endif  // HAVE_SCTP
+#endif  // WEBRTC_HAVE_SCTP
   PeerConnectionInterface::RTCConfiguration config;
   config.bundle_policy = PeerConnectionInterface::kBundlePolicyMaxBundle;
   CreatePeerConnection(config);
@@ -3616,44 +3380,44 @@ TEST_P(PeerConnectionInterfaceTest,
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateWithoutMinSucceeds) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
-  bitrate.current_bitrate_bps = 100000;
+  BitrateSettings bitrate;
+  bitrate.start_bitrate_bps = 100000;
   EXPECT_TRUE(pc_->SetBitrate(bitrate).ok());
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateNegativeMinFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
+  BitrateSettings bitrate;
   bitrate.min_bitrate_bps = -1;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateCurrentLessThanMinFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
+  BitrateSettings bitrate;
   bitrate.min_bitrate_bps = 5;
-  bitrate.current_bitrate_bps = 3;
+  bitrate.start_bitrate_bps = 3;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateCurrentNegativeFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
-  bitrate.current_bitrate_bps = -1;
+  BitrateSettings bitrate;
+  bitrate.start_bitrate_bps = -1;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateMaxLessThanCurrentFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
-  bitrate.current_bitrate_bps = 10;
+  BitrateSettings bitrate;
+  bitrate.start_bitrate_bps = 10;
   bitrate.max_bitrate_bps = 8;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateMaxLessThanMinFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
+  BitrateSettings bitrate;
   bitrate.min_bitrate_bps = 10;
   bitrate.max_bitrate_bps = 8;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
@@ -3661,31 +3425,9 @@ TEST_P(PeerConnectionInterfaceTest, SetBitrateMaxLessThanMinFails) {
 
 TEST_P(PeerConnectionInterfaceTest, SetBitrateMaxNegativeFails) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
+  BitrateSettings bitrate;
   bitrate.max_bitrate_bps = -1;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
-}
-
-// ice_regather_interval_range requires WebRTC to be configured for continual
-// gathering already.
-TEST_P(PeerConnectionInterfaceTest,
-       SetIceRegatherIntervalRangeWithoutContinualGatheringFails) {
-  PeerConnectionInterface::RTCConfiguration config;
-  config.ice_regather_interval_range.emplace(1000, 2000);
-  config.continual_gathering_policy =
-      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_ONCE;
-  CreatePeerConnectionExpectFail(config);
-}
-
-// Ensures that there is no error when ice_regather_interval_range is set with
-// continual gathering enabled.
-TEST_P(PeerConnectionInterfaceTest,
-       SetIceRegatherIntervalRangeWithContinualGathering) {
-  PeerConnectionInterface::RTCConfiguration config;
-  config.ice_regather_interval_range.emplace(1000, 2000);
-  config.continual_gathering_policy =
-      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_CONTINUALLY;
-  CreatePeerConnection(config);
 }
 
 // The current bitrate from BitrateSettings is currently clamped
@@ -3694,8 +3436,8 @@ TEST_P(PeerConnectionInterfaceTest,
 // be clamped succeeds.
 TEST_P(PeerConnectionInterfaceTest, SetBitrateCurrentLessThanImplicitMin) {
   CreatePeerConnection();
-  PeerConnectionInterface::BitrateParameters bitrate;
-  bitrate.current_bitrate_bps = 1;
+  BitrateSettings bitrate;
+  bitrate.start_bitrate_bps = 1;
   EXPECT_TRUE(pc_->SetBitrate(bitrate).ok());
 }
 
@@ -3731,7 +3473,7 @@ TEST_P(PeerConnectionInterfaceTest,
 }
 
 // Test that the audio and video content will be added to an offer if both
-// |offer_to_receive_audio| and |offer_to_receive_video| options are 1.
+// `offer_to_receive_audio` and `offer_to_receive_video` options are 1.
 TEST_P(PeerConnectionInterfaceTest, CreateOfferWithAudioVideoOptions) {
   RTCOfferAnswerOptions rtc_options;
   rtc_options.offer_to_receive_audio = 1;
@@ -3746,7 +3488,7 @@ TEST_P(PeerConnectionInterfaceTest, CreateOfferWithAudioVideoOptions) {
 }
 
 // Test that only audio content will be added to the offer if only
-// |offer_to_receive_audio| options is 1.
+// `offer_to_receive_audio` options is 1.
 TEST_P(PeerConnectionInterfaceTest, CreateOfferWithAudioOnlyOptions) {
   RTCOfferAnswerOptions rtc_options;
   rtc_options.offer_to_receive_audio = 1;
@@ -3760,7 +3502,7 @@ TEST_P(PeerConnectionInterfaceTest, CreateOfferWithAudioOnlyOptions) {
   EXPECT_EQ(nullptr, GetFirstVideoContent(offer->description()));
 }
 
-// Test that only video content will be added if only |offer_to_receive_video|
+// Test that only video content will be added if only `offer_to_receive_video`
 // options is 1.
 TEST_P(PeerConnectionInterfaceTest, CreateOfferWithVideoOnlyOptions) {
   RTCOfferAnswerOptions rtc_options;
@@ -3788,7 +3530,7 @@ TEST_P(PeerConnectionInterfaceTest, CreateOfferWithDefaultOfferAnswerOptions) {
   EXPECT_EQ(nullptr, GetFirstVideoContent(offer->description()));
 }
 
-// Test that if |ice_restart| is true, the ufrag/pwd will change, otherwise
+// Test that if `ice_restart` is true, the ufrag/pwd will change, otherwise
 // ufrag/pwd will be the same in the new offer.
 TEST_P(PeerConnectionInterfaceTest, CreateOfferWithIceRestart) {
   CreatePeerConnection();
@@ -3805,14 +3547,14 @@ TEST_P(PeerConnectionInterfaceTest, CreateOfferWithIceRestart) {
   auto pwd1 =
       offer->description()->GetTransportInfoByName(mid)->description.ice_pwd;
 
-  // |ice_restart| is false, the ufrag/pwd shouldn't change.
+  // `ice_restart` is false, the ufrag/pwd shouldn't change.
   CreateOfferWithOptionsAsLocalDescription(&offer, rtc_options);
   auto ufrag2 =
       offer->description()->GetTransportInfoByName(mid)->description.ice_ufrag;
   auto pwd2 =
       offer->description()->GetTransportInfoByName(mid)->description.ice_pwd;
 
-  // |ice_restart| is true, the ufrag/pwd should change.
+  // `ice_restart` is true, the ufrag/pwd should change.
   rtc_options.ice_restart = true;
   CreateOfferWithOptionsAsLocalDescription(&offer, rtc_options);
   auto ufrag3 =
@@ -3826,7 +3568,7 @@ TEST_P(PeerConnectionInterfaceTest, CreateOfferWithIceRestart) {
   EXPECT_NE(pwd2, pwd3);
 }
 
-// Test that if |use_rtp_mux| is true, the bundling will be enabled in the
+// Test that if `use_rtp_mux` is true, the bundling will be enabled in the
 // offer; if it is false, there won't be any bundle group in the offer.
 TEST_P(PeerConnectionInterfaceTest, CreateOfferWithRtpMux) {
   RTCOfferAnswerOptions rtc_options;
@@ -3920,17 +3662,17 @@ TEST_P(PeerConnectionInterfaceTest,
 
 TEST_P(PeerConnectionInterfaceTest, ExtmapAllowMixedIsConfigurable) {
   RTCConfiguration config;
-  // Default behavior is false.
+  // Default behavior is true.
   CreatePeerConnection(config);
   std::unique_ptr<SessionDescriptionInterface> offer;
   ASSERT_TRUE(DoCreateOffer(&offer, nullptr));
-  EXPECT_FALSE(offer->description()->extmap_allow_mixed());
-  // Possible to set to true.
-  config.offer_extmap_allow_mixed = true;
-  CreatePeerConnection(config);
-  offer.release();
-  ASSERT_TRUE(DoCreateOffer(&offer, nullptr));
   EXPECT_TRUE(offer->description()->extmap_allow_mixed());
+  // Possible to set to false.
+  config.offer_extmap_allow_mixed = false;
+  CreatePeerConnection(config);
+  offer = nullptr;
+  ASSERT_TRUE(DoCreateOffer(&offer, nullptr));
+  EXPECT_FALSE(offer->description()->extmap_allow_mixed());
 }
 
 INSTANTIATE_TEST_SUITE_P(PeerConnectionInterfaceTest,
@@ -3942,7 +3684,6 @@ class PeerConnectionMediaConfigTest : public ::testing::Test {
  protected:
   void SetUp() override {
     pcf_ = PeerConnectionFactoryForTest::CreatePeerConnectionFactoryForTest();
-    pcf_->Initialize();
   }
   const cricket::MediaConfig TestCreatePeerConnection(
       const RTCConfiguration& config) {

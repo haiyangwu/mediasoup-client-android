@@ -58,11 +58,9 @@ void ProduceDecimatedSinusoidalOutputPower(int sample_rate_hz,
 
   for (size_t k = 0; k < kNumBlocks; ++k) {
     std::vector<float> sub_block(sub_block_size);
-    std::vector<std::vector<float>> input_multichannel(
-        1, std::vector<float>(kBlockSize));
-    memcpy(input_multichannel[0].data(), &input[k * kBlockSize],
-           kBlockSize * sizeof(float));
-    decimator.Decimate(input_multichannel, true, sub_block);
+    decimator.Decimate(
+        rtc::ArrayView<const float>(&input[k * kBlockSize], kBlockSize),
+        sub_block);
 
     std::copy(sub_block.begin(), sub_block.end(),
               output.begin() + k * sub_block_size);
@@ -105,30 +103,30 @@ TEST(Decimator, NoLeakageFromUpperFrequencies) {
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
 // Verifies the check for the input size.
-TEST(Decimator, WrongInputSize) {
+TEST(DecimatorDeathTest, WrongInputSize) {
   Decimator decimator(4);
-  std::vector<std::vector<float>> x(1, std::vector<float>(kBlockSize - 1, 0.f));
+  std::vector<float> x(kBlockSize - 1, 0.f);
   std::array<float, kBlockSize / 4> x_downsampled;
-  EXPECT_DEATH(decimator.Decimate(x, true, x_downsampled), "");
+  EXPECT_DEATH(decimator.Decimate(x, x_downsampled), "");
 }
 
 // Verifies the check for non-null output parameter.
-TEST(Decimator, NullOutput) {
+TEST(DecimatorDeathTest, NullOutput) {
   Decimator decimator(4);
-  std::vector<std::vector<float>> x(1, std::vector<float>(kBlockSize, 0.f));
-  EXPECT_DEATH(decimator.Decimate(x, true, nullptr), "");
+  std::vector<float> x(kBlockSize, 0.f);
+  EXPECT_DEATH(decimator.Decimate(x, nullptr), "");
 }
 
 // Verifies the check for the output size.
-TEST(Decimator, WrongOutputSize) {
+TEST(DecimatorDeathTest, WrongOutputSize) {
   Decimator decimator(4);
-  std::vector<std::vector<float>> x(1, std::vector<float>(kBlockSize, 0.f));
+  std::vector<float> x(kBlockSize, 0.f);
   std::array<float, kBlockSize / 4 - 1> x_downsampled;
-  EXPECT_DEATH(decimator.Decimate(x, true, x_downsampled), "");
+  EXPECT_DEATH(decimator.Decimate(x, x_downsampled), "");
 }
 
 // Verifies the check for the correct downsampling factor.
-TEST(Decimator, CorrectDownSamplingFactor) {
+TEST(DecimatorDeathTest, CorrectDownSamplingFactor) {
   EXPECT_DEATH(Decimator(3), "");
 }
 

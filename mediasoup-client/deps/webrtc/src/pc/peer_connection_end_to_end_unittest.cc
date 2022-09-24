@@ -16,8 +16,8 @@
 #include "api/audio_codecs/audio_codec_pair_id.h"
 #include "api/audio_codecs/audio_decoder_factory_template.h"
 #include "api/audio_codecs/audio_encoder_factory_template.h"
-#include "api/audio_codecs/builtin_audio_decoder_factory.h"
-#include "api/audio_codecs/builtin_audio_encoder_factory.h"
+#include "api/audio_codecs/opus_audio_decoder_factory.h"
+#include "api/audio_codecs/opus_audio_encoder_factory.h"
 #include "media/sctp/sctp_transport_internal.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/logging.h"
@@ -132,7 +132,7 @@ class PeerConnectionEndToEndBaseTest : public sigslot::has_slots<>,
     callee_signaled_data_channels_.push_back(dc);
   }
 
-  // Tests that |dc1| and |dc2| can send to and receive from each other.
+  // Tests that `dc1` and `dc2` can send to and receive from each other.
   void TestDataChannelSendAndReceive(DataChannelInterface* dc1,
                                      DataChannelInterface* dc2,
                                      size_t size = 6) {
@@ -358,8 +358,8 @@ struct AudioDecoderUnicornSparklesRainbow {
 
 TEST_P(PeerConnectionEndToEndTest, Call) {
   rtc::scoped_refptr<webrtc::AudioDecoderFactory> real_decoder_factory =
-      webrtc::CreateBuiltinAudioDecoderFactory();
-  CreatePcs(webrtc::CreateBuiltinAudioEncoderFactory(),
+      webrtc::CreateOpusAudioDecoderFactory();
+  CreatePcs(webrtc::CreateOpusAudioEncoderFactory(),
             CreateForwardingMockDecoderFactory(real_decoder_factory.get()));
   GetAndAddUserMedia();
   Negotiate();
@@ -368,8 +368,8 @@ TEST_P(PeerConnectionEndToEndTest, Call) {
 
 TEST_P(PeerConnectionEndToEndTest, CallWithSdesKeyNegotiation) {
   config_.enable_dtls_srtp = false;
-  CreatePcs(webrtc::CreateBuiltinAudioEncoderFactory(),
-            webrtc::CreateBuiltinAudioDecoderFactory());
+  CreatePcs(webrtc::CreateOpusAudioEncoderFactory(),
+            webrtc::CreateOpusAudioDecoderFactory());
   GetAndAddUserMedia();
   Negotiate();
   WaitForCallEstablished();
@@ -465,7 +465,7 @@ TEST_P(PeerConnectionEndToEndTest, CallWithCustomCodec) {
   EXPECT_NE(encoder_id1, encoder_id2);
 }
 
-#ifdef HAVE_SCTP
+#ifdef WEBRTC_HAVE_SCTP
 // Verifies that a DataChannel created before the negotiation can transition to
 // "OPEN" and transfer data.
 TEST_P(PeerConnectionEndToEndTest, CreateDataChannelBeforeNegotiate) {
@@ -735,12 +735,12 @@ TEST_P(PeerConnectionEndToEndTest, TooManyDataChannelsOpenedBeforeConnecting) {
             channels[cricket::kMaxSctpStreams / 2]->state());
 }
 
-#endif  // HAVE_SCTP
+#endif  // WEBRTC_HAVE_SCTP
 
 TEST_P(PeerConnectionEndToEndTest, CanRestartIce) {
   rtc::scoped_refptr<webrtc::AudioDecoderFactory> real_decoder_factory =
-      webrtc::CreateBuiltinAudioDecoderFactory();
-  CreatePcs(webrtc::CreateBuiltinAudioEncoderFactory(),
+      webrtc::CreateOpusAudioDecoderFactory();
+  CreatePcs(webrtc::CreateOpusAudioEncoderFactory(),
             CreateForwardingMockDecoderFactory(real_decoder_factory.get()));
   GetAndAddUserMedia();
   Negotiate();

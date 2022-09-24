@@ -12,24 +12,15 @@
 
 #if defined(WEBRTC_POSIX)
 #include <sys/time.h>
-#if defined(WEBRTC_MAC)
-#include <mach/mach_time.h>
-
-#include "rtc_base/numerics/safe_conversions.h"
-#endif
 #endif
 
 #if defined(WEBRTC_WIN)
-// clang-format off
-// clang formatting would put <windows.h> last,
-// which leads to compilation failure.
-#include <windows.h>
-#include <mmsystem.h>
 #include <sys/timeb.h>
-// clang-format on
 #endif
 
 #include "rtc_base/checks.h"
+#include "rtc_base/numerics/safe_conversions.h"
+#include "rtc_base/system_time.h"
 #include "rtc_base/time_utils.h"
 
 namespace rtc {
@@ -142,60 +133,11 @@ void SyncWithNtp(int64_t time_from_ntp_server_ms) {
   TimeHelper::SyncWithNtp(time_from_ntp_server_ms);
 }
 
-#endif  // defined(WINUWP)
-
-int64_t SystemTimeNanos() {
-  int64_t ticks;
-#if defined(WEBRTC_MAC)
-  static mach_timebase_info_data_t timebase;
-  if (timebase.denom == 0) {
-    // Get the timebase if this is the first time we run.
-    // Recommended by Apple's QA1398.
-    if (mach_timebase_info(&timebase) != KERN_SUCCESS) {
-      RTC_NOTREACHED();
-    }
-  }
-  // Use timebase to convert absolute time tick units into nanoseconds.
-  const auto mul = [](uint64_t a, uint32_t b) -> int64_t {
-    RTC_DCHECK_NE(b, 0);
-    RTC_DCHECK_LE(a, std::numeric_limits<int64_t>::max() / b)
-        << "The multiplication " << a << " * " << b << " overflows";
-    return rtc::dchecked_cast<int64_t>(a * b);
-  };
-  ticks = mul(mach_absolute_time(), timebase.numer) / timebase.denom;
-#elif defined(WEBRTC_POSIX)
-  struct timespec ts;
-  // TODO(deadbeef): Do we need to handle the case when CLOCK_MONOTONIC is not
-  // supported?
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  ticks = kNumNanosecsPerSec * static_cast<int64_t>(ts.tv_sec) +
-          static_cast<int64_t>(ts.tv_nsec);
-#elif defined(WINUWP)
-  ticks = TimeHelper::TicksNs();
-#elif defined(WEBRTC_WIN)
-  static volatile LONG last_timegettime = 0;
-  static volatile int64_t num_wrap_timegettime = 0;
-  volatile LONG* last_timegettime_ptr = &last_timegettime;
-  DWORD now = timeGetTime();
-  // Atomically update the last gotten time
-  DWORD old = InterlockedExchange(last_timegettime_ptr, now);
-  if (now < old) {
-    // If now is earlier than old, there may have been a race between threads.
-    // 0x0fffffff ~3.1 days, the code will not take that long to execute
-    // so it must have been a wrap around.
-    if (old > 0xf0000000 && now < 0x0fffffff) {
-      num_wrap_timegettime++;
-    }
-  }
-  ticks = now + (num_wrap_timegettime << 32);
-  // TODO(deadbeef): Calculate with nanosecond precision. Otherwise, we're
-  // just wasting a multiply and divide when doing Time() on Windows.
-  ticks = ticks * kNumNanosecsPerMillisec;
-#else
-#error Unsupported platform.
-#endif
-  return ticks;
+int64_t WinUwpSystemTimeNanos() {
+  return TimeHelper::TicksNs();
 }
+
+#endif  // defined(WINUWP)
 
 int64_t SystemTimeMillis() {
   return static_cast<int64_t>(SystemTimeNanos() / kNumNanosecsPerMillisec);
@@ -248,7 +190,7 @@ int64_t TimestampWrapAroundHandler::Unwrap(uint32_t ts) {
       ++num_wrap_;
   } else if ((ts - last_ts_) > 0xf0000000) {
     // Backwards wrap. Unwrap with last wrap count and don't update last_ts_.
-    return ts + ((num_wrap_ - 1) << 32);
+    return ts + (num_wrap_ - 1) * (int64_t{1} << 32);
   }
 
   last_ts_ = ts;
@@ -290,11 +232,11 @@ int64_t TmToSeconds(const tm& tm) {
 
   // We will have added one day too much above if expiration is during a leap
   // year, and expiration is in January or February.
-  if (expiry_in_leap_year && month <= 2 - 1)  // |month| is zero based.
+  if (expiry_in_leap_year && month <= 2 - 1)  // `month` is zero based.
     day -= 1;
 
-  // Combine all variables into seconds from 1970-01-01 00:00 (except |month|
-  // which was accumulated into |day| above).
+  // Combine all variables into seconds from 1970-01-01 00:00 (except `month`
+  // which was accumulated into `day` above).
   return (((static_cast<int64_t>(year - 1970) * 365 + day) * 24 + hour) * 60 +
           min) *
              60 +

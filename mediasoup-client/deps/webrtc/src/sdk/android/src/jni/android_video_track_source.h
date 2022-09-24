@@ -13,14 +13,12 @@
 
 #include <jni.h>
 
-#include "common_video/include/i420_buffer_pool.h"
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "media/base/adapted_video_track_source.h"
-#include "rtc_base/async_invoker.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/timestamp_aligner.h"
-#include "sdk/android/src/jni/video_frame.h"
+#include "sdk/android/src/jni/jni_helpers.h"
 
 namespace webrtc {
 namespace jni {
@@ -84,10 +82,12 @@ class AndroidVideoTrackSource : public rtc::AdaptedVideoTrackSource {
                          const JavaRef<jobject>& j_max_portrait_pixel_count,
                          const JavaRef<jobject>& j_max_fps);
 
+  void SetIsScreencast(JNIEnv* env, jboolean j_is_screencast);
+
  private:
   rtc::Thread* signaling_thread_;
   std::atomic<SourceState> state_;
-  const bool is_screencast_;
+  std::atomic<bool> is_screencast_;
   rtc::TimestampAligner timestamp_aligner_;
   const bool align_timestamps_;
 };

@@ -13,14 +13,14 @@
 #include <memory>
 
 #include "api/call/transport.h"
+#include "api/sequence_checker.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/test/simulated_network.h"
 #include "call/call.h"
 #include "call/simulated_packet_receiver.h"
-#include "rtc_base/synchronization/sequence_checker.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/task_utils/repeating_task.h"
 #include "rtc_base/thread_annotations.h"
-#include "test/single_threaded_task_queue.h"
 
 namespace webrtc {
 
@@ -67,7 +67,7 @@ class DirectTransport : public Transport {
 
   TaskQueueBase* const task_queue_;
 
-  rtc::CriticalSection process_lock_;
+  Mutex process_lock_;
   RepeatingTaskHandle next_process_task_ RTC_GUARDED_BY(&process_lock_);
 
   const Demuxer demuxer_;

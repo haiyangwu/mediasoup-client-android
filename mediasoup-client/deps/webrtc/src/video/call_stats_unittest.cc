@@ -32,7 +32,7 @@ class MockStatsObserver : public CallStatsObserver {
   MockStatsObserver() {}
   virtual ~MockStatsObserver() {}
 
-  MOCK_METHOD2(OnRttUpdate, void(int64_t, int64_t));
+  MOCK_METHOD(void, OnRttUpdate, (int64_t, int64_t), (override));
 };
 
 class CallStatsTest : public ::testing::Test {
@@ -315,10 +315,11 @@ TEST_F(CallStatsTest, ProducesHistogramMetrics) {
   process_thread_->Stop();
   call_stats_.UpdateHistogramsForTest();
 
-  EXPECT_EQ(1, metrics::NumSamples(
-                   "WebRTC.Video.AverageRoundTripTimeInMilliseconds"));
-  EXPECT_EQ(1, metrics::NumEvents(
-                   "WebRTC.Video.AverageRoundTripTimeInMilliseconds", kRtt));
+  EXPECT_METRIC_EQ(1, metrics::NumSamples(
+                          "WebRTC.Video.AverageRoundTripTimeInMilliseconds"));
+  EXPECT_METRIC_EQ(
+      1, metrics::NumEvents("WebRTC.Video.AverageRoundTripTimeInMilliseconds",
+                            kRtt));
 }
 
 }  // namespace webrtc

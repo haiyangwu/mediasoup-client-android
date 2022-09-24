@@ -14,11 +14,14 @@
 #include <memory>
 
 #include "api/rtc_event_log/rtc_event.h"
+#include "api/units/timestamp.h"
 
 namespace webrtc {
 
 class RtcEventGenericPacketSent final : public RtcEvent {
  public:
+  static constexpr Type kType = Type::GenericPacketSent;
+
   RtcEventGenericPacketSent(int64_t packet_number,
                             size_t overhead_length,
                             size_t payload_length,
@@ -27,9 +30,8 @@ class RtcEventGenericPacketSent final : public RtcEvent {
 
   std::unique_ptr<RtcEventGenericPacketSent> Copy() const;
 
-  Type GetType() const override;
-
-  bool IsConfigEvent() const override;
+  Type GetType() const override { return kType; }
+  bool IsConfigEvent() const override { return false; }
 
   // An identifier of the packet.
   int64_t packet_number() const { return packet_number_; }
@@ -59,6 +61,31 @@ class RtcEventGenericPacketSent final : public RtcEvent {
   const size_t padding_length_;
 };
 
+struct LoggedGenericPacketSent {
+  LoggedGenericPacketSent() = default;
+  LoggedGenericPacketSent(Timestamp timestamp,
+                          int64_t packet_number,
+                          size_t overhead_length,
+                          size_t payload_length,
+                          size_t padding_length)
+      : timestamp(timestamp),
+        packet_number(packet_number),
+        overhead_length(overhead_length),
+        payload_length(payload_length),
+        padding_length(padding_length) {}
+
+  int64_t log_time_us() const { return timestamp.us(); }
+  int64_t log_time_ms() const { return timestamp.ms(); }
+
+  size_t packet_length() const {
+    return payload_length + padding_length + overhead_length;
+  }
+  Timestamp timestamp = Timestamp::MinusInfinity();
+  int64_t packet_number;
+  size_t overhead_length;
+  size_t payload_length;
+  size_t padding_length;
+};
 }  // namespace webrtc
 
 #endif  // LOGGING_RTC_EVENT_LOG_EVENTS_RTC_EVENT_GENERIC_PACKET_SENT_H_

@@ -10,6 +10,7 @@
 
 #include "modules/congestion_controller/include/receive_side_congestion_controller.h"
 
+#include "api/units/data_rate.h"
 #include "modules/pacing/packet_router.h"
 #include "modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "modules/remote_bitrate_estimator/remote_bitrate_estimator_abs_send_time.h"
@@ -38,45 +39,45 @@ void ReceiveSideCongestionController::WrappingBitrateEstimator::IncomingPacket(
     int64_t arrival_time_ms,
     size_t payload_size,
     const RTPHeader& header) {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   PickEstimatorFromHeader(header);
   rbe_->IncomingPacket(arrival_time_ms, payload_size, header);
 }
 
 void ReceiveSideCongestionController::WrappingBitrateEstimator::Process() {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   rbe_->Process();
 }
 
 int64_t ReceiveSideCongestionController::WrappingBitrateEstimator::
     TimeUntilNextProcess() {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   return rbe_->TimeUntilNextProcess();
 }
 
 void ReceiveSideCongestionController::WrappingBitrateEstimator::OnRttUpdate(
     int64_t avg_rtt_ms,
     int64_t max_rtt_ms) {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   rbe_->OnRttUpdate(avg_rtt_ms, max_rtt_ms);
 }
 
 void ReceiveSideCongestionController::WrappingBitrateEstimator::RemoveStream(
     unsigned int ssrc) {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   rbe_->RemoveStream(ssrc);
 }
 
 bool ReceiveSideCongestionController::WrappingBitrateEstimator::LatestEstimate(
     std::vector<unsigned int>* ssrcs,
     unsigned int* bitrate_bps) const {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   return rbe_->LatestEstimate(ssrcs, bitrate_bps);
 }
 
 void ReceiveSideCongestionController::WrappingBitrateEstimator::SetMinBitrate(
     int min_bitrate_bps) {
-  rtc::CritScope cs(&crit_sect_);
+  MutexLock lock(&mutex_);
   rbe_->SetMinBitrate(min_bitrate_bps);
   min_bitrate_bps_ = min_bitrate_bps;
 }
@@ -99,7 +100,7 @@ void ReceiveSideCongestionController::WrappingBitrateEstimator::
       if (packets_since_absolute_send_time_ >= kTimeOffsetSwitchThreshold) {
         RTC_LOG(LS_INFO)
             << "WrappingBitrateEstimator: Switching to transmission "
-            << "time offset RBE.";
+               "time offset RBE.";
         using_absolute_send_time_ = false;
         PickEstimator();
       }
@@ -120,16 +121,13 @@ void ReceiveSideCongestionController::WrappingBitrateEstimator::
 
 ReceiveSideCongestionController::ReceiveSideCongestionController(
     Clock* clock,
-    PacketRouter* packet_router)
-    : ReceiveSideCongestionController(clock, packet_router, nullptr) {}
-
-ReceiveSideCongestionController::ReceiveSideCongestionController(
-    Clock* clock,
-    PacketRouter* packet_router,
+    RemoteEstimatorProxy::TransportFeedbackSender feedback_sender,
+    RembThrottler::RembSender remb_sender,
     NetworkStateEstimator* network_state_estimator)
-    : remote_bitrate_estimator_(packet_router, clock),
+    : remb_throttler_(std::move(remb_sender), clock),
+      remote_bitrate_estimator_(&remb_throttler_, clock),
       remote_estimator_proxy_(clock,
-                              packet_router,
+                              std::move(feedback_sender),
                               &field_trial_config_,
                               network_state_estimator) {}
 
@@ -184,6 +182,11 @@ int64_t ReceiveSideCongestionController::TimeUntilNextProcess() {
 
 void ReceiveSideCongestionController::Process() {
   remote_bitrate_estimator_.Process();
+}
+
+void ReceiveSideCongestionController::SetMaxDesiredReceiveBitrate(
+    DataRate bitrate) {
+  remb_throttler_.SetMaxDesiredReceiveBitrate(bitrate);
 }
 
 }  // namespace webrtc

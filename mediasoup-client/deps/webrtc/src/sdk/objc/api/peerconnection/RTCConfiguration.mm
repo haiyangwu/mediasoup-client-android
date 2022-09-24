@@ -15,14 +15,14 @@
 #import "RTCCertificate.h"
 #import "RTCConfiguration+Native.h"
 #import "RTCIceServer+Private.h"
-#import "RTCIntervalRange+Private.h"
 #import "base/RTCLogging.h"
 
 #include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/ssl_identity.h"
 
-@implementation RTCConfiguration
+@implementation RTC_OBJC_TYPE (RTCConfiguration)
 
+@synthesize enableDscp = _enableDscp;
 @synthesize iceServers = _iceServers;
 @synthesize certificate = _certificate;
 @synthesize iceTransportPolicy = _iceTransportPolicy;
@@ -48,15 +48,21 @@
 @synthesize shouldSurfaceIceCandidatesOnIceTransportTypeChanged =
     _shouldSurfaceIceCandidatesOnIceTransportTypeChanged;
 @synthesize iceCheckMinInterval = _iceCheckMinInterval;
-@synthesize iceRegatherIntervalRange = _iceRegatherIntervalRange;
 @synthesize sdpSemantics = _sdpSemantics;
 @synthesize turnCustomizer = _turnCustomizer;
 @synthesize activeResetSrtpParams = _activeResetSrtpParams;
-@synthesize useMediaTransport = _useMediaTransport;
-@synthesize useMediaTransportForDataChannels = _useMediaTransportForDataChannels;
+@synthesize allowCodecSwitching = _allowCodecSwitching;
 @synthesize cryptoOptions = _cryptoOptions;
+@synthesize turnLoggingId = _turnLoggingId;
 @synthesize rtcpAudioReportIntervalMs = _rtcpAudioReportIntervalMs;
 @synthesize rtcpVideoReportIntervalMs = _rtcpVideoReportIntervalMs;
+@synthesize enableImplicitRollback = _enableImplicitRollback;
+@synthesize offerExtmapAllowMixed = _offerExtmapAllowMixed;
+@synthesize iceCheckIntervalStrongConnectivity = _iceCheckIntervalStrongConnectivity;
+@synthesize iceCheckIntervalWeakConnectivity = _iceCheckIntervalWeakConnectivity;
+@synthesize iceUnwritableTimeout = _iceUnwritableTimeout;
+@synthesize iceUnwritableMinChecks = _iceUnwritableMinChecks;
+@synthesize iceInactiveTimeout = _iceInactiveTimeout;
 
 - (instancetype)init {
   // Copy defaults.
@@ -67,9 +73,11 @@
 - (instancetype)initWithNativeConfiguration:
     (const webrtc::PeerConnectionInterface::RTCConfiguration &)config {
   if (self = [super init]) {
+    _enableDscp = config.dscp();
     NSMutableArray *iceServers = [NSMutableArray array];
     for (const webrtc::PeerConnectionInterface::IceServer& server : config.servers) {
-      RTCIceServer *iceServer = [[RTCIceServer alloc] initWithNativeServer:server];
+      RTC_OBJC_TYPE(RTCIceServer) *iceServer =
+          [[RTC_OBJC_TYPE(RTCIceServer) alloc] initWithNativeServer:server];
       [iceServers addObject:iceServer];
     }
     _iceServers = iceServers;
@@ -77,9 +85,9 @@
       rtc::scoped_refptr<rtc::RTCCertificate> native_cert;
       native_cert = config.certificates[0];
       rtc::RTCCertificatePEM native_pem = native_cert->ToPEM();
-      _certificate =
-          [[RTCCertificate alloc] initWithPrivateKey:@(native_pem.private_key().c_str())
-                                         certificate:@(native_pem.certificate().c_str())];
+      _certificate = [[RTC_OBJC_TYPE(RTCCertificate) alloc]
+          initWithPrivateKey:@(native_pem.private_key().c_str())
+                 certificate:@(native_pem.certificate().c_str())];
     }
     _iceTransportPolicy =
         [[self class] transportPolicyForTransportsType:config.type];
@@ -104,8 +112,6 @@
     _iceConnectionReceivingTimeout = config.ice_connection_receiving_timeout;
     _iceBackupCandidatePairPingInterval =
         config.ice_backup_candidate_pair_ping_interval;
-    _useMediaTransport = config.use_media_transport;
-    _useMediaTransportForDataChannels = config.use_media_transport_for_data_channels;
     _keyType = RTCEncryptionKeyTypeECDSA;
     _iceCandidatePoolSize = config.ice_candidate_pool_size;
     _shouldPruneTurnPorts = config.prune_turn_ports;
@@ -117,16 +123,11 @@
       _iceCheckMinInterval =
           [NSNumber numberWithInt:*config.ice_check_min_interval];
     }
-    if (config.ice_regather_interval_range) {
-      const rtc::IntervalRange &nativeIntervalRange = config.ice_regather_interval_range.value();
-      _iceRegatherIntervalRange =
-          [[RTCIntervalRange alloc] initWithNativeIntervalRange:nativeIntervalRange];
-    }
     _sdpSemantics = [[self class] sdpSemanticsForNativeSdpSemantics:config.sdp_semantics];
     _turnCustomizer = config.turn_customizer;
     _activeResetSrtpParams = config.active_reset_srtp_params;
     if (config.crypto_options) {
-      _cryptoOptions = [[RTCCryptoOptions alloc]
+      _cryptoOptions = [[RTC_OBJC_TYPE(RTCCryptoOptions) alloc]
                initWithSrtpEnableGcmCryptoSuites:config.crypto_options->srtp
                                                      .enable_gcm_crypto_suites
              srtpEnableAes128Sha1_32CryptoCipher:config.crypto_options->srtp
@@ -136,16 +137,36 @@
                     sframeRequireFrameEncryption:config.crypto_options->sframe
                                                      .require_frame_encryption];
     }
+    _turnLoggingId = [NSString stringWithUTF8String:config.turn_logging_id.c_str()];
     _rtcpAudioReportIntervalMs = config.audio_rtcp_report_interval_ms();
     _rtcpVideoReportIntervalMs = config.video_rtcp_report_interval_ms();
+    _allowCodecSwitching = config.allow_codec_switching.value_or(false);
+    _enableImplicitRollback = config.enable_implicit_rollback;
+    _offerExtmapAllowMixed = config.offer_extmap_allow_mixed;
+    _iceCheckIntervalStrongConnectivity =
+        config.ice_check_interval_strong_connectivity.has_value() ?
+        [NSNumber numberWithInt:*config.ice_check_interval_strong_connectivity] :
+        nil;
+    _iceCheckIntervalWeakConnectivity = config.ice_check_interval_weak_connectivity.has_value() ?
+        [NSNumber numberWithInt:*config.ice_check_interval_weak_connectivity] :
+        nil;
+    _iceUnwritableTimeout = config.ice_unwritable_timeout.has_value() ?
+        [NSNumber numberWithInt:*config.ice_unwritable_timeout] :
+        nil;
+    _iceUnwritableMinChecks = config.ice_unwritable_min_checks.has_value() ?
+        [NSNumber numberWithInt:*config.ice_unwritable_min_checks] :
+        nil;
+    _iceInactiveTimeout = config.ice_inactive_timeout.has_value() ?
+        [NSNumber numberWithInt:*config.ice_inactive_timeout] :
+        nil;
   }
   return self;
 }
 
 - (NSString *)description {
-  static NSString *formatString = @"RTCConfiguration: "
+  static NSString *formatString = @"RTC_OBJC_TYPE(RTCConfiguration): "
                                   @"{\n%@\n%@\n%@\n%@\n%@\n%@\n%@\n%@\n%d\n%d\n%d\n%d\n%d\n%d\n"
-                                  @"%d\n%@\n%@\n%d\n%d\n%d\n%d\n%d\n%@\n}\n";
+                                  @"%d\n%@\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n}\n";
 
   return [NSString
       stringWithFormat:formatString,
@@ -166,13 +187,13 @@
                        _shouldPresumeWritableWhenFullyRelayed,
                        _shouldSurfaceIceCandidatesOnIceTransportTypeChanged,
                        _iceCheckMinInterval,
-                       _iceRegatherIntervalRange,
                        _disableLinkLocalNetworks,
                        _disableIPV6,
                        _disableIPV6OnWiFi,
                        _maxIPv6Networks,
                        _activeResetSrtpParams,
-                       _useMediaTransport];
+                       _enableDscp,
+                       _enableImplicitRollback];
 }
 
 #pragma mark - Private
@@ -183,7 +204,8 @@
       nativeConfig(new webrtc::PeerConnectionInterface::RTCConfiguration(
           webrtc::PeerConnectionInterface::RTCConfigurationType::kAggressive));
 
-  for (RTCIceServer *iceServer in _iceServers) {
+  nativeConfig->set_dscp(_enableDscp);
+  for (RTC_OBJC_TYPE(RTCIceServer) * iceServer in _iceServers) {
     nativeConfig->servers.push_back(iceServer.nativeServer);
   }
   nativeConfig->type =
@@ -209,8 +231,6 @@
       _iceConnectionReceivingTimeout;
   nativeConfig->ice_backup_candidate_pair_ping_interval =
       _iceBackupCandidatePairPingInterval;
-  nativeConfig->use_media_transport = _useMediaTransport;
-  nativeConfig->use_media_transport_for_data_channels = _useMediaTransportForDataChannels;
   rtc::KeyType keyType =
       [[self class] nativeEncryptionKeyTypeForKeyType:_keyType];
   if (_certificate != nullptr) {
@@ -249,12 +269,6 @@
   if (_iceCheckMinInterval != nil) {
     nativeConfig->ice_check_min_interval = absl::optional<int>(_iceCheckMinInterval.intValue);
   }
-  if (_iceRegatherIntervalRange != nil) {
-    std::unique_ptr<rtc::IntervalRange> nativeIntervalRange(
-        _iceRegatherIntervalRange.nativeIntervalRange);
-    nativeConfig->ice_regather_interval_range =
-        absl::optional<rtc::IntervalRange>(*nativeIntervalRange);
-  }
   nativeConfig->sdp_semantics = [[self class] nativeSdpSemanticsForSdpSemantics:_sdpSemantics];
   if (_turnCustomizer) {
     nativeConfig->turn_customizer = _turnCustomizer;
@@ -272,8 +286,29 @@
         _cryptoOptions.sframeRequireFrameEncryption ? true : false;
     nativeConfig->crypto_options = absl::optional<webrtc::CryptoOptions>(nativeCryptoOptions);
   }
+  nativeConfig->turn_logging_id = [_turnLoggingId UTF8String];
   nativeConfig->set_audio_rtcp_report_interval_ms(_rtcpAudioReportIntervalMs);
   nativeConfig->set_video_rtcp_report_interval_ms(_rtcpVideoReportIntervalMs);
+  nativeConfig->allow_codec_switching = _allowCodecSwitching;
+  nativeConfig->enable_implicit_rollback = _enableImplicitRollback;
+  nativeConfig->offer_extmap_allow_mixed = _offerExtmapAllowMixed;
+  if (_iceCheckIntervalStrongConnectivity != nil) {
+    nativeConfig->ice_check_interval_strong_connectivity =
+        absl::optional<int>(_iceCheckIntervalStrongConnectivity.intValue);
+  }
+  if (_iceCheckIntervalWeakConnectivity != nil) {
+    nativeConfig->ice_check_interval_weak_connectivity =
+        absl::optional<int>(_iceCheckIntervalWeakConnectivity.intValue);
+  }
+  if (_iceUnwritableTimeout != nil) {
+    nativeConfig->ice_unwritable_timeout = absl::optional<int>(_iceUnwritableTimeout.intValue);
+  }
+  if (_iceUnwritableMinChecks != nil) {
+    nativeConfig->ice_unwritable_min_checks = absl::optional<int>(_iceUnwritableMinChecks.intValue);
+  }
+  if (_iceInactiveTimeout != nil) {
+    nativeConfig->ice_inactive_timeout = absl::optional<int>(_iceInactiveTimeout.intValue);
+  }
   return nativeConfig.release();
 }
 

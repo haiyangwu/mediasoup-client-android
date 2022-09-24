@@ -14,6 +14,8 @@
 #include <memory>
 #include <utility>
 
+#include "absl/types/optional.h"
+#include "api/units/time_delta.h"
 #include "modules/audio_coding/codecs/cng/webrtc_cng.h"
 #include "rtc_base/checks.h"
 
@@ -52,11 +54,11 @@ class AudioEncoderCng final : public AudioEncoder {
       override;
   void OnReceivedUplinkPacketLossFraction(
       float uplink_packet_loss_fraction) override;
-  void OnReceivedUplinkRecoverablePacketLossFraction(
-      float uplink_recoverable_packet_loss_fraction) override;
   void OnReceivedUplinkBandwidth(
       int target_audio_bitrate_bps,
       absl::optional<int64_t> bwe_period_ms) override;
+  absl::optional<std::pair<TimeDelta, TimeDelta>> GetFrameLengthRange()
+      const override;
 
  private:
   EncodedInfo EncodePassive(size_t frames_to_encode, rtc::Buffer* encoded);
@@ -169,9 +171,8 @@ AudioEncoder::EncodedInfo AudioEncoderCng::EncodeImpl(
       last_frame_active_ = true;
       break;
     }
-    case Vad::kError: {
-      FATAL();  // Fails only if fed invalid data.
-      break;
+    default: {
+      RTC_CHECK_NOTREACHED();
     }
   }
 
@@ -220,17 +221,16 @@ void AudioEncoderCng::OnReceivedUplinkPacketLossFraction(
       uplink_packet_loss_fraction);
 }
 
-void AudioEncoderCng::OnReceivedUplinkRecoverablePacketLossFraction(
-    float uplink_recoverable_packet_loss_fraction) {
-  speech_encoder_->OnReceivedUplinkRecoverablePacketLossFraction(
-      uplink_recoverable_packet_loss_fraction);
-}
-
 void AudioEncoderCng::OnReceivedUplinkBandwidth(
     int target_audio_bitrate_bps,
     absl::optional<int64_t> bwe_period_ms) {
   speech_encoder_->OnReceivedUplinkBandwidth(target_audio_bitrate_bps,
                                              bwe_period_ms);
+}
+
+absl::optional<std::pair<TimeDelta, TimeDelta>>
+AudioEncoderCng::GetFrameLengthRange() const {
+  return speech_encoder_->GetFrameLengthRange();
 }
 
 AudioEncoder::EncodedInfo AudioEncoderCng::EncodePassive(

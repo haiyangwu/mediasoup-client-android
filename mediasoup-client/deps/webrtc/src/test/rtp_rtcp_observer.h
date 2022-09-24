@@ -15,15 +15,15 @@
 #include <utility>
 #include <vector>
 
+#include "api/array_view.h"
 #include "api/test/simulated_network.h"
 #include "call/simulated_packet_receiver.h"
 #include "call/video_send_stream.h"
-#include "rtc_base/critical_section.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 #include "rtc_base/event.h"
 #include "system_wrappers/include/field_trial.h"
 #include "test/direct_transport.h"
 #include "test/gtest.h"
-#include "test/rtp_header_parser.h"
 
 namespace {
 const int kShortTimeoutMs = 500;
@@ -33,7 +33,6 @@ namespace webrtc {
 namespace test {
 
 class PacketTransport;
-class DEPRECATED_SingleThreadedTaskQueueForTesting;
 
 class RtpRtcpObserver {
  public:
@@ -71,11 +70,9 @@ class RtpRtcpObserver {
  protected:
   RtpRtcpObserver() : RtpRtcpObserver(0) {}
   explicit RtpRtcpObserver(int event_timeout_ms)
-      : parser_(RtpHeaderParser::CreateForTest()),
-        timeout_ms_(event_timeout_ms) {}
+      : timeout_ms_(event_timeout_ms) {}
 
   rtc::Event observation_complete_;
-  const std::unique_ptr<RtpHeaderParser> parser_;
 
  private:
   const int timeout_ms_;
@@ -102,7 +99,7 @@ class PacketTransport : public test::DirectTransport {
   bool SendRtp(const uint8_t* packet,
                size_t length,
                const PacketOptions& options) override {
-    EXPECT_FALSE(RtpHeaderParser::IsRtcp(packet, length));
+    EXPECT_TRUE(IsRtpPacket(rtc::MakeArrayView(packet, length)));
     RtpRtcpObserver::Action action;
     {
       if (transport_type_ == kSender) {
@@ -122,7 +119,7 @@ class PacketTransport : public test::DirectTransport {
   }
 
   bool SendRtcp(const uint8_t* packet, size_t length) override {
-    EXPECT_TRUE(RtpHeaderParser::IsRtcp(packet, length));
+    EXPECT_TRUE(IsRtcpPacket(rtc::MakeArrayView(packet, length)));
     RtpRtcpObserver::Action action;
     {
       if (transport_type_ == kSender) {

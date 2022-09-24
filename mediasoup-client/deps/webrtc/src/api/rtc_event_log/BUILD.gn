@@ -8,7 +8,7 @@
 
 import("../../webrtc.gni")
 
-rtc_source_set("rtc_event_log") {
+rtc_library("rtc_event_log") {
   visibility = [ "*" ]
   sources = [
     "rtc_event.cc",
@@ -26,7 +26,7 @@ rtc_source_set("rtc_event_log") {
   ]
 }
 
-rtc_source_set("rtc_event_log_factory") {
+rtc_library("rtc_event_log_factory") {
   visibility = [ "*" ]
   sources = [
     "rtc_event_log_factory.cc",
@@ -37,11 +37,12 @@ rtc_source_set("rtc_event_log_factory") {
     ":rtc_event_log",
     "../../rtc_base:checks",
     "../../rtc_base/system:rtc_export",
+    "../../system_wrappers:field_trial",
     "../task_queue",
   ]
 
   if (rtc_enable_protobuf) {
-    defines = [ "ENABLE_RTC_EVENT_LOG" ]
+    defines = [ "WEBRTC_ENABLE_RTC_EVENT_LOG" ]
     deps += [ "../../logging:rtc_event_log_impl" ]
   }
 }

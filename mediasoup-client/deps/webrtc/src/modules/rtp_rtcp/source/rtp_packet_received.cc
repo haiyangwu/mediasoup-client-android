@@ -21,8 +21,10 @@
 namespace webrtc {
 
 RtpPacketReceived::RtpPacketReceived() = default;
-RtpPacketReceived::RtpPacketReceived(const ExtensionManager* extensions)
-    : RtpPacket(extensions) {}
+RtpPacketReceived::RtpPacketReceived(
+    const ExtensionManager* extensions,
+    webrtc::Timestamp arrival_time /*= webrtc::Timestamp::MinusInfinity()*/)
+    : RtpPacket(extensions), arrival_time_(arrival_time) {}
 RtpPacketReceived::RtpPacketReceived(const RtpPacketReceived& packet) = default;
 RtpPacketReceived::RtpPacketReceived(RtpPacketReceived&& packet) = default;
 
@@ -69,8 +71,6 @@ void RtpPacketReceived::GetHeader(RTPHeader* header) const {
           &header->extension.videoContentType);
   header->extension.has_video_timing =
       GetExtension<VideoTimingExtension>(&header->extension.video_timing);
-  header->extension.has_frame_marking =
-      GetExtension<FrameMarkingExtension>(&header->extension.frame_marking);
   GetExtension<RtpStreamId>(&header->extension.stream_id);
   GetExtension<RepairedRtpStreamId>(&header->extension.repaired_stream_id);
   GetExtension<RtpMid>(&header->extension.mid);

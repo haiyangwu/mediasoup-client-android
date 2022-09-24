@@ -120,7 +120,7 @@ class PeerConnectionWrapperForRampUpTest : public PeerConnectionWrapper {
       FrameGeneratorCapturerVideoTrackSource::Config config,
       Clock* clock) {
     video_track_sources_.emplace_back(
-        new rtc::RefCountedObject<FrameGeneratorCapturerVideoTrackSource>(
+        rtc::make_ref_counted<FrameGeneratorCapturerVideoTrackSource>(
             config, clock, /*is_screencast=*/false));
     video_track_sources_.back()->Start();
     return rtc::scoped_refptr<VideoTrackInterface>(
@@ -192,14 +192,14 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     dependencies.tls_cert_verifier =
         std::make_unique<rtc::TestCertificateVerifier>();
 
-    auto pc =
-        pc_factory_->CreatePeerConnection(config, std::move(dependencies));
-    if (!pc) {
+    auto result = pc_factory_->CreatePeerConnectionOrError(
+        config, std::move(dependencies));
+    if (!result.ok()) {
       return nullptr;
     }
 
     return std::make_unique<PeerConnectionWrapperForRampUpTest>(
-        pc_factory_, pc, std::move(observer));
+        pc_factory_, result.MoveValue(), std::move(observer));
   }
 
   void SetupOneWayCall() {
@@ -298,7 +298,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     if (ice_candidate_pair_stats.available_outgoing_bitrate.is_defined()) {
       return *ice_candidate_pair_stats.available_outgoing_bitrate;
     }
-    // We couldn't get the |available_outgoing_bitrate| for the active candidate
+    // We couldn't get the `available_outgoing_bitrate` for the active candidate
     // pair.
     return 0;
   }
@@ -307,7 +307,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   // The turn servers should be accessed & deleted on the network thread to
   // avoid a race with the socket read/write which occurs on the network thread.
   std::vector<std::unique_ptr<cricket::TestTurnServer>> turn_servers_;
-  // |virtual_socket_server_| is used by |network_thread_| so it must be
+  // `virtual_socket_server_` is used by `network_thread_` so it must be
   // destroyed later.
   // TODO(bugs.webrtc.org/7668): We would like to update the virtual network we
   // use for this test. VirtualSocketServer isn't ideal because:
@@ -325,7 +325,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   std::unique_ptr<rtc::FirewallSocketServer> firewall_socket_server_;
   std::unique_ptr<rtc::Thread> network_thread_;
   std::unique_ptr<rtc::Thread> worker_thread_;
-  // The |pc_factory| uses |network_thread_| & |worker_thread_|, so it must be
+  // The `pc_factory` uses `network_thread_` & `worker_thread_`, so it must be
   // destroyed first.
   std::vector<std::unique_ptr<rtc::FakeNetworkManager>> fake_network_managers_;
   rtc::scoped_refptr<PeerConnectionFactoryInterface> pc_factory_;
@@ -333,7 +333,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   std::unique_ptr<PeerConnectionWrapperForRampUpTest> callee_;
 };
 
-TEST_F(PeerConnectionRampUpTest, TurnOverTCP) {
+TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTCP) {
   CreateTurnServer(cricket::ProtocolType::PROTO_TCP);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turn:" + std::string(kTurnInternalAddress) +
@@ -354,7 +354,7 @@ TEST_F(PeerConnectionRampUpTest, TurnOverTCP) {
   RunTest("turn_over_tcp");
 }
 
-TEST_F(PeerConnectionRampUpTest, TurnOverUDP) {
+TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverUDP) {
   CreateTurnServer(cricket::ProtocolType::PROTO_UDP);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turn:" + std::string(kTurnInternalAddress) +
@@ -375,7 +375,7 @@ TEST_F(PeerConnectionRampUpTest, TurnOverUDP) {
   RunTest("turn_over_udp");
 }
 
-TEST_F(PeerConnectionRampUpTest, TurnOverTLS) {
+TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
   CreateTurnServer(cricket::ProtocolType::PROTO_TLS, kTurnInternalAddress);
   PeerConnectionInterface::IceServer ice_server;
   std::string ice_server_url = "turns:" + std::string(kTurnInternalAddress) +
@@ -397,7 +397,7 @@ TEST_F(PeerConnectionRampUpTest, TurnOverTLS) {
   RunTest("turn_over_tls");
 }
 
-TEST_F(PeerConnectionRampUpTest, UDPPeerToPeer) {
+TEST_F(PeerConnectionRampUpTest, Bwe_After_UDPPeerToPeer) {
   PeerConnectionInterface::RTCConfiguration client_1_config;
   client_1_config.tcp_candidate_policy =
       PeerConnection::kTcpCandidatePolicyDisabled;
@@ -410,7 +410,7 @@ TEST_F(PeerConnectionRampUpTest, UDPPeerToPeer) {
   RunTest("udp_peer_to_peer");
 }
 
-TEST_F(PeerConnectionRampUpTest, TCPPeerToPeer) {
+TEST_F(PeerConnectionRampUpTest, Bwe_After_TCPPeerToPeer) {
   firewall_socket_server()->set_udp_sockets_enabled(false);
   ASSERT_TRUE(CreatePeerConnectionWrappers(
       PeerConnectionInterface::RTCConfiguration(),

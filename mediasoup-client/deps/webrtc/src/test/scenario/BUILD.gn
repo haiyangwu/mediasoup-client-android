@@ -8,7 +8,7 @@
 
 import("../../webrtc.gni")
 
-rtc_source_set("column_printer") {
+rtc_library("column_printer") {
   testonly = true
   sources = [
     "column_printer.cc",
@@ -21,7 +21,7 @@ rtc_source_set("column_printer") {
   ]
 }
 
-if (is_ios || rtc_include_tests) {
+if (rtc_include_tests && !build_with_chromium) {
   scenario_resources = [
     "../../resources/difficult_photo_1850_1110.yuv",
     "../../resources/photo_1850_1110.yuv",
@@ -29,26 +29,21 @@ if (is_ios || rtc_include_tests) {
     "../../resources/web_screenshot_1850_1110.yuv",
   ]
   scenario_unittest_resources = [ "../../resources/foreman_cif.yuv" ]
-}
 
-if (is_ios) {
-  bundle_data("scenario_resources_bundle_data") {
-    testonly = true
-    sources = scenario_resources
-    outputs = [
-      "{{bundle_resources_dir}}/{{source_file_part}}",
-    ]
+  if (is_ios) {
+    bundle_data("scenario_resources_bundle_data") {
+      testonly = true
+      sources = scenario_resources
+      outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
+    }
+    bundle_data("scenario_unittest_resources_bundle_data") {
+      testonly = true
+      sources = scenario_unittest_resources
+      outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
+    }
   }
-  bundle_data("scenario_unittest_resources_bundle_data") {
-    testonly = true
-    sources = scenario_unittest_resources
-    outputs = [
-      "{{bundle_resources_dir}}/{{source_file_part}}",
-    ]
-  }
-}
-if (rtc_include_tests) {
-  rtc_source_set("scenario") {
+
+  rtc_library("scenario") {
     testonly = true
     sources = [
       "audio_stream.cc",
@@ -76,14 +71,18 @@ if (rtc_include_tests) {
       ":column_printer",
       "../:fake_video_codecs",
       "../:fileutils",
-      "../:rtp_test_utils",
       "../:test_common",
       "../:test_support",
       "../:video_test_common",
+      "../../api:create_frame_generator",
       "../../api:fec_controller_api",
+      "../../api:frame_generator_api",
       "../../api:libjingle_peerconnection_api",
       "../../api:rtc_event_log_output_file",
       "../../api:rtp_parameters",
+      "../../api:sequence_checker",
+      "../../api:time_controller",
+      "../../api:time_controller",
       "../../api:transport_api",
       "../../api/audio_codecs:builtin_audio_decoder_factory",
       "../../api/audio_codecs:builtin_audio_encoder_factory",
@@ -97,7 +96,6 @@ if (rtc_include_tests) {
       "../../api/units:timestamp",
       "../../api/video:builtin_video_bitrate_allocator_factory",
       "../../api/video:video_frame",
-      "../../api/video:video_frame_i420",
       "../../api/video:video_rtp_headers",
       "../../api/video_codecs:video_codecs_api",
       "../../audio",
@@ -130,10 +128,13 @@ if (rtc_include_tests) {
       "../../rtc_base:rtc_base_approved",
       "../../rtc_base:rtc_base_tests_utils",
       "../../rtc_base:rtc_numerics",
+      "../../rtc_base:rtc_stats_counters",
       "../../rtc_base:rtc_task_queue",
       "../../rtc_base:safe_minmax",
+      "../../rtc_base:socket_address",
       "../../rtc_base:task_queue_for_test",
-      "../../rtc_base/synchronization:sequence_checker",
+      "../../rtc_base:threading",
+      "../../rtc_base/synchronization:mutex",
       "../../rtc_base/task_utils:repeating_task",
       "../../system_wrappers",
       "../../system_wrappers:field_trial",
@@ -141,9 +142,12 @@ if (rtc_include_tests) {
       "../logging:log_writer",
       "../network:emulated_network",
       "../time_controller",
+    ]
+    absl_deps = [
       "//third_party/abseil-cpp/absl/flags:flag",
       "//third_party/abseil-cpp/absl/flags:parse",
       "//third_party/abseil-cpp/absl/memory",
+      "//third_party/abseil-cpp/absl/strings",
       "//third_party/abseil-cpp/absl/types:optional",
     ]
     if (is_android) {
@@ -159,16 +163,19 @@ if (rtc_include_tests) {
       deps += [ ":scenario_resources_bundle_data" ]
     }
   }
-  rtc_source_set("scenario_unittests") {
+  rtc_library("scenario_unittests") {
     testonly = true
     sources = [
       "performance_stats_unittest.cc",
+      "probing_test.cc",
       "scenario_unittest.cc",
       "stats_collection_unittest.cc",
       "video_stream_unittest.cc",
     ]
     deps = [
       ":scenario",
+      "../../api/test/network_emulation",
+      "../../api/test/network_emulation:create_cross_traffic",
       "../../logging:mocks",
       "../../rtc_base:checks",
       "../../rtc_base:rtc_base_approved",

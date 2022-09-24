@@ -13,10 +13,11 @@
 
 #include <set>
 
-#include "pc/data_channel.h"
+#include "pc/sctp_data_channel.h"
 #include "rtc_base/checks.h"
 
-class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
+class FakeDataChannelProvider
+    : public webrtc::SctpDataChannelProviderInterface {
  public:
   FakeDataChannelProvider()
       : send_blocked_(false),
@@ -25,7 +26,8 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
         transport_error_(false) {}
   virtual ~FakeDataChannelProvider() {}
 
-  bool SendData(const cricket::SendDataParams& params,
+  bool SendData(int sid,
+                const webrtc::SendDataParams& params,
                 const rtc::CopyOnWriteBuffer& payload,
                 cricket::SendDataResult* result) override {
     RTC_CHECK(ready_to_send_);
@@ -35,16 +37,17 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
       return false;
     }
 
-    if (transport_error_ || payload.size() == 0) {
+    if (transport_error_) {
       *result = cricket::SDR_ERROR;
       return false;
     }
 
+    last_sid_ = sid;
     last_send_data_params_ = params;
     return true;
   }
 
-  bool ConnectDataChannel(webrtc::DataChannel* data_channel) override {
+  bool ConnectDataChannel(webrtc::SctpDataChannel* data_channel) override {
     RTC_CHECK(connected_channels_.find(data_channel) ==
               connected_channels_.end());
     if (!transport_available_) {
@@ -55,7 +58,7 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
     return true;
   }
 
-  void DisconnectDataChannel(webrtc::DataChannel* data_channel) override {
+  void DisconnectDataChannel(webrtc::SctpDataChannel* data_channel) override {
     RTC_CHECK(connected_channels_.find(data_channel) !=
               connected_channels_.end());
     RTC_LOG(LS_INFO) << "DataChannel disconnected " << data_channel;
@@ -77,7 +80,7 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
     recv_ssrcs_.erase(sid);
     // Unlike the real SCTP transport, act like the closing procedure finished
     // instantly, doing the same snapshot thing as below.
-    for (webrtc::DataChannel* ch : std::set<webrtc::DataChannel*>(
+    for (webrtc::SctpDataChannel* ch : std::set<webrtc::SctpDataChannel*>(
              connected_channels_.begin(), connected_channels_.end())) {
       if (connected_channels_.count(ch)) {
         ch->OnClosingProcedureComplete(sid);
@@ -93,12 +96,12 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
     if (!blocked) {
       // Take a snapshot of the connected channels and check to see whether
       // each value is still in connected_channels_ before calling
-      // OnChannelReady().  This avoids problems where the set gets modified
-      // in response to OnChannelReady().
-      for (webrtc::DataChannel* ch : std::set<webrtc::DataChannel*>(
+      // OnTransportReady().  This avoids problems where the set gets modified
+      // in response to OnTransportReady().
+      for (webrtc::SctpDataChannel* ch : std::set<webrtc::SctpDataChannel*>(
                connected_channels_.begin(), connected_channels_.end())) {
         if (connected_channels_.count(ch)) {
-          ch->OnChannelReady(true);
+          ch->OnTransportReady(true);
         }
       }
     }
@@ -116,21 +119,22 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
     RTC_CHECK(transport_available_);
     ready_to_send_ = ready;
     if (ready) {
-      std::set<webrtc::DataChannel*>::iterator it;
+      std::set<webrtc::SctpDataChannel*>::iterator it;
       for (it = connected_channels_.begin(); it != connected_channels_.end();
            ++it) {
-        (*it)->OnChannelReady(true);
+        (*it)->OnTransportReady(true);
       }
     }
   }
 
   void set_transport_error() { transport_error_ = true; }
 
-  cricket::SendDataParams last_send_data_params() const {
+  int last_sid() const { return last_sid_; }
+  const webrtc::SendDataParams& last_send_data_params() const {
     return last_send_data_params_;
   }
 
-  bool IsConnected(webrtc::DataChannel* data_channel) const {
+  bool IsConnected(webrtc::SctpDataChannel* data_channel) const {
     return connected_channels_.find(data_channel) != connected_channels_.end();
   }
 
@@ -143,12 +147,13 @@ class FakeDataChannelProvider : public webrtc::DataChannelProviderInterface {
   }
 
  private:
-  cricket::SendDataParams last_send_data_params_;
+  int last_sid_;
+  webrtc::SendDataParams last_send_data_params_;
   bool send_blocked_;
   bool transport_available_;
   bool ready_to_send_;
   bool transport_error_;
-  std::set<webrtc::DataChannel*> connected_channels_;
+  std::set<webrtc::SctpDataChannel*> connected_channels_;
   std::set<uint32_t> send_ssrcs_;
   std::set<uint32_t> recv_ssrcs_;
 };

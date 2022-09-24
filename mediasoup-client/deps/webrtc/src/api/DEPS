@@ -11,10 +11,12 @@ include_rules = [
   "-common_video",
   "-data",
   "-examples",
+  "-g3doc",
   "-ios",
   "-infra",
   "-logging",
   "-media",
+  "-net",
   "-modules",
   "-out",
   "-p2p",
@@ -40,11 +42,16 @@ include_rules = [
 
 specific_include_rules = {
   # Some internal headers are allowed even in API headers:
+
+  "call_factory_interface\.h": [
+    "+call/rtp_transport_controller_send_factory_interface.h",
+  ],
+
   ".*\.h": [
     "+rtc_base/checks.h",
     "+rtc_base/system/rtc_export.h",
+    "+rtc_base/system/rtc_export_template.h",
     "+rtc_base/units/unit_base.h",
-    "+rtc_base/deprecation.h",
   ],
 
   "array_view\.h": [
@@ -60,6 +67,10 @@ specific_include_rules = {
 
   "async_resolver_factory\.h": [
     "+rtc_base/async_resolver_interface.h",
+  ],
+
+  "async_dns_resolver\.h": [
+    "+rtc_base/socket_address.h",
   ],
 
   "candidate\.h": [
@@ -89,6 +100,10 @@ specific_include_rules = {
     "+modules/include/module_fec_types.h",
   ],
 
+  "frame_transformer_interface\.h": [
+    "+rtc_base/ref_count.h",
+  ],
+
   "ice_transport_interface\.h": [
     "+rtc_base/ref_count.h",
   ],
@@ -110,36 +125,32 @@ specific_include_rules = {
     "+rtc_base/ref_count.h",
   ],
 
-  "media_transport_interface\.h": [
-    "+rtc_base/copy_on_write_buffer.h",  # As used by datachannelinterface.h
-    "+rtc_base/network_route.h",
-  ],
-
   "packet_socket_factory\.h": [
     "+rtc_base/proxy_info.h",
     "+rtc_base/async_packet_socket.h",
   ],
 
-  "peer_connection_factory_proxy\.h": [
-    "+rtc_base/bind.h",
-  ],
-
   "peer_connection_interface\.h": [
+    "+call/rtp_transport_controller_send_factory_interface.h",
     "+media/base/media_config.h",
     "+media/base/media_engine.h",
+    "+p2p/base/port.h",
     "+p2p/base/port_allocator.h",
     "+rtc_base/network.h",
+    "+rtc_base/network_constants.h",
+    "+rtc_base/network_monitor_factory.h",
+    "+rtc_base/ref_count.h",
     "+rtc_base/rtc_certificate.h",
     "+rtc_base/rtc_certificate_generator.h",
     "+rtc_base/socket_address.h",
     "+rtc_base/ssl_certificate.h",
     "+rtc_base/ssl_stream_adapter.h",
+    "+rtc_base/thread.h",
   ],
 
   "proxy\.h": [
     "+rtc_base/event.h",
     "+rtc_base/message_handler.h",  # Inherits from it.
-    "+rtc_base/message_queue.h",    # Inherits from MessageData.
     "+rtc_base/ref_counted_object.h",
     "+rtc_base/thread.h",
   ],
@@ -173,6 +184,9 @@ specific_include_rules = {
     "+rtc_base/ref_count.h",
   ],
 
+  "set_local_description_observer_interface\.h": [
+    "+rtc_base/ref_count.h",
+  ],
   "set_remote_description_observer_interface\.h": [
     "+rtc_base/ref_count.h",
   ],
@@ -180,7 +194,6 @@ specific_include_rules = {
   "stats_types\.h": [
     "+rtc_base/constructor_magic.h",
     "+rtc_base/ref_count.h",
-    "+rtc_base/string_encode.h",
     "+rtc_base/thread_checker.h",
   ],
 
@@ -242,6 +255,10 @@ specific_include_rules = {
     "+modules/audio_processing/include/audio_processing.h",
   ],
 
+  "echo_detector_creator\.h": [
+    "+modules/audio_processing/include/audio_processing.h",
+  ],
+
   "fake_frame_decryptor\.h": [
     "+rtc_base/ref_counted_object.h",
   ],
@@ -254,8 +271,15 @@ specific_include_rules = {
     "+test/gmock.h",
   ],
 
+  "mock_peerconnectioninterface\.h": [
+    "+rtc_base/ref_counted_object.h",
+  ],
+
+  "mock_video_track\.h": [
+    "+rtc_base/ref_counted_object.h",
+  ],
+
   "simulated_network\.h": [
-    "+rtc_base/critical_section.h",
     "+rtc_base/random.h",
     "+rtc_base/thread_annotations.h",
   ],
@@ -264,12 +288,21 @@ specific_include_rules = {
     "+rtc_base/thread_checker.h",
   ],
 
+  "time_controller\.h": [
+    "+rtc_base/thread.h",
+  ],
+
   "videocodec_test_fixture\.h": [
     "+modules/video_coding/include/video_codec_interface.h"
   ],
 
   "video_encoder_config\.h": [
     "+rtc_base/ref_count.h",
+  ],
+
+  "sequence_checker\.h": [
+    "+rtc_base/synchronization/sequence_checker_internal.h",
+    "+rtc_base/thread_annotations.h",
   ],
 
   # .cc files in api/ should not be restricted in what they can #include,

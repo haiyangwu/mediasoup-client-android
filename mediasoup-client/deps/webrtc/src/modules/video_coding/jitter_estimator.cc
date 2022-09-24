@@ -10,7 +10,6 @@
 
 #include "modules/video_coding/jitter_estimator.h"
 
-#include <assert.h>
 #include <math.h>
 #include <string.h>
 
@@ -23,6 +22,7 @@
 #include "rtc_base/experiments/jitter_upper_bound_experiment.h"
 #include "rtc_base/numerics/safe_conversions.h"
 #include "system_wrappers/include/clock.h"
+#include "system_wrappers/include/field_trial.h"
 
 namespace webrtc {
 namespace {
@@ -50,6 +50,8 @@ VCMJitterEstimator::VCMJitterEstimator(Clock* clock)
       time_deviation_upper_bound_(
           JitterUpperBoundExperiment::GetUpperBoundSigmas().value_or(
               kDefaultMaxTimestampDeviationInSigmas)),
+      enable_reduced_delay_(
+          !field_trial::IsEnabled("WebRTC-ReducedJitterDelayKillSwitch")),
       clock_(clock) {
   Reset();
 }
@@ -244,7 +246,7 @@ void VCMJitterEstimator::KalmanEstimateChannel(int64_t frameDelayMS,
   hMh_sigma = deltaFSBytes * Mh[0] + Mh[1] + sigma;
   if ((hMh_sigma < 1e-9 && hMh_sigma >= 0) ||
       (hMh_sigma > -1e-9 && hMh_sigma <= 0)) {
-    assert(false);
+    RTC_NOTREACHED();
     return;
   }
   kalmanGain[0] = Mh[0] / hMh_sigma;
@@ -273,11 +275,11 @@ void VCMJitterEstimator::KalmanEstimateChannel(int64_t frameDelayMS,
                     kalmanGain[1] * deltaFSBytes * t01;
 
   // Covariance matrix, must be positive semi-definite.
-  assert(_thetaCov[0][0] + _thetaCov[1][1] >= 0 &&
-         _thetaCov[0][0] * _thetaCov[1][1] -
-                 _thetaCov[0][1] * _thetaCov[1][0] >=
-             0 &&
-         _thetaCov[0][0] >= 0);
+  RTC_DCHECK(_thetaCov[0][0] + _thetaCov[1][1] >= 0 &&
+             _thetaCov[0][0] * _thetaCov[1][1] -
+                     _thetaCov[0][1] * _thetaCov[1][0] >=
+                 0 &&
+             _thetaCov[0][0] >= 0);
 }
 
 // Calculate difference in delay between a sample and the expected delay
@@ -299,7 +301,7 @@ void VCMJitterEstimator::EstimateRandomJitter(double d_dT,
   _lastUpdateT = now;
 
   if (_alphaCount == 0) {
-    assert(false);
+    RTC_NOTREACHED();
     return;
   }
   double alpha =
@@ -395,22 +397,25 @@ int VCMJitterEstimator::GetJitterEstimate(
     }
   }
 
-  static const double kJitterScaleLowThreshold = 5.0;
-  static const double kJitterScaleHighThreshold = 10.0;
-  double fps = GetFrameRate();
-  // Ignore jitter for very low fps streams.
-  if (fps < kJitterScaleLowThreshold) {
-    if (fps == 0.0) {
-      return rtc::checked_cast<int>(std::max(0.0, jitterMS) + 0.5);
+  if (enable_reduced_delay_) {
+    static const double kJitterScaleLowThreshold = 5.0;
+    static const double kJitterScaleHighThreshold = 10.0;
+    double fps = GetFrameRate();
+    // Ignore jitter for very low fps streams.
+    if (fps < kJitterScaleLowThreshold) {
+      if (fps == 0.0) {
+        return rtc::checked_cast<int>(std::max(0.0, jitterMS) + 0.5);
+      }
+      return 0;
     }
-    return 0;
-  }
 
-  // Semi-low frame rate; scale by factor linearly interpolated from 0.0 at
-  // kJitterScaleLowThreshold to 1.0 at kJitterScaleHighThreshold.
-  if (fps < kJitterScaleHighThreshold) {
-    jitterMS = (1.0 / (kJitterScaleHighThreshold - kJitterScaleLowThreshold)) *
-               (fps - kJitterScaleLowThreshold) * jitterMS;
+    // Semi-low frame rate; scale by factor linearly interpolated from 0.0 at
+    // kJitterScaleLowThreshold to 1.0 at kJitterScaleHighThreshold.
+    if (fps < kJitterScaleHighThreshold) {
+      jitterMS =
+          (1.0 / (kJitterScaleHighThreshold - kJitterScaleLowThreshold)) *
+          (fps - kJitterScaleLowThreshold) * jitterMS;
+    }
   }
 
   return rtc::checked_cast<int>(std::max(0.0, jitterMS) + 0.5);
@@ -422,7 +427,7 @@ double VCMJitterEstimator::GetFrameRate() const {
 
   double fps = 1000000.0 / fps_counter_.ComputeMean();
   // Sanity check.
-  assert(fps >= 0.0);
+  RTC_DCHECK_GE(fps, 0.0);
   if (fps > kMaxFramerateEstimate) {
     fps = kMaxFramerateEstimate;
   }

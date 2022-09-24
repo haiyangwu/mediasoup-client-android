@@ -25,7 +25,7 @@
 namespace webrtc {
 
 template <typename Closure>
-void SendTask(TaskQueueBase* task_queue, Closure&& task, rtc::Location loc) {
+void SendTask(rtc::Location loc, TaskQueueBase* task_queue, Closure&& task) {
   RTC_CHECK(!task_queue->IsCurrent())
       << "Called SendTask to a queue from the same queue at " << loc.ToString();
   rtc::Event event;
@@ -49,7 +49,7 @@ class RTC_LOCKABLE TaskQueueForTest : public rtc::TaskQueue {
   // a task executes on the task queue.
   // This variant is specifically for posting custom QueuedTask derived
   // implementations that tests do not want to pass ownership of over to the
-  // task queue (i.e. the Run() method always returns |false|.).
+  // task queue (i.e. the Run() method always returns `false`.).
   template <class Closure>
   void SendTask(Closure* task) {
     RTC_CHECK(!IsCurrent());
@@ -64,7 +64,15 @@ class RTC_LOCKABLE TaskQueueForTest : public rtc::TaskQueue {
   // a task executes on the task queue.
   template <class Closure>
   void SendTask(Closure&& task, rtc::Location loc) {
-    ::webrtc::SendTask(Get(), std::forward<Closure>(task), loc);
+    ::webrtc::SendTask(loc, Get(), std::forward<Closure>(task));
+  }
+
+  // Wait for the completion of all tasks posted prior to the
+  // WaitForPreviouslyPostedTasks() call.
+  void WaitForPreviouslyPostedTasks() {
+    // Post an empty task on the queue and wait for it to finish, to ensure
+    // that all already posted tasks on the queue get executed.
+    SendTask([]() {}, RTC_FROM_HERE);
   }
 };
 

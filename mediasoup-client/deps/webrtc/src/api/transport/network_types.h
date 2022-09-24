@@ -19,7 +19,6 @@
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
-#include "rtc_base/deprecation.h"
 
 namespace webrtc {
 
@@ -103,9 +102,15 @@ struct PacedPacketInfo {
 
 struct SentPacket {
   Timestamp send_time = Timestamp::PlusInfinity();
+  // Size of packet with overhead up to IP layer.
   DataSize size = DataSize::Zero();
+  // Size of preceeding packets that are not part of feedback.
   DataSize prior_unacked_data = DataSize::Zero();
+  // Probe cluster id and parameters including bitrate, number of packets and
+  // number of bytes.
   PacedPacketInfo pacing_info;
+  // True if the packet is an audio packet, false for video, padding, RTX etc.
+  bool audio = false;
   // Transport independent sequence number, any tracked packet should have a
   // sequence number that is unique over the whole call and increasing by 1 for
   // each packet.
@@ -152,6 +157,8 @@ struct PacketResult {
   PacketResult();
   PacketResult(const PacketResult&);
   ~PacketResult();
+
+  inline bool IsReceived() const { return !receive_time.IsPlusInfinity(); }
 
   SentPacket sent_packet;
   Timestamp receive_time = Timestamp::PlusInfinity();
@@ -216,6 +223,7 @@ struct TargetTransferRate {
   NetworkEstimate network_estimate;
   DataRate target_rate = DataRate::Zero();
   DataRate stable_target_rate = DataRate::Zero();
+  double cwnd_reduce_ratio = 0;
 };
 
 // Contains updates of network controller comand state. Using optionals to

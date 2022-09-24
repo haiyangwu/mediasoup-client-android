@@ -13,7 +13,6 @@
 
 #include <map>
 
-#include "rtc_base/constructor_magic.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
@@ -27,15 +26,15 @@ enum class ConfigOptionID {
   kNetEqCapacityConfig,    // Deprecated
   kNetEqFastAccelerate,    // Deprecated
   kVoicePacing,            // Deprecated
-  kExtendedFilter,
-  kDelayAgnostic,
+  kExtendedFilter,         // Deprecated
+  kDelayAgnostic,          // Deprecated
   kExperimentalAgc,
   kExperimentalNs,
-  kBeamforming,      // Deprecated
-  kIntelligibility,  // Deprecated
-  kEchoCanceller3,   // Deprecated
-  kAecRefinedAdaptiveFilter,
-  kLevelControl  // Deprecated
+  kBeamforming,               // Deprecated
+  kIntelligibility,           // Deprecated
+  kEchoCanceller3,            // Deprecated
+  kAecRefinedAdaptiveFilter,  // Deprecated
+  kLevelControl               // Deprecated
 };
 
 // Class Config is designed to ease passing a set of options across webrtc code.
@@ -105,7 +104,6 @@ class RTC_EXPORT Config {
   typedef std::map<ConfigOptionID, BaseOption*> OptionMap;
   OptionMap options_;
 
-  // RTC_DISALLOW_COPY_AND_ASSIGN
   Config(const Config&);
   void operator=(const Config&);
 };

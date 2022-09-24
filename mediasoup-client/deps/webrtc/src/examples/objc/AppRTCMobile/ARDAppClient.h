@@ -9,8 +9,9 @@
  */
 
 #import <Foundation/Foundation.h>
-#import <WebRTC/RTCPeerConnection.h>
-#import <WebRTC/RTCVideoTrack.h>
+
+#import "sdk/objc/api/peerconnection/RTCPeerConnection.h"
+#import "sdk/objc/api/peerconnection/RTCVideoTrack.h"
 
 typedef NS_ENUM(NSInteger, ARDAppClientState) {
   // Disconnected from servers.
@@ -24,9 +25,9 @@ typedef NS_ENUM(NSInteger, ARDAppClientState) {
 @class ARDAppClient;
 @class ARDSettingsModel;
 @class ARDExternalSampleCapturer;
-@class RTCMediaConstraints;
-@class RTCCameraVideoCapturer;
-@class RTCFileVideoCapturer;
+@class RTC_OBJC_TYPE(RTCMediaConstraints);
+@class RTC_OBJC_TYPE(RTCCameraVideoCapturer);
+@class RTC_OBJC_TYPE(RTCFileVideoCapturer);
 
 // The delegate is informed of pertinent events and will be called on the
 // main queue.
@@ -37,20 +38,21 @@ typedef NS_ENUM(NSInteger, ARDAppClientState) {
 - (void)appClient:(ARDAppClient *)client didChangeConnectionState:(RTCIceConnectionState)state;
 
 - (void)appClient:(ARDAppClient *)client
-    didCreateLocalCapturer:(RTCCameraVideoCapturer *)localCapturer;
-
-- (void)appClient:(ARDAppClient *)client didReceiveLocalVideoTrack:(RTCVideoTrack *)localVideoTrack;
+    didCreateLocalCapturer:(RTC_OBJC_TYPE(RTCCameraVideoCapturer) *)localCapturer;
 
 - (void)appClient:(ARDAppClient *)client
-    didReceiveRemoteVideoTrack:(RTCVideoTrack *)remoteVideoTrack;
+    didReceiveLocalVideoTrack:(RTC_OBJC_TYPE(RTCVideoTrack) *)localVideoTrack;
+
+- (void)appClient:(ARDAppClient *)client
+    didReceiveRemoteVideoTrack:(RTC_OBJC_TYPE(RTCVideoTrack) *)remoteVideoTrack;
 
 - (void)appClient:(ARDAppClient *)client didError:(NSError *)error;
 
-- (void)appClient:(ARDAppClient *)client didGetStats:(NSArray *)stats;
+- (void)appClient:(ARDAppClient *)client didGetStats:(RTC_OBJC_TYPE(RTCStatisticsReport) *)stats;
 
 @optional
 - (void)appClient:(ARDAppClient *)client
-    didCreateLocalFileCapturer:(RTCFileVideoCapturer *)fileCapturer;
+    didCreateLocalFileCapturer:(RTC_OBJC_TYPE(RTCFileVideoCapturer) *)fileCapturer;
 
 - (void)appClient:(ARDAppClient *)client
     didCreateLocalExternalSampleCapturer:(ARDExternalSampleCapturer *)externalSampleCapturer;
@@ -61,7 +63,7 @@ typedef NS_ENUM(NSInteger, ARDAppClientState) {
 // class should only be called from the main queue.
 @interface ARDAppClient : NSObject
 
-// If |shouldGetStats| is true, stats will be reported in 1s intervals through
+// If `shouldGetStats` is true, stats will be reported in 1s intervals through
 // the delegate.
 @property(nonatomic, assign) BOOL shouldGetStats;
 @property(nonatomic, readonly) ARDAppClientState state;
@@ -73,8 +75,8 @@ typedef NS_ENUM(NSInteger, ARDAppClientState) {
 - (instancetype)initWithDelegate:(id<ARDAppClientDelegate>)delegate;
 
 // Establishes a connection with the AppRTC servers for the given room id.
-// |settings| is an object containing settings such as video codec for the call.
-// If |isLoopback| is true, the call will connect to itself.
+// `settings` is an object containing settings such as video codec for the call.
+// If `isLoopback` is true, the call will connect to itself.
 - (void)connectToRoomWithId:(NSString *)roomId
                    settings:(ARDSettingsModel *)settings
                  isLoopback:(BOOL)isLoopback;

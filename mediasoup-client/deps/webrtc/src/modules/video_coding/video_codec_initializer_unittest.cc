@@ -42,7 +42,8 @@ static const uint32_t kDefaultTargetBitrateBps = 2000000;
 static const uint32_t kDefaultMaxBitrateBps = 2000000;
 static const uint32_t kDefaultMinTransmitBitrateBps = 400000;
 static const int kDefaultMaxQp = 48;
-static const uint32_t kScreenshareTl0BitrateBps = 200000;
+static const uint32_t kScreenshareTl0BitrateBps = 120000;
+static const uint32_t kScreenshareConferenceTl0BitrateBps = 200000;
 static const uint32_t kScreenshareCodecTargetBitrateBps = 200000;
 static const uint32_t kScreenshareDefaultFramerate = 5;
 // Bitrates for the temporal layers of the higher screenshare simulcast stream.
@@ -73,13 +74,13 @@ class VideoCodecInitializerTest : public ::testing::Test {
       config_.number_of_streams = num_spatial_streams;
       VideoCodecVP8 vp8_settings = VideoEncoder::GetDefaultVp8Settings();
       vp8_settings.numberOfTemporalLayers = num_temporal_streams;
-      config_.encoder_specific_settings = new rtc::RefCountedObject<
+      config_.encoder_specific_settings = rtc::make_ref_counted<
           webrtc::VideoEncoderConfig::Vp8EncoderSpecificSettings>(vp8_settings);
     } else if (type == VideoCodecType::kVideoCodecVP9) {
       VideoCodecVP9 vp9_settings = VideoEncoder::GetDefaultVp9Settings();
       vp9_settings.numberOfSpatialLayers = num_spatial_streams;
       vp9_settings.numberOfTemporalLayers = num_temporal_streams;
-      config_.encoder_specific_settings = new rtc::RefCountedObject<
+      config_.encoder_specific_settings = rtc::make_ref_counted<
           webrtc::VideoEncoderConfig::Vp9EncoderSpecificSettings>(vp9_settings);
     } else if (type != VideoCodecType::kVideoCodecMultiplex) {
       ADD_FAILURE() << "Unexpected codec type: " << type;
@@ -126,7 +127,7 @@ class VideoCodecInitializerTest : public ::testing::Test {
   VideoStream DefaultScreenshareStream() {
     VideoStream stream = DefaultStream();
     stream.min_bitrate_bps = 30000;
-    stream.target_bitrate_bps = kScreenshareTl0BitrateBps;
+    stream.target_bitrate_bps = kScreenshareCodecTargetBitrateBps;
     stream.max_bitrate_bps = 1000000;
     stream.max_framerate = kScreenshareDefaultFramerate;
     stream.num_temporal_layers = 2;
@@ -172,6 +173,23 @@ TEST_F(VideoCodecInitializerTest, SingleStreamVp8ScreenshareInactive) {
   EXPECT_EQ(1u, codec_out_.numberOfSimulcastStreams);
   EXPECT_EQ(1u, codec_out_.VP8()->numberOfTemporalLayers);
   EXPECT_EQ(0U, bitrate_allocation.get_sum_bps());
+}
+
+TEST_F(VideoCodecInitializerTest, TemporalLayeredVp8ScreenshareConference) {
+  SetUpFor(VideoCodecType::kVideoCodecVP8, 1, 2, true);
+  streams_.push_back(DefaultScreenshareStream());
+  EXPECT_TRUE(InitializeCodec());
+  bitrate_allocator_->SetLegacyConferenceMode(true);
+
+  EXPECT_EQ(1u, codec_out_.numberOfSimulcastStreams);
+  EXPECT_EQ(2u, codec_out_.VP8()->numberOfTemporalLayers);
+  VideoBitrateAllocation bitrate_allocation =
+      bitrate_allocator_->Allocate(VideoBitrateAllocationParameters(
+          kScreenshareCodecTargetBitrateBps, kScreenshareDefaultFramerate));
+  EXPECT_EQ(kScreenshareCodecTargetBitrateBps,
+            bitrate_allocation.get_sum_bps());
+  EXPECT_EQ(kScreenshareConferenceTl0BitrateBps,
+            bitrate_allocation.GetBitrate(0, 0));
 }
 
 TEST_F(VideoCodecInitializerTest, TemporalLayeredVp8Screenshare) {
@@ -346,13 +364,17 @@ TEST_F(VideoCodecInitializerTest, Vp9DeactivateLayers) {
   config_.simulcast_layers[1].active = true;
   config_.simulcast_layers[2].active = true;
   EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 3);
   EXPECT_TRUE(codec_out_.spatialLayers[0].active);
   EXPECT_TRUE(codec_out_.spatialLayers[1].active);
   EXPECT_TRUE(codec_out_.spatialLayers[2].active);
 
   // Deactivate top layer.
-  config_.simulcast_layers[0].active = false;
+  config_.simulcast_layers[0].active = true;
+  config_.simulcast_layers[1].active = true;
+  config_.simulcast_layers[2].active = false;
   EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 3);
   EXPECT_TRUE(codec_out_.spatialLayers[0].active);
   EXPECT_TRUE(codec_out_.spatialLayers[1].active);
   EXPECT_FALSE(codec_out_.spatialLayers[2].active);
@@ -360,10 +382,113 @@ TEST_F(VideoCodecInitializerTest, Vp9DeactivateLayers) {
   // Deactivate middle layer.
   config_.simulcast_layers[0].active = true;
   config_.simulcast_layers[1].active = false;
+  config_.simulcast_layers[2].active = true;
   EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 3);
   EXPECT_TRUE(codec_out_.spatialLayers[0].active);
   EXPECT_FALSE(codec_out_.spatialLayers[1].active);
   EXPECT_TRUE(codec_out_.spatialLayers[2].active);
+
+  // Deactivate first layer.
+  config_.simulcast_layers[0].active = false;
+  config_.simulcast_layers[1].active = true;
+  config_.simulcast_layers[2].active = true;
+  EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 2);
+  EXPECT_TRUE(codec_out_.spatialLayers[0].active);
+  EXPECT_TRUE(codec_out_.spatialLayers[1].active);
+
+  // HD singlecast.
+  config_.simulcast_layers[0].active = false;
+  config_.simulcast_layers[1].active = false;
+  config_.simulcast_layers[2].active = true;
+  EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 1);
+  EXPECT_TRUE(codec_out_.spatialLayers[0].active);
+
+  // VGA singlecast.
+  config_.simulcast_layers[0].active = false;
+  config_.simulcast_layers[1].active = true;
+  config_.simulcast_layers[2].active = false;
+  EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 2);
+  EXPECT_TRUE(codec_out_.spatialLayers[0].active);
+  EXPECT_FALSE(codec_out_.spatialLayers[1].active);
+
+  // QVGA singlecast.
+  config_.simulcast_layers[0].active = true;
+  config_.simulcast_layers[1].active = false;
+  config_.simulcast_layers[2].active = false;
+  EXPECT_TRUE(InitializeCodec());
+  EXPECT_EQ(codec_out_.VP9()->numberOfSpatialLayers, 3);
+  EXPECT_TRUE(codec_out_.spatialLayers[0].active);
+  EXPECT_FALSE(codec_out_.spatialLayers[1].active);
+  EXPECT_FALSE(codec_out_.spatialLayers[2].active);
+}
+
+TEST_F(VideoCodecInitializerTest, Av1SingleSpatialLayerBitratesAreConsistent) {
+  VideoEncoderConfig config;
+  config.codec_type = VideoCodecType::kVideoCodecAV1;
+  std::vector<VideoStream> streams = {DefaultStream()};
+  streams[0].scalability_mode = "L1T2";
+
+  VideoCodec codec;
+  EXPECT_TRUE(VideoCodecInitializer::SetupCodec(config, streams, &codec));
+
+  EXPECT_GE(codec.spatialLayers[0].targetBitrate,
+            codec.spatialLayers[0].minBitrate);
+  EXPECT_LE(codec.spatialLayers[0].targetBitrate,
+            codec.spatialLayers[0].maxBitrate);
+}
+
+TEST_F(VideoCodecInitializerTest, Av1TwoSpatialLayersBitratesAreConsistent) {
+  VideoEncoderConfig config;
+  config.codec_type = VideoCodecType::kVideoCodecAV1;
+  std::vector<VideoStream> streams = {DefaultStream()};
+  streams[0].scalability_mode = "L2T2";
+
+  VideoCodec codec;
+  EXPECT_TRUE(VideoCodecInitializer::SetupCodec(config, streams, &codec));
+
+  EXPECT_GE(codec.spatialLayers[0].targetBitrate,
+            codec.spatialLayers[0].minBitrate);
+  EXPECT_LE(codec.spatialLayers[0].targetBitrate,
+            codec.spatialLayers[0].maxBitrate);
+
+  EXPECT_GE(codec.spatialLayers[1].targetBitrate,
+            codec.spatialLayers[1].minBitrate);
+  EXPECT_LE(codec.spatialLayers[1].targetBitrate,
+            codec.spatialLayers[1].maxBitrate);
+}
+
+TEST_F(VideoCodecInitializerTest, Av1TwoSpatialLayersActiveByDefault) {
+  VideoEncoderConfig config;
+  config.codec_type = VideoCodecType::kVideoCodecAV1;
+  std::vector<VideoStream> streams = {DefaultStream()};
+  streams[0].scalability_mode = "L2T2";
+  config.spatial_layers = {};
+
+  VideoCodec codec;
+  EXPECT_TRUE(VideoCodecInitializer::SetupCodec(config, streams, &codec));
+
+  EXPECT_TRUE(codec.spatialLayers[0].active);
+  EXPECT_TRUE(codec.spatialLayers[1].active);
+}
+
+TEST_F(VideoCodecInitializerTest, Av1TwoSpatialLayersOneDeactivated) {
+  VideoEncoderConfig config;
+  config.codec_type = VideoCodecType::kVideoCodecAV1;
+  std::vector<VideoStream> streams = {DefaultStream()};
+  streams[0].scalability_mode = "L2T2";
+  config.spatial_layers.resize(2);
+  config.spatial_layers[0].active = true;
+  config.spatial_layers[1].active = false;
+
+  VideoCodec codec;
+  EXPECT_TRUE(VideoCodecInitializer::SetupCodec(config, streams, &codec));
+
+  EXPECT_TRUE(codec.spatialLayers[0].active);
+  EXPECT_FALSE(codec.spatialLayers[1].active);
 }
 
 }  // namespace webrtc

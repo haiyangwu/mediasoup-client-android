@@ -20,8 +20,9 @@
 #include <netdb.h>
 #endif
 
-#include "rtc_base/byte_order.h"
 #include "rtc_base/ip_address.h"
+
+#include "rtc_base/byte_order.h"
 #include "rtc_base/net_helpers.h"
 #include "rtc_base/string_utils.h"
 
@@ -50,6 +51,17 @@ uint32_t IPAddress::v4AddressAsHostOrderInteger() const {
     return NetworkToHost32(u_.ip4.s_addr);
   } else {
     return 0;
+  }
+}
+
+int IPAddress::overhead() const {
+  switch (family_) {
+    case AF_INET:  // IPv4
+      return 20;
+    case AF_INET6:  // IPv6
+      return 40;
+    default:
+      return 0;
   }
 }
 
@@ -137,10 +149,6 @@ std::string IPAddress::ToString() const {
 }
 
 std::string IPAddress::ToSensitiveString() const {
-#if !defined(NDEBUG)
-  // Return non-stripped in debug.
-  return ToString();
-#else
   switch (family_) {
     case AF_INET: {
       std::string address = ToString();
@@ -164,7 +172,6 @@ std::string IPAddress::ToSensitiveString() const {
     }
   }
   return std::string();
-#endif
 }
 
 IPAddress IPAddress::Normalized() const {
@@ -396,7 +403,7 @@ IPAddress TruncateIP(const IPAddress& ip, int length) {
   return IPAddress();
 }
 
-int CountIPMaskBits(IPAddress mask) {
+int CountIPMaskBits(const IPAddress& mask) {
   uint32_t word_to_count = 0;
   int bits = 0;
   switch (mask.family()) {

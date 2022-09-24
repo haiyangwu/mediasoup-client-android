@@ -8,13 +8,11 @@
 
 import("../../webrtc.gni")
 
-rtc_source_set("sent_packet") {
+rtc_library("sent_packet") {
   sources = [
     "sent_packet.cc",
     "sent_packet.h",
   ]
-  deps = [
-    "../system:rtc_export",
-    "//third_party/abseil-cpp/absl/types:optional",
-  ]
+  deps = [ "../system:rtc_export" ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }

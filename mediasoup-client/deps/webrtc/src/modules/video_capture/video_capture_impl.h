@@ -25,7 +25,7 @@
 #include "modules/video_capture/video_capture.h"
 #include "modules/video_capture/video_capture_config.h"
 #include "modules/video_capture/video_capture_defines.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 
 namespace webrtc {
 
@@ -61,7 +61,7 @@ class VideoCaptureImpl : public VideoCaptureModule {
 
   const char* CurrentDeviceName() const override;
 
-  // |capture_time| must be specified in NTP time format in milliseconds.
+  // `capture_time` must be specified in NTP time format in milliseconds.
   int32_t IncomingFrame(uint8_t* videoFrame,
                         size_t videoFrameLength,
                         const VideoCaptureCapability& frameInfo,
@@ -78,7 +78,7 @@ class VideoCaptureImpl : public VideoCaptureModule {
   ~VideoCaptureImpl() override;
 
   char* _deviceUniqueId;  // current Device unique name;
-  rtc::CriticalSection _apiCs;
+  Mutex api_lock_;
   VideoCaptureCapability _requestedCapability;  // Should be set by platform
                                                 // dependent code in
                                                 // StartCapture.

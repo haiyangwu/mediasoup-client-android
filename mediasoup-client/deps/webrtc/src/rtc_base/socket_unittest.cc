@@ -26,7 +26,6 @@
 #include "rtc_base/location.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/message_handler.h"
-#include "rtc_base/message_queue.h"
 #include "rtc_base/net_helpers.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/socket_server.h"
@@ -148,6 +147,15 @@ void SocketTest::TestCloseInClosedCallbackIPv4() {
 void SocketTest::TestCloseInClosedCallbackIPv6() {
   MAYBE_SKIP_IPV6;
   CloseInClosedCallbackInternal(kIPv6Loopback);
+}
+
+void SocketTest::TestDeleteInReadCallbackIPv4() {
+  DeleteInReadCallbackInternal(kIPv4Loopback);
+}
+
+void SocketTest::TestDeleteInReadCallbackIPv6() {
+  MAYBE_SKIP_IPV6;
+  DeleteInReadCallbackInternal(kIPv6Loopback);
 }
 
 void SocketTest::TestSocketServerWaitIPv4() {
@@ -392,7 +400,7 @@ void SocketTest::ConnectWithDnsLookupFailInternal(const IPAddress& loopback) {
         dns_lookup_finished);
   if (!dns_lookup_finished) {
     RTC_LOG(LS_WARNING) << "Skipping test; DNS resolution took longer than 5 "
-                        << "seconds.";
+                           "seconds.";
     return;
   }
 
@@ -652,7 +660,43 @@ void SocketTest::CloseInClosedCallbackInternal(const IPAddress& loopback) {
   EXPECT_TRUE(Socket::CS_CLOSED == client->GetState());
 }
 
-class Sleeper : public MessageHandler {
+// Helper class specifically for the test below.
+class SocketDeleter : public sigslot::has_slots<> {
+ public:
+  explicit SocketDeleter(std::unique_ptr<AsyncSocket> socket)
+      : socket_(std::move(socket)) {}
+
+  void Delete(AsyncSocket* other) { socket_.reset(); }
+
+  bool deleted() const { return socket_ == nullptr; }
+
+ private:
+  std::unique_ptr<AsyncSocket> socket_;
+};
+
+// Tested deleting a socket within another socket's read callback. A previous
+// iteration of the select loop failed in this situation, if both sockets
+// became readable at the same time.
+void SocketTest::DeleteInReadCallbackInternal(const IPAddress& loopback) {
+  std::unique_ptr<AsyncSocket> socket1(
+      ss_->CreateAsyncSocket(loopback.family(), SOCK_DGRAM));
+  std::unique_ptr<AsyncSocket> socket2(
+      ss_->CreateAsyncSocket(loopback.family(), SOCK_DGRAM));
+  EXPECT_EQ(0, socket1->Bind(SocketAddress(loopback, 0)));
+  EXPECT_EQ(0, socket2->Bind(SocketAddress(loopback, 0)));
+  EXPECT_EQ(3, socket1->SendTo("foo", 3, socket1->GetLocalAddress()));
+  EXPECT_EQ(3, socket2->SendTo("bar", 3, socket1->GetLocalAddress()));
+  // Sleep a while to ensure sends are both completed at the same time.
+  Thread::SleepMs(1000);
+
+  // Configure the helper class to delete socket 2 when socket 1 has a read
+  // event.
+  SocketDeleter deleter(std::move(socket2));
+  socket1->SignalReadEvent.connect(&deleter, &SocketDeleter::Delete);
+  EXPECT_TRUE_WAIT(deleter.deleted(), kTimeout);
+}
+
+class Sleeper : public MessageHandlerAutoCleanup {
  public:
   void OnMessage(Message* msg) override { Thread::Current()->SleepMs(500); }
 };
@@ -1028,6 +1072,15 @@ void SocketTest::GetSetOptionsInternal(const IPAddress& loopback) {
   int current_nd, desired_nd = 1;
   ASSERT_EQ(-1, socket->GetOption(Socket::OPT_NODELAY, &current_nd));
   ASSERT_EQ(-1, socket->SetOption(Socket::OPT_NODELAY, desired_nd));
+
+#if defined(WEBRTC_POSIX)
+  // Check DSCP.
+  int current_dscp, desired_dscp = 1;
+  ASSERT_NE(-1, socket->GetOption(Socket::OPT_DSCP, &current_dscp));
+  ASSERT_NE(-1, socket->SetOption(Socket::OPT_DSCP, desired_dscp));
+  ASSERT_NE(-1, socket->GetOption(Socket::OPT_DSCP, &current_dscp));
+  ASSERT_EQ(desired_dscp, current_dscp);
+#endif
 }
 
 void SocketTest::SocketRecvTimestamp(const IPAddress& loopback) {

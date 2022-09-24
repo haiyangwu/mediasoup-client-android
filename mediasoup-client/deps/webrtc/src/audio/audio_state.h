@@ -15,13 +15,11 @@
 #include <memory>
 #include <unordered_set>
 
+#include "api/sequence_checker.h"
 #include "audio/audio_transport_impl.h"
 #include "audio/null_audio_poller.h"
 #include "call/audio_state.h"
-#include "rtc_base/constructor_magic.h"
-#include "rtc_base/critical_section.h"
 #include "rtc_base/ref_count.h"
-#include "rtc_base/thread_checker.h"
 
 namespace webrtc {
 
@@ -33,6 +31,11 @@ namespace internal {
 class AudioState : public webrtc::AudioState {
  public:
   explicit AudioState(const AudioState::Config& config);
+
+  AudioState() = delete;
+  AudioState(const AudioState&) = delete;
+  AudioState& operator=(const AudioState&) = delete;
+
   ~AudioState() override;
 
   AudioProcessing* audio_processing() override;
@@ -60,9 +63,10 @@ class AudioState : public webrtc::AudioState {
 
  private:
   void UpdateAudioTransportWithSendingStreams();
+  void UpdateNullAudioPollerState();
 
-  rtc::ThreadChecker thread_checker_;
-  rtc::ThreadChecker process_thread_checker_;
+  SequenceChecker thread_checker_;
+  SequenceChecker process_thread_checker_;
   const webrtc::AudioState::Config config_;
   bool recording_enabled_ = true;
   bool playout_enabled_ = true;
@@ -82,8 +86,6 @@ class AudioState : public webrtc::AudioState {
     size_t num_channels = 0;
   };
   std::map<webrtc::AudioSendStream*, StreamProperties> sending_streams_;
-
-  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(AudioState);
 };
 }  // namespace internal
 }  // namespace webrtc

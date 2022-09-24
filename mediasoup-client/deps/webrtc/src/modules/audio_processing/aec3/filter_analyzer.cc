@@ -55,7 +55,7 @@ FilterAnalyzer::FilterAnalyzer(const EchoCanceller3Config& config,
       default_gain_(config.ep_strength.default_gain),
       h_highpass_(num_capture_channels,
                   std::vector<float>(
-                      GetTimeDomainLength(config.filter.main.length_blocks),
+                      GetTimeDomainLength(config.filter.refined.length_blocks),
                       0.f)),
       filter_analysis_states_(num_capture_channels,
                               FilterAnalysisState(config)),
@@ -69,9 +69,7 @@ void FilterAnalyzer::Reset() {
   blocks_since_reset_ = 0;
   ResetRegion();
   for (auto& state : filter_analysis_states_) {
-    state.peak_index = 0;
-    state.gain = default_gain_;
-    state.consistent_filter_detector.Reset();
+    state.Reset(default_gain_);
   }
   std::fill(filter_delays_blocks_.begin(), filter_delays_blocks_.end(), 0);
 }
@@ -116,12 +114,12 @@ void FilterAnalyzer::AnalyzeRegion(
   constexpr float kOneByBlockSize = 1.f / kBlockSize;
   for (size_t ch = 0; ch < filters_time_domain.size(); ++ch) {
     RTC_DCHECK_LT(region_.start_sample_, filters_time_domain[ch].size());
-    RTC_DCHECK_LT(filter_analysis_states_[ch].peak_index,
-                  filters_time_domain[0].size());
     RTC_DCHECK_LT(region_.end_sample_, filters_time_domain[ch].size());
 
     auto& st_ch = filter_analysis_states_[ch];
     RTC_DCHECK_EQ(h_highpass_[ch].size(), filters_time_domain[ch].size());
+    RTC_DCHECK_GT(h_highpass_[ch].size(), 0);
+    st_ch.peak_index = std::min(st_ch.peak_index, h_highpass_[ch].size() - 1);
 
     st_ch.peak_index =
         FindPeakIndex(h_highpass_[ch], st_ch.peak_index, region_.start_sample_,
@@ -204,7 +202,9 @@ FilterAnalyzer::ConsistentFilterDetector::ConsistentFilterDetector(
     const EchoCanceller3Config& config)
     : active_render_threshold_(config.render_levels.active_render_limit *
                                config.render_levels.active_render_limit *
-                               kFftLengthBy2) {}
+                               kFftLengthBy2) {
+  Reset();
+}
 
 void FilterAnalyzer::ConsistentFilterDetector::Reset() {
   significant_peak_ = false;

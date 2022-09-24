@@ -11,7 +11,6 @@
 package org.webrtc;
 
 import android.annotation.TargetApi;
-import android.graphics.Matrix;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -21,7 +20,6 @@ import android.support.annotation.Nullable;
 import android.view.Surface;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -105,7 +103,7 @@ class HardwareVideoEncoder implements VideoEncoder {
   // --- Initialized on construction.
   private final MediaCodecWrapperFactory mediaCodecWrapperFactory;
   private final String codecName;
-  private final VideoCodecType codecType;
+  private final VideoCodecMimeType codecType;
   private final Integer surfaceColorFormat;
   private final Integer yuvColorFormat;
   private final YuvFormat yuvFormat;
@@ -171,7 +169,7 @@ class HardwareVideoEncoder implements VideoEncoder {
    * intervals, and bitrateAdjuster.
    *
    * @param codecName the hardware codec implementation to use
-   * @param codecType the type of the given video codec (eg. VP8, VP9, or H264)
+   * @param codecType the type of the given video codec (eg. VP8, VP9, H264 or AV1)
    * @param surfaceColorFormat color format for surface mode or null if not available
    * @param yuvColorFormat color format for bytebuffer mode
    * @param keyFrameIntervalSec interval in seconds between key frames; used to initialize the codec
@@ -182,7 +180,7 @@ class HardwareVideoEncoder implements VideoEncoder {
    * @throws IllegalArgumentException if colorFormat is unsupported
    */
   public HardwareVideoEncoder(MediaCodecWrapperFactory mediaCodecWrapperFactory, String codecName,
-      VideoCodecType codecType, Integer surfaceColorFormat, Integer yuvColorFormat,
+      VideoCodecMimeType codecType, Integer surfaceColorFormat, Integer yuvColorFormat,
       Map<String, String> params, int keyFrameIntervalSec, int forceKeyFrameIntervalMs,
       BitrateAdjuster bitrateAdjuster, EglBase14.Context sharedContext) {
     this.mediaCodecWrapperFactory = mediaCodecWrapperFactory;
@@ -242,7 +240,7 @@ class HardwareVideoEncoder implements VideoEncoder {
       format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
       format.setInteger(MediaFormat.KEY_FRAME_RATE, bitrateAdjuster.getCodecConfigFramerate());
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, keyFrameIntervalSec);
-      if (codecType == VideoCodecType.H264) {
+      if (codecType == VideoCodecMimeType.H264) {
         String profileLevelId = params.get(VideoCodecInfo.H264_FMTP_PROFILE_LEVEL_ID);
         if (profileLevelId == null) {
           profileLevelId = VideoCodecInfo.H264_CONSTRAINED_BASELINE_3_1;
@@ -372,7 +370,6 @@ class HardwareVideoEncoder implements VideoEncoder {
     int bufferSize = videoFrameBuffer.getHeight() * videoFrameBuffer.getWidth() * 3 / 2;
     EncodedImage.Builder builder = EncodedImage.builder()
                                        .setCaptureTimeNs(videoFrame.getTimestampNs())
-                                       .setCompleteFrame(true)
                                        .setEncodedWidth(videoFrame.getBuffer().getWidth())
                                        .setEncodedHeight(videoFrame.getBuffer().getHeight())
                                        .setRotation(videoFrame.getRotation());
@@ -467,11 +464,11 @@ class HardwareVideoEncoder implements VideoEncoder {
   public ScalingSettings getScalingSettings() {
     encodeThreadChecker.checkIsOnValidThread();
     if (automaticResizeOn) {
-      if (codecType == VideoCodecType.VP8) {
+      if (codecType == VideoCodecMimeType.VP8) {
         final int kLowVp8QpThreshold = 29;
         final int kHighVp8QpThreshold = 95;
         return new ScalingSettings(kLowVp8QpThreshold, kHighVp8QpThreshold);
-      } else if (codecType == VideoCodecType.H264) {
+      } else if (codecType == VideoCodecMimeType.H264) {
         final int kLowH264QpThreshold = 24;
         final int kHighH264QpThreshold = 37;
         return new ScalingSettings(kLowH264QpThreshold, kHighH264QpThreshold);
@@ -565,7 +562,7 @@ class HardwareVideoEncoder implements VideoEncoder {
         }
 
         final ByteBuffer frameBuffer;
-        if (isKeyFrame && codecType == VideoCodecType.H264) {
+        if (isKeyFrame && codecType == VideoCodecMimeType.H264) {
           Logging.d(TAG,
               "Prepending config frame of size " + configBuffer.capacity()
                   + " to output buffer with offset " + info.offset + ", size " + info.size);
@@ -588,7 +585,14 @@ class HardwareVideoEncoder implements VideoEncoder {
         EncodedImage encodedImage = builder
                                         .setBuffer(frameBuffer,
                                             () -> {
-                                              codec.releaseOutputBuffer(index, false);
+                                              // This callback should not throw any exceptions since
+                                              // it may be called on an arbitrary thread.
+                                              // Check bug webrtc:11230 for more details.
+                                              try {
+                                                codec.releaseOutputBuffer(index, false);
+                                              } catch (Exception e) {
+                                                Logging.e(TAG, "releaseOutputBuffer failed", e);
+                                              }
                                               outputBuffersBusyCount.decrement();
                                             })
                                         .setFrameType(frameType)

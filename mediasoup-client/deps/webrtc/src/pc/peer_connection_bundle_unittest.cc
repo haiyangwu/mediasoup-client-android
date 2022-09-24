@@ -13,7 +13,6 @@
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
-#include "api/peer_connection_proxy.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "p2p/base/fake_port_allocator.h"
@@ -21,6 +20,7 @@
 #include "p2p/client/basic_port_allocator.h"
 #include "pc/media_session.h"
 #include "pc/peer_connection.h"
+#include "pc/peer_connection_proxy.h"
 #include "pc/peer_connection_wrapper.h"
 #include "pc/sdp_utils.h"
 #ifdef WEBRTC_ANDROID
@@ -753,11 +753,9 @@ TEST_P(PeerConnectionBundleTest, RejectDescriptionChangingBundleTag) {
 // This tests that removing contents from BUNDLE group and reject the whole
 // BUNDLE group could work. This is a regression test for
 // (https://bugs.chromium.org/p/chromium/issues/detail?id=827917)
+#ifdef HAVE_SCTP
 TEST_P(PeerConnectionBundleTest, RemovingContentAndRejectBundleGroup) {
   RTCConfiguration config;
-#ifndef HAVE_SCTP
-  config.enable_rtp_data_channel = true;
-#endif
   config.bundle_policy = BundlePolicy::kBundlePolicyMaxBundle;
   auto caller = CreatePeerConnectionWithAudioVideo(config);
   caller->CreateDataChannel("dc");
@@ -782,6 +780,7 @@ TEST_P(PeerConnectionBundleTest, RemovingContentAndRejectBundleGroup) {
 
   EXPECT_TRUE(caller->SetLocalDescription(std::move(re_offer)));
 }
+#endif
 
 // This tests that the BUNDLE group in answer should be a subset of the offered
 // group.
@@ -873,7 +872,7 @@ TEST_F(PeerConnectionBundleTestUnifiedPlan,
 
   // Stop all transceivers, causing all m= sections to be rejected.
   for (const auto& transceiver : callee->pc()->GetTransceivers()) {
-    transceiver->Stop();
+    transceiver->StopInternal();
   }
   EXPECT_TRUE(
       caller->SetRemoteDescription(callee->CreateAnswerAndSetAsLocal()));
@@ -885,6 +884,113 @@ TEST_F(PeerConnectionBundleTestUnifiedPlan,
       desc->description()->GetGroupByName(cricket::GROUP_TYPE_BUNDLE);
   ASSERT_NE(nullptr, bundle_group);
   EXPECT_TRUE(bundle_group->content_names().empty());
+}
+
+TEST_F(PeerConnectionBundleTestUnifiedPlan, MultipleBundleGroups) {
+  auto caller = CreatePeerConnection();
+  caller->AddAudioTrack("0_audio");
+  caller->AddAudioTrack("1_audio");
+  caller->AddVideoTrack("2_audio");
+  caller->AddVideoTrack("3_audio");
+  auto callee = CreatePeerConnection();
+
+  auto offer = caller->CreateOffer(RTCOfferAnswerOptions());
+  // Modify the GROUP to have two BUNDLEs. We know that the MIDs will be 0,1,2,4
+  // because our implementation has predictable MIDs.
+  offer->description()->RemoveGroupByName(cricket::GROUP_TYPE_BUNDLE);
+  cricket::ContentGroup bundle_group1(cricket::GROUP_TYPE_BUNDLE);
+  bundle_group1.AddContentName("0");
+  bundle_group1.AddContentName("1");
+  cricket::ContentGroup bundle_group2(cricket::GROUP_TYPE_BUNDLE);
+  bundle_group2.AddContentName("2");
+  bundle_group2.AddContentName("3");
+  offer->description()->AddGroup(bundle_group1);
+  offer->description()->AddGroup(bundle_group2);
+
+  EXPECT_TRUE(
+      caller->SetLocalDescription(CloneSessionDescription(offer.get())));
+  EXPECT_TRUE(callee->SetRemoteDescription(std::move(offer)));
+  auto answer = callee->CreateAnswer();
+  EXPECT_TRUE(
+      callee->SetLocalDescription(CloneSessionDescription(answer.get())));
+  EXPECT_TRUE(caller->SetRemoteDescription(std::move(answer)));
+
+  // Verify bundling on sender side.
+  auto senders = caller->pc()->GetSenders();
+  ASSERT_EQ(senders.size(), 4u);
+  auto sender0_transport = senders[0]->dtls_transport();
+  auto sender1_transport = senders[1]->dtls_transport();
+  auto sender2_transport = senders[2]->dtls_transport();
+  auto sender3_transport = senders[3]->dtls_transport();
+  EXPECT_EQ(sender0_transport, sender1_transport);
+  EXPECT_EQ(sender2_transport, sender3_transport);
+  EXPECT_NE(sender0_transport, sender2_transport);
+
+  // Verify bundling on receiver side.
+  auto receivers = callee->pc()->GetReceivers();
+  ASSERT_EQ(receivers.size(), 4u);
+  auto receiver0_transport = receivers[0]->dtls_transport();
+  auto receiver1_transport = receivers[1]->dtls_transport();
+  auto receiver2_transport = receivers[2]->dtls_transport();
+  auto receiver3_transport = receivers[3]->dtls_transport();
+  EXPECT_EQ(receiver0_transport, receiver1_transport);
+  EXPECT_EQ(receiver2_transport, receiver3_transport);
+  EXPECT_NE(receiver0_transport, receiver2_transport);
+}
+
+// Test that, with the "max-compat" bundle policy, it's possible to add an m=
+// section that's not part of an existing bundle group.
+TEST_F(PeerConnectionBundleTestUnifiedPlan, AddNonBundledSection) {
+  RTCConfiguration config;
+  config.bundle_policy = PeerConnectionInterface::kBundlePolicyMaxCompat;
+  auto caller = CreatePeerConnection(config);
+  caller->AddAudioTrack("0_audio");
+  caller->AddAudioTrack("1_audio");
+  auto callee = CreatePeerConnection(config);
+
+  // Establish an existing BUNDLE group.
+  auto offer = caller->CreateOffer(RTCOfferAnswerOptions());
+  EXPECT_TRUE(
+      caller->SetLocalDescription(CloneSessionDescription(offer.get())));
+  EXPECT_TRUE(callee->SetRemoteDescription(std::move(offer)));
+  auto answer = callee->CreateAnswer();
+  EXPECT_TRUE(
+      callee->SetLocalDescription(CloneSessionDescription(answer.get())));
+  EXPECT_TRUE(caller->SetRemoteDescription(std::move(answer)));
+
+  // Add a track but munge SDP so it's not part of the bundle group.
+  caller->AddAudioTrack("3_audio");
+  offer = caller->CreateOffer(RTCOfferAnswerOptions());
+  offer->description()->RemoveGroupByName(cricket::GROUP_TYPE_BUNDLE);
+  cricket::ContentGroup bundle_group(cricket::GROUP_TYPE_BUNDLE);
+  bundle_group.AddContentName("0");
+  bundle_group.AddContentName("1");
+  offer->description()->AddGroup(bundle_group);
+  EXPECT_TRUE(
+      caller->SetLocalDescription(CloneSessionDescription(offer.get())));
+  EXPECT_TRUE(callee->SetRemoteDescription(std::move(offer)));
+  answer = callee->CreateAnswer();
+  EXPECT_TRUE(
+      callee->SetLocalDescription(CloneSessionDescription(answer.get())));
+  EXPECT_TRUE(caller->SetRemoteDescription(std::move(answer)));
+
+  // Verify bundling on the sender side.
+  auto senders = caller->pc()->GetSenders();
+  ASSERT_EQ(senders.size(), 3u);
+  auto sender0_transport = senders[0]->dtls_transport();
+  auto sender1_transport = senders[1]->dtls_transport();
+  auto sender2_transport = senders[2]->dtls_transport();
+  EXPECT_EQ(sender0_transport, sender1_transport);
+  EXPECT_NE(sender0_transport, sender2_transport);
+
+  // Verify bundling on receiver side.
+  auto receivers = callee->pc()->GetReceivers();
+  ASSERT_EQ(receivers.size(), 3u);
+  auto receiver0_transport = receivers[0]->dtls_transport();
+  auto receiver1_transport = receivers[1]->dtls_transport();
+  auto receiver2_transport = receivers[2]->dtls_transport();
+  EXPECT_EQ(receiver0_transport, receiver1_transport);
+  EXPECT_NE(receiver0_transport, receiver2_transport);
 }
 
 }  // namespace webrtc

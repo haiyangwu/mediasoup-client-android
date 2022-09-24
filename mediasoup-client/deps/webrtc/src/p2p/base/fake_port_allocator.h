@@ -18,7 +18,6 @@
 #include "p2p/base/basic_packet_socket_factory.h"
 #include "p2p/base/port_allocator.h"
 #include "p2p/base/udp_port.h"
-#include "rtc_base/bind.h"
 #include "rtc_base/net_helpers.h"
 #include "rtc_base/thread.h"
 
@@ -48,15 +47,6 @@ class TestUDPPort : public UDPPort {
     }
     return port;
   }
-  void SendBindingResponse(StunMessage* request,
-                           const rtc::SocketAddress& addr) override {
-    UDPPort::SendBindingResponse(request, addr);
-    sent_binding_response_ = true;
-  }
-  bool sent_binding_response() { return sent_binding_response_; }
-  void set_sent_binding_response(bool response) {
-    sent_binding_response_ = response;
-  }
 
  protected:
   TestUDPPort(rtc::Thread* thread,
@@ -77,8 +67,6 @@ class TestUDPPort : public UDPPort {
                 password,
                 origin,
                 emit_localhost_for_anyaddress) {}
-
-  bool sent_binding_response_ = false;
 };
 
 // A FakePortAllocatorSession can be used with either a real or fake socket
@@ -130,8 +118,8 @@ class FakePortAllocatorSession : public PortAllocatorSession {
                                       username(), password(), std::string(),
                                       false));
       RTC_DCHECK(port_);
-      port_->SignalDestroyed.connect(
-          this, &FakePortAllocatorSession::OnPortDestroyed);
+      port_->SubscribePortDestroyed(
+          [this](PortInterface* port) { OnPortDestroyed(port); });
       AddPort(port_.get());
     }
     ++port_config_count_;
@@ -142,10 +130,6 @@ class FakePortAllocatorSession : public PortAllocatorSession {
   bool IsGettingPorts() override { return running_; }
   void ClearGettingPorts() override { is_cleared = true; }
   bool IsCleared() const override { return is_cleared; }
-
-  void RegatherOnAllNetworks() override {
-    SignalIceRegathering(this, IceRegatheringReason::OCCASIONAL_REFRESH);
-  }
 
   void RegatherOnFailedNetworks() override {
     SignalIceRegathering(this, IceRegatheringReason::NETWORK_FAILURE);
@@ -237,9 +221,7 @@ class FakePortAllocator : public cricket::PortAllocator {
       Initialize();
       return;
     }
-    network_thread_->Invoke<void>(RTC_FROM_HERE,
-                                  rtc::Bind(&PortAllocator::Initialize,
-                                            static_cast<PortAllocator*>(this)));
+    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] { Initialize(); });
   }
 
   void SetNetworkIgnoreMask(int network_ignore_mask) override {}
@@ -256,10 +238,19 @@ class FakePortAllocator : public cricket::PortAllocator {
 
   bool initialized() const { return initialized_; }
 
+  // For testing: Manipulate MdnsObfuscationEnabled()
+  bool MdnsObfuscationEnabled() const override {
+    return mdns_obfuscation_enabled_;
+  }
+  void SetMdnsObfuscationEnabledForTesting(bool enabled) {
+    mdns_obfuscation_enabled_ = enabled;
+  }
+
  private:
   rtc::Thread* network_thread_;
   rtc::PacketSocketFactory* factory_;
   std::unique_ptr<rtc::BasicPacketSocketFactory> owned_factory_;
+  bool mdns_obfuscation_enabled_ = false;
 };
 
 }  // namespace cricket

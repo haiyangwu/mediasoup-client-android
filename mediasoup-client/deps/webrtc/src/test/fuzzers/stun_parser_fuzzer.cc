@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "p2p/base/stun.h"
+#include "api/transport/stun.h"
 
 namespace webrtc {
 void FuzzOneInput(const uint8_t* data, size_t size) {
@@ -24,5 +24,6 @@ void FuzzOneInput(const uint8_t* data, size_t size) {
   std::unique_ptr<cricket::IceMessage> stun_msg(new cricket::IceMessage());
   rtc::ByteBufferReader buf(message, size);
   stun_msg->Read(&buf);
+  stun_msg->ValidateMessageIntegrity("");
 }
 }  // namespace webrtc

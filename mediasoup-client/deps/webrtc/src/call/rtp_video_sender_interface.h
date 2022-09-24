@@ -18,10 +18,10 @@
 #include "api/array_view.h"
 #include "api/call/bitrate_allocation.h"
 #include "api/fec_controller_override.h"
+#include "api/video/video_layers_allocation.h"
 #include "call/rtp_config.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/rtp_sequence_number_map.h"
-#include "modules/utility/include/process_thread.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 
 namespace webrtc {
@@ -31,9 +31,6 @@ struct FecProtectionParams;
 class RtpVideoSenderInterface : public EncodedImageCallback,
                                 public FecControllerOverride {
  public:
-  virtual void RegisterProcessThread(ProcessThread* module_process_thread) = 0;
-  virtual void DeRegisterProcessThread() = 0;
-
   // RtpVideoSender will only route packets if being active, all
   // packets will be dropped otherwise.
   virtual void SetActive(bool active) = 0;
@@ -50,6 +47,8 @@ class RtpVideoSenderInterface : public EncodedImageCallback,
 
   virtual void OnBitrateAllocationUpdated(
       const VideoBitrateAllocation& bitrate) = 0;
+  virtual void OnVideoLayersAllocationUpdated(
+      const VideoLayersAllocation& allocation) = 0;
   virtual void OnBitrateUpdated(BitrateAllocationUpdate update,
                                 int framerate) = 0;
   virtual void OnTransportOverheadChanged(

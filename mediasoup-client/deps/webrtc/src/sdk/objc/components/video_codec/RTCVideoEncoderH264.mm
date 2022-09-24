@@ -19,7 +19,6 @@
 #endif
 #import "RTCCodecSpecificInfoH264.h"
 #import "RTCH264ProfileLevelId.h"
-#import "api/peerconnection/RTCRtpFragmentationHeader+Private.h"
 #import "api/peerconnection/RTCVideoCodecInfo+Private.h"
 #import "base/RTCCodecSpecificInfo.h"
 #import "base/RTCI420Buffer.h"
@@ -29,10 +28,9 @@
 #import "components/video_frame_buffer/RTCCVPixelBuffer.h"
 #import "helpers.h"
 
+#include "api/video_codecs/h264_profile_level_id.h"
 #include "common_video/h264/h264_bitstream_parser.h"
-#include "common_video/h264/profile_level_id.h"
 #include "common_video/include/bitrate_adjuster.h"
-#include "modules/include/module_common_types.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/logging.h"
@@ -40,17 +38,14 @@
 #include "sdk/objc/components/video_codec/nalu_rewriter.h"
 #include "third_party/libyuv/include/libyuv/convert_from.h"
 
-@interface RTCVideoEncoderH264 ()
+@interface RTC_OBJC_TYPE (RTCVideoEncoderH264)
+()
 
-- (void)frameWasEncoded:(OSStatus)status
-                  flags:(VTEncodeInfoFlags)infoFlags
-           sampleBuffer:(CMSampleBufferRef)sampleBuffer
-      codecSpecificInfo:(id<RTCCodecSpecificInfo>)codecSpecificInfo
-                  width:(int32_t)width
-                 height:(int32_t)height
-           renderTimeMs:(int64_t)renderTimeMs
-              timestamp:(uint32_t)timestamp
-               rotation:(RTCVideoRotation)rotation;
+    - (void)frameWasEncoded : (OSStatus)status flags : (VTEncodeInfoFlags)infoFlags sampleBuffer
+    : (CMSampleBufferRef)sampleBuffer codecSpecificInfo
+    : (id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)>)codecSpecificInfo width : (int32_t)width height
+    : (int32_t)height renderTimeMs : (int64_t)renderTimeMs timestamp : (uint32_t)timestamp rotation
+    : (RTCVideoRotation)rotation;
 
 @end
 
@@ -70,8 +65,8 @@ const OSType kNV12PixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
 // Struct that we pass to the encoder per frame to encode. We receive it again
 // in the encoder callback.
 struct RTCFrameEncodeParams {
-  RTCFrameEncodeParams(RTCVideoEncoderH264 *e,
-                       RTCCodecSpecificInfoH264 *csi,
+  RTCFrameEncodeParams(RTC_OBJC_TYPE(RTCVideoEncoderH264) * e,
+                       RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) * csi,
                        int32_t w,
                        int32_t h,
                        int64_t rtms,
@@ -81,12 +76,12 @@ struct RTCFrameEncodeParams {
     if (csi) {
       codecSpecificInfo = csi;
     } else {
-      codecSpecificInfo = [[RTCCodecSpecificInfoH264 alloc] init];
+      codecSpecificInfo = [[RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) alloc] init];
     }
   }
 
-  RTCVideoEncoderH264 *encoder;
-  RTCCodecSpecificInfoH264 *codecSpecificInfo;
+  RTC_OBJC_TYPE(RTCVideoEncoderH264) * encoder;
+  RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) * codecSpecificInfo;
   int32_t width;
   int32_t height;
   int64_t render_time_ms;
@@ -97,7 +92,8 @@ struct RTCFrameEncodeParams {
 // We receive I420Frames as input, but we need to feed CVPixelBuffers into the
 // encoder. This performs the copy and format conversion.
 // TODO(tkchin): See if encoder will accept i420 frames and compare performance.
-bool CopyVideoFrameToNV12PixelBuffer(id<RTCI420Buffer> frameBuffer, CVPixelBufferRef pixelBuffer) {
+bool CopyVideoFrameToNV12PixelBuffer(id<RTC_OBJC_TYPE(RTCI420Buffer)> frameBuffer,
+                                     CVPixelBufferRef pixelBuffer) {
   RTC_DCHECK(pixelBuffer);
   RTC_DCHECK_EQ(CVPixelBufferGetPixelFormatType(pixelBuffer), kNV12PixelFormat);
   RTC_DCHECK_EQ(CVPixelBufferGetHeightOfPlane(pixelBuffer, 0), frameBuffer.height);
@@ -177,151 +173,151 @@ void compressionOutputCallback(void *encoder,
 // no specific VideoToolbox profile for the specified level, AutoLevel will be
 // returned. The user must initialize the encoder with a resolution and
 // framerate conforming to the selected H264 level regardless.
-CFStringRef ExtractProfile(const webrtc::H264::ProfileLevelId &profile_level_id) {
+CFStringRef ExtractProfile(const webrtc::H264ProfileLevelId &profile_level_id) {
   switch (profile_level_id.profile) {
-    case webrtc::H264::kProfileConstrainedBaseline:
-    case webrtc::H264::kProfileBaseline:
+    case webrtc::H264Profile::kProfileConstrainedBaseline:
+    case webrtc::H264Profile::kProfileBaseline:
       switch (profile_level_id.level) {
-        case webrtc::H264::kLevel3:
+        case webrtc::H264Level::kLevel3:
           return kVTProfileLevel_H264_Baseline_3_0;
-        case webrtc::H264::kLevel3_1:
+        case webrtc::H264Level::kLevel3_1:
           return kVTProfileLevel_H264_Baseline_3_1;
-        case webrtc::H264::kLevel3_2:
+        case webrtc::H264Level::kLevel3_2:
           return kVTProfileLevel_H264_Baseline_3_2;
-        case webrtc::H264::kLevel4:
+        case webrtc::H264Level::kLevel4:
           return kVTProfileLevel_H264_Baseline_4_0;
-        case webrtc::H264::kLevel4_1:
+        case webrtc::H264Level::kLevel4_1:
           return kVTProfileLevel_H264_Baseline_4_1;
-        case webrtc::H264::kLevel4_2:
+        case webrtc::H264Level::kLevel4_2:
           return kVTProfileLevel_H264_Baseline_4_2;
-        case webrtc::H264::kLevel5:
+        case webrtc::H264Level::kLevel5:
           return kVTProfileLevel_H264_Baseline_5_0;
-        case webrtc::H264::kLevel5_1:
+        case webrtc::H264Level::kLevel5_1:
           return kVTProfileLevel_H264_Baseline_5_1;
-        case webrtc::H264::kLevel5_2:
+        case webrtc::H264Level::kLevel5_2:
           return kVTProfileLevel_H264_Baseline_5_2;
-        case webrtc::H264::kLevel1:
-        case webrtc::H264::kLevel1_b:
-        case webrtc::H264::kLevel1_1:
-        case webrtc::H264::kLevel1_2:
-        case webrtc::H264::kLevel1_3:
-        case webrtc::H264::kLevel2:
-        case webrtc::H264::kLevel2_1:
-        case webrtc::H264::kLevel2_2:
+        case webrtc::H264Level::kLevel1:
+        case webrtc::H264Level::kLevel1_b:
+        case webrtc::H264Level::kLevel1_1:
+        case webrtc::H264Level::kLevel1_2:
+        case webrtc::H264Level::kLevel1_3:
+        case webrtc::H264Level::kLevel2:
+        case webrtc::H264Level::kLevel2_1:
+        case webrtc::H264Level::kLevel2_2:
           return kVTProfileLevel_H264_Baseline_AutoLevel;
       }
 
-    case webrtc::H264::kProfileMain:
+    case webrtc::H264Profile::kProfileMain:
       switch (profile_level_id.level) {
-        case webrtc::H264::kLevel3:
+        case webrtc::H264Level::kLevel3:
           return kVTProfileLevel_H264_Main_3_0;
-        case webrtc::H264::kLevel3_1:
+        case webrtc::H264Level::kLevel3_1:
           return kVTProfileLevel_H264_Main_3_1;
-        case webrtc::H264::kLevel3_2:
+        case webrtc::H264Level::kLevel3_2:
           return kVTProfileLevel_H264_Main_3_2;
-        case webrtc::H264::kLevel4:
+        case webrtc::H264Level::kLevel4:
           return kVTProfileLevel_H264_Main_4_0;
-        case webrtc::H264::kLevel4_1:
+        case webrtc::H264Level::kLevel4_1:
           return kVTProfileLevel_H264_Main_4_1;
-        case webrtc::H264::kLevel4_2:
+        case webrtc::H264Level::kLevel4_2:
           return kVTProfileLevel_H264_Main_4_2;
-        case webrtc::H264::kLevel5:
+        case webrtc::H264Level::kLevel5:
           return kVTProfileLevel_H264_Main_5_0;
-        case webrtc::H264::kLevel5_1:
+        case webrtc::H264Level::kLevel5_1:
           return kVTProfileLevel_H264_Main_5_1;
-        case webrtc::H264::kLevel5_2:
+        case webrtc::H264Level::kLevel5_2:
           return kVTProfileLevel_H264_Main_5_2;
-        case webrtc::H264::kLevel1:
-        case webrtc::H264::kLevel1_b:
-        case webrtc::H264::kLevel1_1:
-        case webrtc::H264::kLevel1_2:
-        case webrtc::H264::kLevel1_3:
-        case webrtc::H264::kLevel2:
-        case webrtc::H264::kLevel2_1:
-        case webrtc::H264::kLevel2_2:
+        case webrtc::H264Level::kLevel1:
+        case webrtc::H264Level::kLevel1_b:
+        case webrtc::H264Level::kLevel1_1:
+        case webrtc::H264Level::kLevel1_2:
+        case webrtc::H264Level::kLevel1_3:
+        case webrtc::H264Level::kLevel2:
+        case webrtc::H264Level::kLevel2_1:
+        case webrtc::H264Level::kLevel2_2:
           return kVTProfileLevel_H264_Main_AutoLevel;
       }
 
-    case webrtc::H264::kProfileConstrainedHigh:
-    case webrtc::H264::kProfileHigh:
+    case webrtc::H264Profile::kProfileConstrainedHigh:
+    case webrtc::H264Profile::kProfileHigh:
       switch (profile_level_id.level) {
-        case webrtc::H264::kLevel3:
+        case webrtc::H264Level::kLevel3:
           return kVTProfileLevel_H264_High_3_0;
-        case webrtc::H264::kLevel3_1:
+        case webrtc::H264Level::kLevel3_1:
           return kVTProfileLevel_H264_High_3_1;
-        case webrtc::H264::kLevel3_2:
+        case webrtc::H264Level::kLevel3_2:
           return kVTProfileLevel_H264_High_3_2;
-        case webrtc::H264::kLevel4:
+        case webrtc::H264Level::kLevel4:
           return kVTProfileLevel_H264_High_4_0;
-        case webrtc::H264::kLevel4_1:
+        case webrtc::H264Level::kLevel4_1:
           return kVTProfileLevel_H264_High_4_1;
-        case webrtc::H264::kLevel4_2:
+        case webrtc::H264Level::kLevel4_2:
           return kVTProfileLevel_H264_High_4_2;
-        case webrtc::H264::kLevel5:
+        case webrtc::H264Level::kLevel5:
           return kVTProfileLevel_H264_High_5_0;
-        case webrtc::H264::kLevel5_1:
+        case webrtc::H264Level::kLevel5_1:
           return kVTProfileLevel_H264_High_5_1;
-        case webrtc::H264::kLevel5_2:
+        case webrtc::H264Level::kLevel5_2:
           return kVTProfileLevel_H264_High_5_2;
-        case webrtc::H264::kLevel1:
-        case webrtc::H264::kLevel1_b:
-        case webrtc::H264::kLevel1_1:
-        case webrtc::H264::kLevel1_2:
-        case webrtc::H264::kLevel1_3:
-        case webrtc::H264::kLevel2:
-        case webrtc::H264::kLevel2_1:
-        case webrtc::H264::kLevel2_2:
+        case webrtc::H264Level::kLevel1:
+        case webrtc::H264Level::kLevel1_b:
+        case webrtc::H264Level::kLevel1_1:
+        case webrtc::H264Level::kLevel1_2:
+        case webrtc::H264Level::kLevel1_3:
+        case webrtc::H264Level::kLevel2:
+        case webrtc::H264Level::kLevel2_1:
+        case webrtc::H264Level::kLevel2_2:
           return kVTProfileLevel_H264_High_AutoLevel;
       }
   }
 }
 
 // The function returns the max allowed sample rate (pixels per second) that
-// can be processed by given encoder with |profile_level_id|.
+// can be processed by given encoder with `profile_level_id`.
 // See https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-H.264-201610-S!!PDF-E&type=items
 // for details.
-NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id) {
+NSUInteger GetMaxSampleRate(const webrtc::H264ProfileLevelId &profile_level_id) {
   switch (profile_level_id.level) {
-    case webrtc::H264::kLevel3:
+    case webrtc::H264Level::kLevel3:
       return 10368000;
-    case webrtc::H264::kLevel3_1:
+    case webrtc::H264Level::kLevel3_1:
       return 27648000;
-    case webrtc::H264::kLevel3_2:
+    case webrtc::H264Level::kLevel3_2:
       return 55296000;
-    case webrtc::H264::kLevel4:
-    case webrtc::H264::kLevel4_1:
+    case webrtc::H264Level::kLevel4:
+    case webrtc::H264Level::kLevel4_1:
       return 62914560;
-    case webrtc::H264::kLevel4_2:
+    case webrtc::H264Level::kLevel4_2:
       return 133693440;
-    case webrtc::H264::kLevel5:
+    case webrtc::H264Level::kLevel5:
       return 150994944;
-    case webrtc::H264::kLevel5_1:
+    case webrtc::H264Level::kLevel5_1:
       return 251658240;
-    case webrtc::H264::kLevel5_2:
+    case webrtc::H264Level::kLevel5_2:
       return 530841600;
-    case webrtc::H264::kLevel1:
-    case webrtc::H264::kLevel1_b:
-    case webrtc::H264::kLevel1_1:
-    case webrtc::H264::kLevel1_2:
-    case webrtc::H264::kLevel1_3:
-    case webrtc::H264::kLevel2:
-    case webrtc::H264::kLevel2_1:
-    case webrtc::H264::kLevel2_2:
+    case webrtc::H264Level::kLevel1:
+    case webrtc::H264Level::kLevel1_b:
+    case webrtc::H264Level::kLevel1_1:
+    case webrtc::H264Level::kLevel1_2:
+    case webrtc::H264Level::kLevel1_3:
+    case webrtc::H264Level::kLevel2:
+    case webrtc::H264Level::kLevel2_1:
+    case webrtc::H264Level::kLevel2_2:
       // Zero means auto rate setting.
       return 0;
   }
 }
 }  // namespace
 
-@implementation RTCVideoEncoderH264 {
-  RTCVideoCodecInfo *_codecInfo;
+@implementation RTC_OBJC_TYPE (RTCVideoEncoderH264) {
+  RTC_OBJC_TYPE(RTCVideoCodecInfo) * _codecInfo;
   std::unique_ptr<webrtc::BitrateAdjuster> _bitrateAdjuster;
   uint32_t _targetBitrateBps;
   uint32_t _encoderBitrateBps;
   uint32_t _encoderFrameRate;
   uint32_t _maxAllowedFrameRate;
   RTCH264PacketizationMode _packetizationMode;
-  absl::optional<webrtc::H264::ProfileLevelId> _profile_level_id;
+  absl::optional<webrtc::H264ProfileLevelId> _profile_level_id;
   RTCVideoEncoderCallback _callback;
   int32_t _width;
   int32_t _height;
@@ -340,13 +336,13 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
 // drastically reduced bitrate, so we want to avoid that. In steady state
 // conditions, 0.95 seems to give us better overall bitrate over long periods
 // of time.
-- (instancetype)initWithCodecInfo:(RTCVideoCodecInfo *)codecInfo {
+- (instancetype)initWithCodecInfo:(RTC_OBJC_TYPE(RTCVideoCodecInfo) *)codecInfo {
   if (self = [super init]) {
     _codecInfo = codecInfo;
     _bitrateAdjuster.reset(new webrtc::BitrateAdjuster(.5, .95));
     _packetizationMode = RTCH264PacketizationModeNonInterleaved;
     _profile_level_id =
-        webrtc::H264::ParseSdpProfileLevelId([codecInfo nativeSdpVideoFormat].parameters);
+        webrtc::ParseSdpForH264ProfileLevelId([codecInfo nativeSdpVideoFormat].parameters);
     RTC_DCHECK(_profile_level_id);
     RTC_LOG(LS_INFO) << "Using profile " << CFStringToString(ExtractProfile(*_profile_level_id));
     RTC_CHECK([codecInfo.name isEqualToString:kRTCVideoCodecH264Name]);
@@ -358,7 +354,7 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   [self destroyCompressionSession];
 }
 
-- (NSInteger)startEncodeWithSettings:(RTCVideoEncoderSettings *)settings
+- (NSInteger)startEncodeWithSettings:(RTC_OBJC_TYPE(RTCVideoEncoderSettings) *)settings
                        numberOfCores:(int)numberOfCores {
   RTC_DCHECK(settings);
   RTC_DCHECK([settings.name isEqualToString:kRTCVideoCodecH264Name]);
@@ -388,8 +384,8 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   return [self resetCompressionSessionWithPixelFormat:kNV12PixelFormat];
 }
 
-- (NSInteger)encode:(RTCVideoFrame *)frame
-    codecSpecificInfo:(nullable id<RTCCodecSpecificInfo>)codecSpecificInfo
+- (NSInteger)encode:(RTC_OBJC_TYPE(RTCVideoFrame) *)frame
+    codecSpecificInfo:(nullable id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)>)codecSpecificInfo
            frameTypes:(NSArray<NSNumber *> *)frameTypes {
   RTC_DCHECK_EQ(frame.width, _width);
   RTC_DCHECK_EQ(frame.height, _height);
@@ -404,9 +400,10 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   }
 
   CVPixelBufferRef pixelBuffer = nullptr;
-  if ([frame.buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
+  if ([frame.buffer isKindOfClass:[RTC_OBJC_TYPE(RTCCVPixelBuffer) class]]) {
     // Native frame buffer
-    RTCCVPixelBuffer *rtcPixelBuffer = (RTCCVPixelBuffer *)frame.buffer;
+    RTC_OBJC_TYPE(RTCCVPixelBuffer) *rtcPixelBuffer =
+        (RTC_OBJC_TYPE(RTCCVPixelBuffer) *)frame.buffer;
     if (![rtcPixelBuffer requiresCropping]) {
       // This pixel buffer might have a higher resolution than what the
       // compression session is configured to. The compression session can
@@ -502,6 +499,13 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
     [self resetCompressionSessionWithPixelFormat:[self pixelFormatOfFrame:frame]];
 
     return WEBRTC_VIDEO_CODEC_NO_OUTPUT;
+  } else if (status == kVTVideoEncoderMalfunctionErr) {
+    // Sometimes the encoder malfunctions and needs to be restarted.
+    RTC_LOG(LS_ERROR)
+        << "Encountered video encoder malfunction error. Resetting compression session.";
+    [self resetCompressionSessionWithPixelFormat:[self pixelFormatOfFrame:frame]];
+
+    return WEBRTC_VIDEO_CODEC_NO_OUTPUT;
   } else if (status != noErr) {
     RTC_LOG(LS_ERROR) << "Failed to encode frame with code: " << status;
     return WEBRTC_VIDEO_CODEC_ERROR;
@@ -525,6 +529,18 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
+- (NSInteger)resolutionAlignment {
+  return 1;
+}
+
+- (BOOL)applyAlignmentToAllSimulcastLayers {
+  return NO;
+}
+
+- (BOOL)supportsNativeHandle {
+  return YES;
+}
+
 #pragma mark - Private
 
 - (NSInteger)releaseEncoder {
@@ -536,17 +552,18 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
-- (OSType)pixelFormatOfFrame:(RTCVideoFrame *)frame {
+- (OSType)pixelFormatOfFrame:(RTC_OBJC_TYPE(RTCVideoFrame) *)frame {
   // Use NV12 for non-native frames.
-  if ([frame.buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
-    RTCCVPixelBuffer *rtcPixelBuffer = (RTCCVPixelBuffer *)frame.buffer;
+  if ([frame.buffer isKindOfClass:[RTC_OBJC_TYPE(RTCCVPixelBuffer) class]]) {
+    RTC_OBJC_TYPE(RTCCVPixelBuffer) *rtcPixelBuffer =
+        (RTC_OBJC_TYPE(RTCCVPixelBuffer) *)frame.buffer;
     return CVPixelBufferGetPixelFormatType(rtcPixelBuffer.pixelBuffer);
   }
 
   return kNV12PixelFormat;
 }
 
-- (BOOL)resetCompressionSessionIfNeededWithFrame:(RTCVideoFrame *)frame {
+- (BOOL)resetCompressionSessionIfNeededWithFrame:(RTC_OBJC_TYPE(RTCVideoFrame) *)frame {
   BOOL resetCompressionSession = NO;
 
   // If we're capturing native frames in another pixel format than the compression session is
@@ -589,14 +606,15 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   // buffers retrieved from the encoder's pixel buffer pool.
   const size_t attributesSize = 3;
   CFTypeRef keys[attributesSize] = {
-#if defined(WEBRTC_IOS)
-    kCVPixelBufferOpenGLESCompatibilityKey,
+#if defined(WEBRTC_IOS) && TARGET_OS_MACCATALYST
+      kCVPixelBufferMetalCompatibilityKey,
+#elif defined(WEBRTC_IOS)
+      kCVPixelBufferOpenGLESCompatibilityKey,
 #elif defined(WEBRTC_MAC)
-    kCVPixelBufferOpenGLCompatibilityKey,
+      kCVPixelBufferOpenGLCompatibilityKey,
 #endif
-    kCVPixelBufferIOSurfacePropertiesKey,
-    kCVPixelBufferPixelFormatTypeKey
-  };
+      kCVPixelBufferIOSurfacePropertiesKey,
+      kCVPixelBufferPixelFormatTypeKey};
   CFDictionaryRef ioSurfaceValue = CreateCFTypeDictionary(nullptr, nullptr, 0);
   int64_t pixelFormatType = framePixelFormat;
   CFNumberRef pixelFormat = CFNumberCreate(nullptr, kCFNumberLongType, &pixelFormatType);
@@ -709,7 +727,7 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   if (_compressionSession) {
     SetVTSessionProperty(_compressionSession, kVTCompressionPropertyKey_AverageBitRate, bitrateBps);
 
-    // With zero |_maxAllowedFrameRate|, we fall back to automatic frame rate detection.
+    // With zero `_maxAllowedFrameRate`, we fall back to automatic frame rate detection.
     if (_maxAllowedFrameRate > 0) {
       SetVTSessionProperty(
           _compressionSession, kVTCompressionPropertyKey_ExpectedFrameRate, frameRate);
@@ -748,12 +766,16 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
 - (void)frameWasEncoded:(OSStatus)status
                   flags:(VTEncodeInfoFlags)infoFlags
            sampleBuffer:(CMSampleBufferRef)sampleBuffer
-      codecSpecificInfo:(id<RTCCodecSpecificInfo>)codecSpecificInfo
+      codecSpecificInfo:(id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)>)codecSpecificInfo
                   width:(int32_t)width
                  height:(int32_t)height
            renderTimeMs:(int64_t)renderTimeMs
               timestamp:(uint32_t)timestamp
                rotation:(RTCVideoRotation)rotation {
+  RTCVideoEncoderCallback callback = _callback;
+  if (!callback) {
+    return;
+  }
   if (status != noErr) {
     RTC_LOG(LS_ERROR) << "H264 encode failed with code: " << status;
     return;
@@ -775,25 +797,20 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
     RTC_LOG(LS_INFO) << "Generated keyframe";
   }
 
-  // Convert the sample buffer into a buffer suitable for RTP packetization.
-  // TODO(tkchin): Allocate buffers through a pool.
-  std::unique_ptr<rtc::Buffer> buffer(new rtc::Buffer());
-  RTCRtpFragmentationHeader *header;
-  {
-    std::unique_ptr<webrtc::RTPFragmentationHeader> header_cpp;
-    bool result =
-        H264CMSampleBufferToAnnexBBuffer(sampleBuffer, isKeyframe, buffer.get(), &header_cpp);
-    header = [[RTCRtpFragmentationHeader alloc] initWithNativeFragmentationHeader:header_cpp.get()];
-    if (!result) {
-      return;
-    }
+  __block std::unique_ptr<rtc::Buffer> buffer = std::make_unique<rtc::Buffer>();
+  if (!webrtc::H264CMSampleBufferToAnnexBBuffer(sampleBuffer, isKeyframe, buffer.get())) {
+    return;
   }
 
-  RTCEncodedImage *frame = [[RTCEncodedImage alloc] init];
-  frame.buffer = [NSData dataWithBytesNoCopy:buffer->data() length:buffer->size() freeWhenDone:NO];
+  RTC_OBJC_TYPE(RTCEncodedImage) *frame = [[RTC_OBJC_TYPE(RTCEncodedImage) alloc] init];
+  // This assumes ownership of `buffer` and is responsible for freeing it when done.
+  frame.buffer = [[NSData alloc] initWithBytesNoCopy:buffer->data()
+                                              length:buffer->size()
+                                         deallocator:^(void *bytes, NSUInteger size) {
+                                           buffer.reset();
+                                         }];
   frame.encodedWidth = width;
   frame.encodedHeight = height;
-  frame.completeFrame = YES;
   frame.frameType = isKeyframe ? RTCFrameTypeVideoFrameKey : RTCFrameTypeVideoFrameDelta;
   frame.captureTimeMs = renderTimeMs;
   frame.timeStamp = timestamp;
@@ -802,12 +819,10 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
                                                                   RTCVideoContentTypeUnspecified;
   frame.flags = webrtc::VideoSendTiming::kInvalid;
 
-  int qp;
-  _h264BitstreamParser.ParseBitstream(buffer->data(), buffer->size());
-  _h264BitstreamParser.GetLastSliceQp(&qp);
-  frame.qp = @(qp);
+  _h264BitstreamParser.ParseBitstream(*buffer);
+  frame.qp = @(_h264BitstreamParser.GetLastSliceQp().value_or(-1));
 
-  BOOL res = _callback(frame, codecSpecificInfo, header);
+  BOOL res = callback(frame, codecSpecificInfo);
   if (!res) {
     RTC_LOG(LS_ERROR) << "Encode callback failed";
     return;
@@ -815,9 +830,10 @@ NSUInteger GetMaxSampleRate(const webrtc::H264::ProfileLevelId &profile_level_id
   _bitrateAdjuster->Update(frame.buffer.length);
 }
 
-- (nullable RTCVideoEncoderQpThresholds *)scalingSettings {
-  return [[RTCVideoEncoderQpThresholds alloc] initWithThresholdsLow:kLowH264QpThreshold
-                                                               high:kHighH264QpThreshold];
+- (nullable RTC_OBJC_TYPE(RTCVideoEncoderQpThresholds) *)scalingSettings {
+  return [[RTC_OBJC_TYPE(RTCVideoEncoderQpThresholds) alloc]
+      initWithThresholdsLow:kLowH264QpThreshold
+                       high:kHighH264QpThreshold];
 }
 
 @end

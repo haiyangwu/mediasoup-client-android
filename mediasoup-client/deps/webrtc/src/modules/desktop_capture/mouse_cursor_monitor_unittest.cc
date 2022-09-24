@@ -10,7 +10,6 @@
 
 #include "modules/desktop_capture/mouse_cursor_monitor.h"
 
-#include <assert.h>
 #include <stddef.h>
 
 #include <memory>
@@ -32,11 +31,6 @@ class MouseCursorMonitorTest : public ::testing::Test,
   // MouseCursorMonitor::Callback interface
   void OnMouseCursor(MouseCursor* cursor_image) override {
     cursor_image_.reset(cursor_image);
-  }
-
-  void OnMouseCursorPosition(MouseCursorMonitor::CursorState state,
-                             const DesktopVector& position) override {
-    RTC_NOTREACHED();
   }
 
   void OnMouseCursorPosition(const DesktopVector& position) override {
@@ -70,7 +64,7 @@ TEST_F(MouseCursorMonitorTest, MAYBE(FromScreen)) {
       MouseCursorMonitor::CreateForScreen(
           DesktopCaptureOptions::CreateDefault(),
           webrtc::kFullDesktopScreenId));
-  assert(capturer.get());
+  RTC_DCHECK(capturer.get());
   capturer->Init(this, MouseCursorMonitor::SHAPE_AND_POSITION);
   capturer->Capture();
 
@@ -107,7 +101,7 @@ TEST_F(MouseCursorMonitorTest, MAYBE(FromWindow)) {
     std::unique_ptr<MouseCursorMonitor> capturer(
         MouseCursorMonitor::CreateForWindow(
             DesktopCaptureOptions::CreateDefault(), sources[i].id));
-    assert(capturer.get());
+    RTC_DCHECK(capturer.get());
 
     capturer->Init(this, MouseCursorMonitor::SHAPE_AND_POSITION);
     capturer->Capture();
@@ -123,7 +117,7 @@ TEST_F(MouseCursorMonitorTest, MAYBE(ShapeOnly)) {
       MouseCursorMonitor::CreateForScreen(
           DesktopCaptureOptions::CreateDefault(),
           webrtc::kFullDesktopScreenId));
-  assert(capturer.get());
+  RTC_DCHECK(capturer.get());
   capturer->Init(this, MouseCursorMonitor::SHAPE_ONLY);
   capturer->Capture();
 

@@ -19,17 +19,18 @@
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
+#include "api/test/frame_generator_interface.h"
 #include "api/test/video_quality_test_fixture.h"
 #include "api/video/video_bitrate_allocator_factory.h"
 #include "call/fake_network_pipe.h"
 #include "media/engine/internal_decoder_factory.h"
 #include "media/engine/internal_encoder_factory.h"
 #include "test/call_test.h"
-#include "test/frame_generator.h"
 #include "test/layer_filtering_transport.h"
 #include "video/video_analyzer.h"
 #ifdef WEBRTC_WIN
 #include "modules/audio_device/win/core_audio_utility_win.h"
+#include "rtc_base/win/scoped_com_initializer.h"
 #endif
 
 namespace webrtc {
@@ -76,7 +77,8 @@ class VideoQualityTest : public test::CallTest,
 
   // Helper methods for setting up the call.
   void CreateCapturers();
-  std::unique_ptr<test::FrameGenerator> CreateFrameGenerator(size_t video_idx);
+  std::unique_ptr<test::FrameGeneratorInterface> CreateFrameGenerator(
+      size_t video_idx);
   void SetupThumbnailCapturers(size_t num_thumbnail_streams);
   std::unique_ptr<VideoDecoder> CreateVideoDecoder(
       const SdpVideoFormat& format);
@@ -136,7 +138,7 @@ class VideoQualityTest : public test::CallTest,
 #ifdef WEBRTC_WIN
   // Windows Core Audio based ADM needs to run on a COM initialized thread.
   // Only referenced in combination with --audio --use_real_adm flags.
-  std::unique_ptr<webrtc_win::ScopedCOMInitializer> com_initializer_;
+  std::unique_ptr<ScopedCOMInitializer> com_initializer_;
 #endif
 };
 

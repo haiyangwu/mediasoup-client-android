@@ -31,7 +31,7 @@ LoggedPacketInfo::LoggedPacketInfo(const LoggedRtpPacket& rtp,
           has_transport_seq_no ? rtp.header.extension.transportSequenceNumber
                                : 0)),
       capture_time(capture_time),
-      log_packet_time(Timestamp::us(rtp.log_time_us())),
+      log_packet_time(Timestamp::Micros(rtp.log_time_us())),
       reported_send_time(rtp.header.extension.hasAbsoluteSendTime
                              ? rtp.header.extension.GetAbsoluteSendTimestamp()
                              : Timestamp::MinusInfinity()) {}
@@ -39,4 +39,19 @@ LoggedPacketInfo::LoggedPacketInfo(const LoggedRtpPacket& rtp,
 LoggedPacketInfo::LoggedPacketInfo(const LoggedPacketInfo&) = default;
 
 LoggedPacketInfo::~LoggedPacketInfo() {}
+
+LoggedRtcpPacket::LoggedRtcpPacket(Timestamp timestamp,
+                                   const std::vector<uint8_t>& packet)
+    : timestamp(timestamp), raw_data(packet) {}
+
+LoggedRtcpPacket::LoggedRtcpPacket(Timestamp timestamp,
+                                   const std::string& packet)
+    : timestamp(timestamp), raw_data(packet.size()) {
+  memcpy(raw_data.data(), packet.data(), packet.size());
+}
+
+LoggedRtcpPacket::LoggedRtcpPacket(const LoggedRtcpPacket& rhs) = default;
+
+LoggedRtcpPacket::~LoggedRtcpPacket() = default;
+
 }  // namespace webrtc

@@ -14,11 +14,9 @@
 #include <stdint.h>
 #include <time.h>
 
-#include <string>
-
 #include "rtc_base/checks.h"
-#include "rtc_base/strings/string_builder.h"
 #include "rtc_base/system/rtc_export.h"
+#include "rtc_base/system_time.h"
 
 namespace rtc {
 
@@ -64,11 +62,16 @@ RTC_EXPORT ClockInterface* GetClockForTesting();
 // Synchronizes the current clock based upon an NTP server's epoch in
 // milliseconds.
 void SyncWithNtp(int64_t time_from_ntp_server_ms);
+
+// Returns the current time in nanoseconds. The clock is synchonized with the
+// system wall clock time upon instatiation. It may also be synchronized using
+// the SyncWithNtp() function above. Please note that the clock will most likely
+// drift away from the system wall clock time as time goes by.
+int64_t WinUwpSystemTimeNanos();
 #endif  // defined(WINUWP)
 
 // Returns the actual system time, even if a clock is set for testing.
 // Useful for timeouts while using a test clock, or for logging.
-int64_t SystemTimeNanos();
 int64_t SystemTimeMillis();
 
 // Returns the current time in milliseconds in 32 bits.
@@ -136,34 +139,6 @@ int64_t TimeUTCMicros();
 // Return the number of milliseconds since January 1, 1970, UTC.
 // See above.
 int64_t TimeUTCMillis();
-
-// Interval of time from the range [min, max] inclusive.
-class IntervalRange {
- public:
-  IntervalRange() : min_(0), max_(0) {}
-  IntervalRange(int min, int max) : min_(min), max_(max) {
-    RTC_DCHECK_LE(min, max);
-  }
-
-  int min() const { return min_; }
-  int max() const { return max_; }
-
-  std::string ToString() const {
-    rtc::StringBuilder ss;
-    ss << "[" << min_ << "," << max_ << "]";
-    return ss.Release();
-  }
-
-  bool operator==(const IntervalRange& o) const {
-    return min_ == o.min_ && max_ == o.max_;
-  }
-
-  bool operator!=(const IntervalRange& o) const { return !operator==(o); }
-
- private:
-  int min_;
-  int max_;
-};
 
 }  // namespace rtc
 

@@ -17,8 +17,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/system/unused.h"
 
 namespace webrtc {
 
@@ -127,7 +127,7 @@ class SwapQueue {
   // When specified, the T given in *input must pass the ItemVerifier() test.
   // The contents of *input after the call are then also guaranteed to pass the
   // ItemVerifier() test.
-  bool Insert(T* input) RTC_WARN_UNUSED_RESULT {
+  ABSL_MUST_USE_RESULT bool Insert(T* input) {
     RTC_DCHECK(input);
 
     RTC_DCHECK(queue_item_verifier_(*input));
@@ -141,7 +141,8 @@ class SwapQueue {
       return false;
     }
 
-    std::swap(*input, queue_[next_write_index_]);
+    using std::swap;
+    swap(*input, queue_[next_write_index_]);
 
     // Increment the value of num_elements_ to account for the inserted element.
     // Release memory ordering prevents the reads and writes to
@@ -167,7 +168,7 @@ class SwapQueue {
   // empty). When specified, The T given in *output must pass the ItemVerifier()
   // test and the contents of *output after the call are then also guaranteed to
   // pass the ItemVerifier() test.
-  bool Remove(T* output) RTC_WARN_UNUSED_RESULT {
+  ABSL_MUST_USE_RESULT bool Remove(T* output) {
     RTC_DCHECK(output);
 
     RTC_DCHECK(queue_item_verifier_(*output));
@@ -181,7 +182,8 @@ class SwapQueue {
       return false;
     }
 
-    std::swap(*output, queue_[next_read_index_]);
+    using std::swap;
+    swap(*output, queue_[next_read_index_]);
 
     // Decrement the value of num_elements_ to account for the removed element.
     // Release memory ordering prevents the reads and writes to

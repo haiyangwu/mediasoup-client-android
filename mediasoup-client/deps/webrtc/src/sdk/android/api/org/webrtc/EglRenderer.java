@@ -111,8 +111,8 @@ public class EglRenderer implements VideoSink {
 
   protected final String name;
 
-  // |renderThreadHandler| is a handler for communicating with |renderThread|, and is synchronized
-  // on |handlerLock|.
+  // `renderThreadHandler` is a handler for communicating with `renderThread`, and is synchronized
+  // on `handlerLock`.
   private final Object handlerLock = new Object();
   @Nullable private Handler renderThreadHandler;
 
@@ -128,19 +128,19 @@ public class EglRenderer implements VideoSink {
   // paused.
   private long minRenderPeriodNs;
 
-  // EGL and GL resources for drawing YUV/OES textures. After initilization, these are only accessed
-  // from the render thread.
+  // EGL and GL resources for drawing YUV/OES textures. After initialization, these are only
+  // accessed from the render thread.
   @Nullable private EglBase eglBase;
   private final VideoFrameDrawer frameDrawer;
   @Nullable private RendererCommon.GlDrawer drawer;
   private boolean usePresentationTimeStamp;
   private final Matrix drawMatrix = new Matrix();
 
-  // Pending frame to render. Serves as a queue with size 1. Synchronized on |frameLock|.
+  // Pending frame to render. Serves as a queue with size 1. Synchronized on `frameLock`.
   private final Object frameLock = new Object();
   @Nullable private VideoFrame pendingFrame;
 
-  // These variables are synchronized on |layoutLock|.
+  // These variables are synchronized on `layoutLock`.
   private final Object layoutLock = new Object();
   private float layoutAspectRatio;
   // If true, mirrors the video stream horizontally.
@@ -148,7 +148,7 @@ public class EglRenderer implements VideoSink {
   // If true, mirrors the video stream vertically.
   private boolean mirrorVertically;
 
-  // These variables are synchronized on |statisticsLock|.
+  // These variables are synchronized on `statisticsLock`.
   private final Object statisticsLock = new Object();
   // Total number of video frames received in renderFrame() call.
   private int framesReceived;
@@ -198,9 +198,9 @@ public class EglRenderer implements VideoSink {
   }
 
   /**
-   * Initialize this class, sharing resources with |sharedContext|. The custom |drawer| will be used
+   * Initialize this class, sharing resources with `sharedContext`. The custom `drawer` will be used
    * for drawing frames on the EGLSurface. This class is responsible for calling release() on
-   * |drawer|. It is allowed to call init() to reinitialize the renderer after a previous
+   * `drawer`. It is allowed to call init() to reinitialize the renderer after a previous
    * init()/release() cycle. If usePresentationTimeStamp is true, eglPresentationTimeANDROID will be
    * set with the frame timestamps, which specifies desired presentation time and might be useful
    * for e.g. syncing audio and video.
@@ -290,7 +290,9 @@ public class EglRenderer implements VideoSink {
       // Release EGL and GL resources on render thread.
       renderThreadHandler.postAtFrontOfQueue(() -> {
         // Detach current shader program.
-        GLES20.glUseProgram(/* program= */ 0);
+        synchronized (EglBase.lock) {
+          GLES20.glUseProgram(/* program= */ 0);
+        }
         if (drawer != null) {
           drawer.release();
           drawer = null;
@@ -590,10 +592,10 @@ public class EglRenderer implements VideoSink {
   }
 
   /**
-   * Renders and releases |pendingFrame|.
+   * Renders and releases `pendingFrame`.
    */
   private void renderFrameOnRenderThread() {
-    // Fetch and render |pendingFrame|.
+    // Fetch and render `pendingFrame`.
     final VideoFrame frame;
     synchronized (frameLock) {
       if (pendingFrame == null) {
@@ -755,7 +757,7 @@ public class EglRenderer implements VideoSink {
     final long currentTimeNs = System.nanoTime();
     synchronized (statisticsLock) {
       final long elapsedTimeNs = currentTimeNs - statisticsStartTimeNs;
-      if (elapsedTimeNs <= 0) {
+      if (elapsedTimeNs <= 0 || (minRenderPeriodNs == Long.MAX_VALUE && framesReceived == 0)) {
         return;
       }
       final float renderFps = framesRendered * TimeUnit.SECONDS.toNanos(1) / (float) elapsedTimeNs;

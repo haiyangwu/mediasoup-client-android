@@ -13,6 +13,7 @@
 
 #include <stddef.h>
 
+#include <cstddef>
 #include <list>
 
 #include "rtc_base/checks.h"
@@ -25,8 +26,8 @@ namespace webrtc {
 template <typename T>
 class MovingMedianFilter {
  public:
-  // Construct filter. |window_size| is how many latest samples are stored and
-  // used to take median. |window_size| must be positive.
+  // Construct filter. `window_size` is how many latest samples are stored and
+  // used to take median. `window_size` must be positive.
   explicit MovingMedianFilter(size_t window_size);
 
   // Insert a new sample.
@@ -37,6 +38,9 @@ class MovingMedianFilter {
 
   // Get median over the latest window.
   T GetFilteredValue() const;
+
+  // The number of samples that are currently stored.
+  size_t GetNumberOfSamplesStored() const;
 
  private:
   PercentileFilter<T> percentile_filter_;
@@ -75,6 +79,11 @@ void MovingMedianFilter<T>::Reset() {
   percentile_filter_.Reset();
   samples_.clear();
   samples_stored_ = 0;
+}
+
+template <typename T>
+size_t MovingMedianFilter<T>::GetNumberOfSamplesStored() const {
+  return samples_stored_;
 }
 
 }  // namespace webrtc

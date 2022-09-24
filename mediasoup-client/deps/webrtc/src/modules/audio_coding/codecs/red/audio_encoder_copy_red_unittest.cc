@@ -15,13 +15,18 @@
 
 #include "rtc_base/checks.h"
 #include "rtc_base/numerics/safe_conversions.h"
+#include "test/field_trial.h"
 #include "test/gtest.h"
 #include "test/mock_audio_encoder.h"
+#include "test/testsupport/rtc_expect_death.h"
 
 using ::testing::_;
+using ::testing::Eq;
 using ::testing::InSequence;
 using ::testing::Invoke;
 using ::testing::MockFunction;
+using ::testing::Not;
+using ::testing::Optional;
 using ::testing::Return;
 using ::testing::SetArgPointee;
 
@@ -29,6 +34,8 @@ namespace webrtc {
 
 namespace {
 static const size_t kMaxNumSamples = 48 * 10 * 2;  // 10 ms @ 48 kHz stereo.
+static const size_t kRedLastHeaderLength =
+    1;  // 1 byte RED header for the last element.
 }
 
 class AudioEncoderCopyRedTest : public ::testing::Test {
@@ -106,6 +113,14 @@ TEST_F(AudioEncoderCopyRedTest, CheckPacketLossFractionPropagation) {
   red_->OnReceivedUplinkPacketLossFraction(0.5);
 }
 
+TEST_F(AudioEncoderCopyRedTest, CheckGetFrameLengthRangePropagation) {
+  auto expected_range =
+      std::make_pair(TimeDelta::Millis(20), TimeDelta::Millis(20));
+  EXPECT_CALL(*mock_encoder_, GetFrameLengthRange())
+      .WillRepeatedly(Return(absl::make_optional(expected_range)));
+  EXPECT_THAT(red_->GetFrameLengthRange(), Optional(Eq(expected_range)));
+}
+
 // Checks that the an Encode() call is immediately propagated to the speech
 // encoder.
 TEST_F(AudioEncoderCopyRedTest, CheckImmediateEncode) {
@@ -127,6 +142,7 @@ TEST_F(AudioEncoderCopyRedTest, CheckImmediateEncode) {
 // new data, even if the RED codec is loaded with a secondary encoding.
 TEST_F(AudioEncoderCopyRedTest, CheckNoOutput) {
   static const size_t kEncodedSize = 17;
+  static const size_t kHeaderLenBytes = 5;
   {
     InSequence s;
     EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
@@ -139,8 +155,8 @@ TEST_F(AudioEncoderCopyRedTest, CheckNoOutput) {
   Encode();
   // First call is a special case, since it does not include a secondary
   // payload.
-  EXPECT_EQ(1u, encoded_info_.redundant.size());
-  EXPECT_EQ(kEncodedSize, encoded_info_.encoded_bytes);
+  EXPECT_EQ(0u, encoded_info_.redundant.size());
+  EXPECT_EQ(kEncodedSize + kRedLastHeaderLength, encoded_info_.encoded_bytes);
 
   // Next call to the speech encoder will not produce any output.
   Encode();
@@ -148,13 +164,13 @@ TEST_F(AudioEncoderCopyRedTest, CheckNoOutput) {
 
   // Final call to the speech encoder will produce output.
   Encode();
-  EXPECT_EQ(2 * kEncodedSize, encoded_info_.encoded_bytes);
+  EXPECT_EQ(2 * kEncodedSize + kHeaderLenBytes, encoded_info_.encoded_bytes);
   ASSERT_EQ(2u, encoded_info_.redundant.size());
 }
 
 // Checks that the correct payload sizes are populated into the redundancy
-// information.
-TEST_F(AudioEncoderCopyRedTest, CheckPayloadSizes) {
+// information for a redundancy level of 1.
+TEST_F(AudioEncoderCopyRedTest, CheckPayloadSizes1) {
   // Let the mock encoder return payload sizes 1, 2, 3, ..., 10 for the sequence
   // of calls.
   static const int kNumPackets = 10;
@@ -167,15 +183,107 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloadSizes) {
   // First call is a special case, since it does not include a secondary
   // payload.
   Encode();
-  EXPECT_EQ(1u, encoded_info_.redundant.size());
-  EXPECT_EQ(1u, encoded_info_.encoded_bytes);
+  EXPECT_EQ(0u, encoded_info_.redundant.size());
+  EXPECT_EQ(kRedLastHeaderLength + 1u, encoded_info_.encoded_bytes);
 
   for (size_t i = 2; i <= kNumPackets; ++i) {
     Encode();
     ASSERT_EQ(2u, encoded_info_.redundant.size());
-    EXPECT_EQ(i, encoded_info_.redundant[0].encoded_bytes);
+    EXPECT_EQ(i, encoded_info_.redundant[1].encoded_bytes);
+    EXPECT_EQ(i - 1, encoded_info_.redundant[0].encoded_bytes);
+    EXPECT_EQ(5 + i + (i - 1), encoded_info_.encoded_bytes);
+  }
+}
+
+// Checks that the correct payload sizes are populated into the redundancy
+// information for a redundancy level of 2.
+TEST_F(AudioEncoderCopyRedTest, CheckPayloadSizes2) {
+  webrtc::test::ScopedFieldTrials field_trials(
+      "WebRTC-Audio-Red-For-Opus/Enabled-2/");
+  // Recreate the RED encoder to take the new field trial setting into account.
+  AudioEncoderCopyRed::Config config;
+  config.payload_type = red_payload_type_;
+  config.speech_encoder = std::move(red_->ReclaimContainedEncoders()[0]);
+  red_.reset(new AudioEncoderCopyRed(std::move(config)));
+
+  // Let the mock encoder return payload sizes 1, 2, 3, ..., 10 for the sequence
+  // of calls.
+  static const int kNumPackets = 10;
+  InSequence s;
+  for (int encode_size = 1; encode_size <= kNumPackets; ++encode_size) {
+    EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+        .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(encode_size)));
+  }
+
+  // First call is a special case, since it does not include a secondary
+  // payload.
+  Encode();
+  EXPECT_EQ(0u, encoded_info_.redundant.size());
+  EXPECT_EQ(kRedLastHeaderLength + 1u, encoded_info_.encoded_bytes);
+
+  // Second call is also special since it does not include a tertiary
+  // payload.
+  Encode();
+  EXPECT_EQ(2u, encoded_info_.redundant.size());
+  EXPECT_EQ(8u, encoded_info_.encoded_bytes);
+
+  for (size_t i = 3; i <= kNumPackets; ++i) {
+    Encode();
+    ASSERT_EQ(3u, encoded_info_.redundant.size());
+    EXPECT_EQ(i, encoded_info_.redundant[2].encoded_bytes);
     EXPECT_EQ(i - 1, encoded_info_.redundant[1].encoded_bytes);
-    EXPECT_EQ(i + i - 1, encoded_info_.encoded_bytes);
+    EXPECT_EQ(i - 2, encoded_info_.redundant[0].encoded_bytes);
+    EXPECT_EQ(9 + i + (i - 1) + (i - 2), encoded_info_.encoded_bytes);
+  }
+}
+
+// Checks that the correct payload sizes are populated into the redundancy
+// information for a redundancy level of 3.
+TEST_F(AudioEncoderCopyRedTest, CheckPayloadSizes3) {
+  webrtc::test::ScopedFieldTrials field_trials(
+      "WebRTC-Audio-Red-For-Opus/Enabled-3/");
+  // Recreate the RED encoder to take the new field trial setting into account.
+  AudioEncoderCopyRed::Config config;
+  config.payload_type = red_payload_type_;
+  config.speech_encoder = std::move(red_->ReclaimContainedEncoders()[0]);
+  red_.reset(new AudioEncoderCopyRed(std::move(config)));
+
+  // Let the mock encoder return payload sizes 1, 2, 3, ..., 10 for the sequence
+  // of calls.
+  static const int kNumPackets = 10;
+  InSequence s;
+  for (int encode_size = 1; encode_size <= kNumPackets; ++encode_size) {
+    EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+        .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(encode_size)));
+  }
+
+  // First call is a special case, since it does not include a secondary
+  // payload.
+  Encode();
+  EXPECT_EQ(0u, encoded_info_.redundant.size());
+  EXPECT_EQ(kRedLastHeaderLength + 1u, encoded_info_.encoded_bytes);
+
+  // Second call is also special since it does not include a tertiary
+  // payload.
+  Encode();
+  EXPECT_EQ(2u, encoded_info_.redundant.size());
+  EXPECT_EQ(8u, encoded_info_.encoded_bytes);
+
+  // Third call is also special since it does not include a quaternary
+  // payload.
+  Encode();
+  EXPECT_EQ(3u, encoded_info_.redundant.size());
+  EXPECT_EQ(15u, encoded_info_.encoded_bytes);
+
+  for (size_t i = 4; i <= kNumPackets; ++i) {
+    Encode();
+    ASSERT_EQ(4u, encoded_info_.redundant.size());
+    EXPECT_EQ(i, encoded_info_.redundant[3].encoded_bytes);
+    EXPECT_EQ(i - 1, encoded_info_.redundant[2].encoded_bytes);
+    EXPECT_EQ(i - 2, encoded_info_.redundant[1].encoded_bytes);
+    EXPECT_EQ(i - 3, encoded_info_.redundant[0].encoded_bytes);
+    EXPECT_EQ(13 + i + (i - 1) + (i - 2) + (i - 3),
+              encoded_info_.encoded_bytes);
   }
 }
 
@@ -202,8 +310,8 @@ TEST_F(AudioEncoderCopyRedTest, CheckTimestamps) {
 
   Encode();
   ASSERT_EQ(2u, encoded_info_.redundant.size());
-  EXPECT_EQ(primary_timestamp, encoded_info_.redundant[0].encoded_timestamp);
-  EXPECT_EQ(secondary_timestamp, encoded_info_.redundant[1].encoded_timestamp);
+  EXPECT_EQ(primary_timestamp, encoded_info_.redundant[1].encoded_timestamp);
+  EXPECT_EQ(secondary_timestamp, encoded_info_.redundant[0].encoded_timestamp);
   EXPECT_EQ(primary_timestamp, encoded_info_.encoded_timestamp);
 }
 
@@ -212,6 +320,7 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloads) {
   // Let the mock encoder write payloads with increasing values. The first
   // payload will have values 0, 1, 2, ..., kPayloadLenBytes - 1.
   static const size_t kPayloadLenBytes = 5;
+  static const size_t kHeaderLenBytes = 5;
   uint8_t payload[kPayloadLenBytes];
   for (uint8_t i = 0; i < kPayloadLenBytes; ++i) {
     payload[i] = i;
@@ -222,12 +331,13 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloads) {
   // First call is a special case, since it does not include a secondary
   // payload.
   Encode();
-  EXPECT_EQ(kPayloadLenBytes, encoded_info_.encoded_bytes);
+  EXPECT_EQ(kRedLastHeaderLength + kPayloadLenBytes,
+            encoded_info_.encoded_bytes);
   for (size_t i = 0; i < kPayloadLenBytes; ++i) {
-    EXPECT_EQ(i, encoded_.data()[i]);
+    EXPECT_EQ(i, encoded_.data()[kRedLastHeaderLength + i]);
   }
 
-  for (int j = 0; j < 5; ++j) {
+  for (int j = 0; j < 1; ++j) {
     // Increment all values of the payload by 10.
     for (size_t i = 0; i < kPayloadLenBytes; ++i)
       payload[i] += 10;
@@ -237,16 +347,17 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloads) {
     EXPECT_EQ(kPayloadLenBytes, encoded_info_.redundant[0].encoded_bytes);
     EXPECT_EQ(kPayloadLenBytes, encoded_info_.redundant[1].encoded_bytes);
     for (size_t i = 0; i < kPayloadLenBytes; ++i) {
-      // Check primary payload.
-      EXPECT_EQ((j + 1) * 10 + i, encoded_.data()[i]);
       // Check secondary payload.
-      EXPECT_EQ(j * 10 + i, encoded_.data()[i + kPayloadLenBytes]);
+      EXPECT_EQ(j * 10 + i, encoded_.data()[kHeaderLenBytes + i]);
+
+      // Check primary payload.
+      EXPECT_EQ((j + 1) * 10 + i,
+                encoded_.data()[kHeaderLenBytes + i + kPayloadLenBytes]);
     }
   }
 }
 
 // Checks correct propagation of payload type.
-// Checks that the correct timestamps are returned.
 TEST_F(AudioEncoderCopyRedTest, CheckPayloadType) {
   const int primary_payload_type = red_payload_type_ + 1;
   AudioEncoder::EncodedInfo info;
@@ -258,9 +369,7 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloadType) {
   // First call is a special case, since it does not include a secondary
   // payload.
   Encode();
-  ASSERT_EQ(1u, encoded_info_.redundant.size());
-  EXPECT_EQ(primary_payload_type, encoded_info_.redundant[0].payload_type);
-  EXPECT_EQ(red_payload_type_, encoded_info_.payload_type);
+  ASSERT_EQ(0u, encoded_info_.redundant.size());
 
   const int secondary_payload_type = red_payload_type_ + 2;
   info.payload_type = secondary_payload_type;
@@ -269,9 +378,155 @@ TEST_F(AudioEncoderCopyRedTest, CheckPayloadType) {
 
   Encode();
   ASSERT_EQ(2u, encoded_info_.redundant.size());
-  EXPECT_EQ(secondary_payload_type, encoded_info_.redundant[0].payload_type);
-  EXPECT_EQ(primary_payload_type, encoded_info_.redundant[1].payload_type);
+  EXPECT_EQ(secondary_payload_type, encoded_info_.redundant[1].payload_type);
+  EXPECT_EQ(primary_payload_type, encoded_info_.redundant[0].payload_type);
   EXPECT_EQ(red_payload_type_, encoded_info_.payload_type);
+}
+
+TEST_F(AudioEncoderCopyRedTest, CheckRFC2198Header) {
+  const int primary_payload_type = red_payload_type_ + 1;
+  AudioEncoder::EncodedInfo info;
+  info.encoded_bytes = 10;
+  info.encoded_timestamp = timestamp_;
+  info.payload_type = primary_payload_type;
+
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();
+  info.encoded_timestamp = timestamp_;  // update timestamp.
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Second call will produce a redundant encoding.
+
+  EXPECT_EQ(encoded_.size(),
+            5u + 2 * 10u);  // header size + two encoded payloads.
+  EXPECT_EQ(encoded_[0], primary_payload_type | 0x80);
+
+  uint32_t timestamp_delta = encoded_info_.encoded_timestamp -
+                             encoded_info_.redundant[0].encoded_timestamp;
+  // Timestamp delta is encoded as a 14 bit value.
+  EXPECT_EQ(encoded_[1], timestamp_delta >> 6);
+  EXPECT_EQ(static_cast<uint8_t>(encoded_[2] >> 2), timestamp_delta & 0x3f);
+  // Redundant length is encoded as 10 bit value.
+  EXPECT_EQ(encoded_[2] & 0x3u, encoded_info_.redundant[1].encoded_bytes >> 8);
+  EXPECT_EQ(encoded_[3], encoded_info_.redundant[1].encoded_bytes & 0xff);
+  EXPECT_EQ(encoded_[4], primary_payload_type);
+
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Third call will produce a redundant encoding with double
+             // redundancy.
+
+  EXPECT_EQ(encoded_.size(),
+            5u + 2 * 10u);  // header size + two encoded payloads.
+  EXPECT_EQ(encoded_[0], primary_payload_type | 0x80);
+
+  timestamp_delta = encoded_info_.encoded_timestamp -
+                    encoded_info_.redundant[0].encoded_timestamp;
+  // Timestamp delta is encoded as a 14 bit value.
+  EXPECT_EQ(encoded_[1], timestamp_delta >> 6);
+  EXPECT_EQ(static_cast<uint8_t>(encoded_[2] >> 2), timestamp_delta & 0x3f);
+  // Redundant length is encoded as 10 bit value.
+  EXPECT_EQ(encoded_[2] & 0x3u, encoded_info_.redundant[1].encoded_bytes >> 8);
+  EXPECT_EQ(encoded_[3], encoded_info_.redundant[1].encoded_bytes & 0xff);
+
+  EXPECT_EQ(encoded_[4], primary_payload_type | 0x80);
+  timestamp_delta = encoded_info_.encoded_timestamp -
+                    encoded_info_.redundant[1].encoded_timestamp;
+}
+
+// Variant with a redundancy of 2.
+TEST_F(AudioEncoderCopyRedTest, CheckRFC2198Header2) {
+  webrtc::test::ScopedFieldTrials field_trials(
+      "WebRTC-Audio-Red-For-Opus/Enabled-2/");
+  // Recreate the RED encoder to take the new field trial setting into account.
+  AudioEncoderCopyRed::Config config;
+  config.payload_type = red_payload_type_;
+  config.speech_encoder = std::move(red_->ReclaimContainedEncoders()[0]);
+  red_.reset(new AudioEncoderCopyRed(std::move(config)));
+
+  const int primary_payload_type = red_payload_type_ + 1;
+  AudioEncoder::EncodedInfo info;
+  info.encoded_bytes = 10;
+  info.encoded_timestamp = timestamp_;
+  info.payload_type = primary_payload_type;
+
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();
+  info.encoded_timestamp = timestamp_;  // update timestamp.
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Second call will produce a redundant encoding.
+
+  EXPECT_EQ(encoded_.size(),
+            5u + 2 * 10u);  // header size + two encoded payloads.
+  EXPECT_EQ(encoded_[0], primary_payload_type | 0x80);
+
+  uint32_t timestamp_delta = encoded_info_.encoded_timestamp -
+                             encoded_info_.redundant[0].encoded_timestamp;
+  // Timestamp delta is encoded as a 14 bit value.
+  EXPECT_EQ(encoded_[1], timestamp_delta >> 6);
+  EXPECT_EQ(static_cast<uint8_t>(encoded_[2] >> 2), timestamp_delta & 0x3f);
+  // Redundant length is encoded as 10 bit value.
+  EXPECT_EQ(encoded_[2] & 0x3u, encoded_info_.redundant[1].encoded_bytes >> 8);
+  EXPECT_EQ(encoded_[3], encoded_info_.redundant[1].encoded_bytes & 0xff);
+  EXPECT_EQ(encoded_[4], primary_payload_type);
+
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Third call will produce a redundant encoding with double
+             // redundancy.
+
+  EXPECT_EQ(encoded_.size(),
+            9u + 3 * 10u);  // header size + three encoded payloads.
+  EXPECT_EQ(encoded_[0], primary_payload_type | 0x80);
+
+  timestamp_delta = encoded_info_.encoded_timestamp -
+                    encoded_info_.redundant[0].encoded_timestamp;
+  // Timestamp delta is encoded as a 14 bit value.
+  EXPECT_EQ(encoded_[1], timestamp_delta >> 6);
+  EXPECT_EQ(static_cast<uint8_t>(encoded_[2] >> 2), timestamp_delta & 0x3f);
+  // Redundant length is encoded as 10 bit value.
+  EXPECT_EQ(encoded_[2] & 0x3u, encoded_info_.redundant[1].encoded_bytes >> 8);
+  EXPECT_EQ(encoded_[3], encoded_info_.redundant[1].encoded_bytes & 0xff);
+
+  EXPECT_EQ(encoded_[4], primary_payload_type | 0x80);
+  timestamp_delta = encoded_info_.encoded_timestamp -
+                    encoded_info_.redundant[1].encoded_timestamp;
+  // Timestamp delta is encoded as a 14 bit value.
+  EXPECT_EQ(encoded_[5], timestamp_delta >> 6);
+  EXPECT_EQ(static_cast<uint8_t>(encoded_[6] >> 2), timestamp_delta & 0x3f);
+  // Redundant length is encoded as 10 bit value.
+  EXPECT_EQ(encoded_[6] & 0x3u, encoded_info_.redundant[1].encoded_bytes >> 8);
+  EXPECT_EQ(encoded_[7], encoded_info_.redundant[1].encoded_bytes & 0xff);
+  EXPECT_EQ(encoded_[8], primary_payload_type);
+}
+
+TEST_F(AudioEncoderCopyRedTest, RespectsPayloadMTU) {
+  const int primary_payload_type = red_payload_type_ + 1;
+  AudioEncoder::EncodedInfo info;
+  info.encoded_bytes = 600;
+  info.encoded_timestamp = timestamp_;
+  info.payload_type = primary_payload_type;
+
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();
+  info.encoded_timestamp = timestamp_;  // update timestamp.
+  info.encoded_bytes = 500;
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Second call will produce a redundant encoding.
+
+  EXPECT_EQ(encoded_.size(), 5u + 600u + 500u);
+
+  info.encoded_timestamp = timestamp_;  // update timestamp.
+  info.encoded_bytes = 400;
+  EXPECT_CALL(*mock_encoder_, EncodeImpl(_, _, _))
+      .WillOnce(Invoke(MockAudioEncoder::FakeEncoding(info)));
+  Encode();  // Third call will drop the oldest packet.
+  EXPECT_EQ(encoded_.size(), 5u + 500u + 400u);
 }
 
 #if GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
@@ -285,17 +540,17 @@ class AudioEncoderCopyRedDeathTest : public AudioEncoderCopyRedTest {
 
 TEST_F(AudioEncoderCopyRedDeathTest, WrongFrameSize) {
   num_audio_samples_10ms *= 2;  // 20 ms frame.
-  EXPECT_DEATH(Encode(), "");
+  RTC_EXPECT_DEATH(Encode(), "");
   num_audio_samples_10ms = 0;  // Zero samples.
-  EXPECT_DEATH(Encode(), "");
+  RTC_EXPECT_DEATH(Encode(), "");
 }
 
 TEST_F(AudioEncoderCopyRedDeathTest, NullSpeechEncoder) {
   AudioEncoderCopyRed* red = NULL;
   AudioEncoderCopyRed::Config config;
   config.speech_encoder = NULL;
-  EXPECT_DEATH(red = new AudioEncoderCopyRed(std::move(config)),
-               "Speech encoder not provided.");
+  RTC_EXPECT_DEATH(red = new AudioEncoderCopyRed(std::move(config)),
+                   "Speech encoder not provided.");
   // The delete operation is needed to avoid leak reports from memcheck.
   delete red;
 }

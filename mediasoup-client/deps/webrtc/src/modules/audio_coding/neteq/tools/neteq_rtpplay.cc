@@ -157,7 +157,7 @@ ABSL_FLAG(bool,
 namespace {
 
 // Parses the input string for a valid SSRC (at the start of the string). If a
-// valid SSRC is found, it is written to the output variable |ssrc|, and true is
+// valid SSRC is found, it is written to the output variable `ssrc`, and true is
 // returned. Otherwise, false is returned.
 bool ParseSsrc(const std::string& str, uint32_t* ssrc) {
   if (str.empty())
@@ -242,18 +242,20 @@ bool ValidateOutputFilesOptions(bool textlog,
   bool output_files_base_name_specified = !output_files_base_name.empty();
   if (!textlog && !plotting && output_files_base_name_specified) {
     std::cout << "Error: --output_files_base_name cannot be used without at "
-              << "least one of the following flags: --textlog, --matlabplot, "
-              << "--pythonplot." << std::endl;
+                 "least one of the following flags: --textlog, --matlabplot, "
+                 "--pythonplot."
+              << std::endl;
     return false;
   }
-  // Without |output_audio_filename|, |output_files_base_name| is required when
-  // one or more output files must be generated (in order to form a valid output
+  // Without `output_audio_filename`, `output_files_base_name` is required when
+  // plotting output files must be generated (in order to form a valid output
   // file name).
-  if (output_audio_filename.empty() && (textlog || plotting) &&
+  if (output_audio_filename.empty() && plotting &&
       !output_files_base_name_specified) {
-    std::cout << "Error: when no output audio file is specified and --textlog, "
-              << "--matlabplot and/or --pythonplot are used, "
-              << "--output_files_base_name must be also used." << std::endl;
+    std::cout << "Error: when no output audio file is specified and "
+                 "--matlabplot and/or --pythonplot are used, "
+                 "--output_files_base_name must be also used."
+              << std::endl;
     return false;
   }
   return true;
@@ -378,6 +380,7 @@ int main(int argc, char* argv[]) {
   if (!output_audio_filename.empty()) {
     config.output_audio_filename = output_audio_filename;
   }
+  config.textlog = absl::GetFlag(FLAGS_textlog);
   config.textlog_filename = CreateOptionalOutputFileName(
       absl::GetFlag(FLAGS_textlog), output_files_base_name,
       output_audio_filename, ".text_log.txt");
@@ -394,7 +397,8 @@ int main(int argc, char* argv[]) {
   }
 
   std::unique_ptr<webrtc::test::NetEqTest> test =
-      factory.InitializeTestFromFile(/*input_filename=*/args[1], config);
+      factory.InitializeTestFromFile(/*input_filename=*/args[1],
+                                     /*factory=*/nullptr, config);
   RTC_CHECK(test) << "ERROR: Unable to run test";
   test->Run();
   return 0;

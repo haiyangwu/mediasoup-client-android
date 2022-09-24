@@ -44,7 +44,8 @@ int32_t TestPackStereo::SendData(const AudioFrameType frame_type,
                                  const uint8_t payload_type,
                                  const uint32_t timestamp,
                                  const uint8_t* payload_data,
-                                 const size_t payload_size) {
+                                 const size_t payload_size,
+                                 int64_t absolute_capture_timestamp_ms) {
   RTPHeader rtp_header;
   int32_t status = 0;
 
@@ -508,8 +509,8 @@ void TestStereo::Run(TestPackStereo* channel,
   in_file_mono_->FastForward(100);
 
   while (1) {
-    // Simulate packet loss by setting |packet_loss_| to "true" in
-    // |percent_loss| percent of the loops.
+    // Simulate packet loss by setting `packet_loss_` to "true" in
+    // `percent_loss` percent of the loops.
     if (percent_loss > 0) {
       if (counter_ == floor((100 / percent_loss) + 0.5)) {
         counter_ = 0;

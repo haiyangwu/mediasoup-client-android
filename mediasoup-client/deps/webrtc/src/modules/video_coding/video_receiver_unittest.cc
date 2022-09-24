@@ -9,7 +9,6 @@
  */
 
 #include "api/test/mock_video_decoder.h"
-#include "modules/video_coding/include/mock/mock_vcm_callbacks.h"
 #include "modules/video_coding/include/video_coding.h"
 #include "modules/video_coding/timing.h"
 #include "modules/video_coding/video_coding_impl.h"
@@ -25,6 +24,27 @@ namespace webrtc {
 namespace vcm {
 namespace {
 
+class MockPacketRequestCallback : public VCMPacketRequestCallback {
+ public:
+  MOCK_METHOD(int32_t,
+              ResendPackets,
+              (const uint16_t* sequenceNumbers, uint16_t length),
+              (override));
+};
+
+class MockVCMReceiveCallback : public VCMReceiveCallback {
+ public:
+  MockVCMReceiveCallback() {}
+  virtual ~MockVCMReceiveCallback() {}
+
+  MOCK_METHOD(int32_t,
+              FrameToRender,
+              (VideoFrame&, absl::optional<uint8_t>, int32_t, VideoContentType),
+              (override));
+  MOCK_METHOD(void, OnIncomingPayloadType, (int), (override));
+  MOCK_METHOD(void, OnDecoderImplementationName, (const char*), (override));
+};
+
 class TestVideoReceiver : public ::testing::Test {
  protected:
   static const int kUnusedPayloadType = 10;
@@ -37,8 +57,8 @@ class TestVideoReceiver : public ::testing::Test {
     // Register decoder.
     receiver_.RegisterExternalDecoder(&decoder_, kUnusedPayloadType);
     webrtc::test::CodecSettings(kVideoCodecVP8, &settings_);
-    settings_.plType = kUnusedPayloadType;
-    EXPECT_EQ(0, receiver_.RegisterReceiveCodec(&settings_, 1, true));
+    EXPECT_EQ(
+        0, receiver_.RegisterReceiveCodec(kUnusedPayloadType, &settings_, 1));
 
     // Set protection mode.
     const size_t kMaxNackListSize = 250;

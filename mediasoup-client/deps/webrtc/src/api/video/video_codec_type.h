@@ -13,13 +13,13 @@
 
 namespace webrtc {
 
-// Video codec types
 enum VideoCodecType {
   // There are various memset(..., 0, ...) calls in the code that rely on
   // kVideoCodecGeneric being zero.
   kVideoCodecGeneric = 0,
   kVideoCodecVP8,
   kVideoCodecVP9,
+  kVideoCodecAV1,
   kVideoCodecH264,
   kVideoCodecMultiplex,
 };

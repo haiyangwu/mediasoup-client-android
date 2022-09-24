@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "api/array_view.h"
-#include "common_video/generic_frame_descriptor/generic_frame_info.h"
+#include "api/transport/rtp/dependency_descriptor.h"
 #include "rtc_base/bit_buffer.h"
 
 namespace webrtc {
@@ -34,7 +34,7 @@ class RtpDependencyDescriptorReader {
   bool ParseSuccessful() { return !parsing_failed_; }
 
  private:
-  // Reads bits from |buffer_|. If it fails, returns 0 and marks parsing as
+  // Reads bits from `buffer_`. If it fails, returns 0 and marks parsing as
   // failed, but doesn't stop the parsing.
   uint32_t ReadBits(size_t bit_count);
   uint32_t ReadNonSymmetric(size_t num_values);
@@ -63,6 +63,7 @@ class RtpDependencyDescriptorReader {
   // when reading is complete.
   rtc::BitBuffer buffer_;
   int frame_dependency_template_id_ = 0;
+  bool active_decode_targets_present_flag_ = false;
   bool custom_dtis_flag_ = false;
   bool custom_fdiffs_flag_ = false;
   bool custom_chains_flag_ = false;

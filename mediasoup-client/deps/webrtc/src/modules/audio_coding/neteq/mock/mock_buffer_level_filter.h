@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2020 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -18,13 +18,10 @@ namespace webrtc {
 
 class MockBufferLevelFilter : public BufferLevelFilter {
  public:
-  virtual ~MockBufferLevelFilter() { Die(); }
-  MOCK_METHOD0(Die, void());
-  MOCK_METHOD0(Reset, void());
-  MOCK_METHOD2(Update,
-               void(size_t buffer_size_samples, int time_stretched_samples));
-  MOCK_METHOD1(SetTargetBufferLevel, void(int target_buffer_level));
-  MOCK_CONST_METHOD0(filtered_current_level, int());
+  MOCK_METHOD(void,
+              Update,
+              (size_t buffer_size_samples, int time_stretched_samples));
+  MOCK_METHOD(int, filtered_current_level, (), (const));
 };
 
 }  // namespace webrtc

@@ -32,7 +32,6 @@
 #include "rtc_base/location.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/message_handler.h"
-#include "rtc_base/message_queue.h"
 #include "rtc_base/socket.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/test_client.h"
@@ -54,7 +53,7 @@ using webrtc::testing::SSE_WRITE;
 using webrtc::testing::StreamSink;
 
 // Sends at a constant rate but with random packet sizes.
-struct Sender : public MessageHandler {
+struct Sender : public MessageHandlerAutoCleanup {
   Sender(Thread* th, AsyncSocket* s, uint32_t rt)
       : thread(th),
         socket(std::make_unique<AsyncUDPSocket>(s)),
@@ -100,7 +99,8 @@ struct Sender : public MessageHandler {
   char dummy[4096];
 };
 
-struct Receiver : public MessageHandler, public sigslot::has_slots<> {
+struct Receiver : public MessageHandlerAutoCleanup,
+                  public sigslot::has_slots<> {
   Receiver(Thread* th, AsyncSocket* s, uint32_t bw)
       : thread(th),
         socket(std::make_unique<AsyncUDPSocket>(s)),
@@ -1117,10 +1117,10 @@ TEST_F(VirtualSocketServerTest, CreatesStandardDistribution) {
         ASSERT_LT(0u, kTestSamples[sidx]);
         const uint32_t kStdDev =
             static_cast<uint32_t>(kTestDev[didx] * kTestMean[midx]);
-        VirtualSocketServer::Function* f =
+        std::unique_ptr<VirtualSocketServer::Function> f =
             VirtualSocketServer::CreateDistribution(kTestMean[midx], kStdDev,
                                                     kTestSamples[sidx]);
-        ASSERT_TRUE(nullptr != f);
+        ASSERT_TRUE(nullptr != f.get());
         ASSERT_EQ(kTestSamples[sidx], f->size());
         double sum = 0;
         for (uint32_t i = 0; i < f->size(); ++i) {
@@ -1139,7 +1139,6 @@ TEST_F(VirtualSocketServerTest, CreatesStandardDistribution) {
         EXPECT_NEAR(kStdDev, stddev, 0.1 * kStdDev)
             << "M=" << kTestMean[midx] << " SD=" << kStdDev
             << " N=" << kTestSamples[sidx];
-        delete f;
       }
     }
   }

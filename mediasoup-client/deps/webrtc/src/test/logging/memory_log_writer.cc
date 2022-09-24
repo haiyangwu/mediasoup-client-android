@@ -21,31 +21,25 @@ class MemoryLogWriter final : public RtcEventLogOutput {
   explicit MemoryLogWriter(std::map<std::string, std::string>* target,
                            std::string filename)
       : target_(target), filename_(filename) {}
-  ~MemoryLogWriter() final {
-    size_t size;
-    buffer_.GetSize(&size);
-    target_->insert({filename_, std::string(buffer_.GetBuffer(), size)});
-  }
+  ~MemoryLogWriter() final { target_->insert({filename_, std::move(buffer_)}); }
   bool IsActive() const override { return true; }
   bool Write(const std::string& value) override {
-    size_t written;
-    int error;
-    return buffer_.Write(value.data(), value.size(), &written, &error) ==
-           rtc::SR_SUCCESS;
+    buffer_.append(value);
+    return true;
   }
   void Flush() override {}
 
  private:
   std::map<std::string, std::string>* const target_;
   const std::string filename_;
-  rtc::MemoryStream buffer_;
+  std::string buffer_;
 };
 
-class MemoryLogWriterFactory : public LogWriterFactoryInterface {
+class MemoryLogWriterFactory final : public LogWriterFactoryInterface {
  public:
   explicit MemoryLogWriterFactory(std::map<std::string, std::string>* target)
       : target_(target) {}
-  ~MemoryLogWriterFactory() final {}
+  ~MemoryLogWriterFactory() override {}
   std::unique_ptr<RtcEventLogOutput> Create(std::string filename) override {
     return std::make_unique<MemoryLogWriter>(target_, filename);
   }

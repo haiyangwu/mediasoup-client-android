@@ -25,9 +25,7 @@ const int64_t kTestTimingFramesDelayMs = 200;
 const uint16_t kTestOutlierFrameSizePercent = 250;
 
 static void CodecSettings(VideoCodecType codec_type, VideoCodec* settings) {
-  memset(settings, 0, sizeof(VideoCodec));
-
-  settings->plType = kTestPayloadType;
+  *settings = {};
 
   settings->width = kTestWidth;
   settings->height = kTestHeight;
@@ -57,7 +55,7 @@ static void CodecSettings(VideoCodecType codec_type, VideoCodec* settings) {
       *(settings->VP9()) = VideoEncoder::GetDefaultVp9Settings();
       return;
     case kVideoCodecH264:
-      // TODO(brandtr): Set |qpMax| here, when the OpenH264 wrapper supports it.
+      // TODO(brandtr): Set `qpMax` here, when the OpenH264 wrapper supports it.
       *(settings->H264()) = VideoEncoder::GetDefaultH264Settings();
       return;
     default:

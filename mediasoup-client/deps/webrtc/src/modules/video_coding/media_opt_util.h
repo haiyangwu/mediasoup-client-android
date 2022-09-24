@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "modules/video_coding/internal_defines.h"
+#include "rtc_base/experiments/rate_control_settings.h"
 #include "rtc_base/numerics/exp_filter.h"
 
 namespace webrtc {
@@ -176,13 +177,15 @@ class VCMFecMethod : public VCMProtectionMethod {
  protected:
   enum { kUpperLimitFramesFec = 6 };
   // Thresholds values for the bytes/frame and round trip time, below which we
-  // may turn off FEC, depending on |_numLayers| and |_maxFramesFec|.
+  // may turn off FEC, depending on `_numLayers` and `_maxFramesFec`.
   // Max bytes/frame for VGA, corresponds to ~140k at 25fps.
   enum { kMaxBytesPerFrameForFec = 700 };
   // Max bytes/frame for CIF and lower: corresponds to ~80k at 25fps.
   enum { kMaxBytesPerFrameForFecLow = 400 };
   // Max bytes/frame for frame size larger than VGA, ~200k at 25fps.
   enum { kMaxBytesPerFrameForFecHigh = 1000 };
+
+  const RateControlSettings rate_control_settings_;
 };
 
 class VCMNackFecMethod : public VCMFecMethod {
@@ -303,8 +306,8 @@ class VCMLossProtectionLogic {
 
   // Updates the filtered loss for the average and max window packet loss,
   // and returns the filtered loss probability in the interval [0, 255].
-  // The returned filtered loss value depends on the parameter |filter_mode|.
-  // The input parameter |lossPr255| is the received packet loss.
+  // The returned filtered loss value depends on the parameter `filter_mode`.
+  // The input parameter `lossPr255` is the received packet loss.
 
   // Return value                 : The filtered loss probability
   uint8_t FilteredLoss(int64_t nowMs,

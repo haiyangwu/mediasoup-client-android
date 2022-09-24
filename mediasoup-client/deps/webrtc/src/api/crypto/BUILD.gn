@@ -16,7 +16,7 @@ group("crypto") {
   ]
 }
 
-rtc_source_set("options") {
+rtc_library("options") {
   visibility = [ "*" ]
   sources = [
     "crypto_options.cc",
@@ -30,9 +30,7 @@ rtc_source_set("options") {
 
 rtc_source_set("frame_decryptor_interface") {
   visibility = [ "*" ]
-  sources = [
-    "frame_decryptor_interface.h",
-  ]
+  sources = [ "frame_decryptor_interface.h" ]
   deps = [
     "..:array_view",
     "..:rtp_parameters",
@@ -42,9 +40,7 @@ rtc_source_set("frame_decryptor_interface") {
 
 rtc_source_set("frame_encryptor_interface") {
   visibility = [ "*" ]
-  sources = [
-    "frame_encryptor_interface.h",
-  ]
+  sources = [ "frame_encryptor_interface.h" ]
   deps = [
     "..:array_view",
     "..:rtp_parameters",

@@ -12,7 +12,9 @@
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <cctype>  // For std::isdigit.
+#include <memory>
 #include <string>
 
 #include "p2p/base/port_interface.h"
@@ -21,6 +23,7 @@
 #include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/socket_address.h"
+#include "rtc_base/string_encode.h"
 
 namespace webrtc {
 
@@ -30,6 +33,15 @@ static const size_t kTurnTransportTokensNum = 2;
 static const int kDefaultStunPort = 3478;
 static const int kDefaultStunTlsPort = 5349;
 static const char kTransport[] = "transport";
+
+// Allowed characters in hostname per RFC 3986 Appendix A "reg-name"
+static const char kRegNameCharacters[] =
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    "-._~"          // unreserved
+    "%"             // pct-encoded
+    "!$&'()*+,;=";  // sub-delims
 
 // NOTE: Must be in the same order as the ServiceType enum.
 static const char* kValidIceServiceTypes[] = {"stun", "stuns", "turn", "turns"};
@@ -47,7 +59,7 @@ static_assert(INVALID == arraysize(kValidIceServiceTypes),
               "kValidIceServiceTypes must have as many strings as ServiceType "
               "has values.");
 
-// |in_str| should follow of RFC 7064/7065 syntax, but with an optional
+// `in_str` should follow of RFC 7064/7065 syntax, but with an optional
 // "?transport=" already stripped. I.e.,
 // stunURI       = scheme ":" host [ ":" port ]
 // scheme        = "stun" / "stuns" / "turn" / "turns"
@@ -92,13 +104,14 @@ static bool ParsePort(const std::string& in_str, int* port) {
 // This method parses IPv6 and IPv4 literal strings, along with hostnames in
 // standard hostname:port format.
 // Consider following formats as correct.
-// |hostname:port|, |[IPV6 address]:port|, |IPv4 address|:port,
-// |hostname|, |[IPv6 address]|, |IPv4 address|.
+// `hostname:port`, |[IPV6 address]:port|, |IPv4 address|:port,
+// `hostname`, |[IPv6 address]|, |IPv4 address|.
 static bool ParseHostnameAndPortFromString(const std::string& in_str,
                                            std::string* host,
                                            int* port) {
   RTC_DCHECK(host->empty());
   if (in_str.at(0) == '[') {
+    // IP_literal syntax
     std::string::size_type closebracket = in_str.rfind(']');
     if (closebracket != std::string::npos) {
       std::string::size_type colonpos = in_str.find(':', closebracket);
@@ -113,6 +126,7 @@ static bool ParseHostnameAndPortFromString(const std::string& in_str,
       return false;
     }
   } else {
+    // IPv4address or reg-name syntax
     std::string::size_type colonpos = in_str.find(':');
     if (std::string::npos != colonpos) {
       if (!ParsePort(in_str.substr(colonpos + 1, std::string::npos), port)) {
@@ -122,12 +136,16 @@ static bool ParseHostnameAndPortFromString(const std::string& in_str,
     } else {
       *host = in_str;
     }
+    // RFC 3986 section 3.2.2 and Appendix A - "reg-name" syntax
+    if (host->find_first_not_of(kRegNameCharacters) != std::string::npos) {
+      return false;
+    }
   }
   return !host->empty();
 }
 
 // Adds a STUN or TURN server to the appropriate list,
-// by parsing |url| and using the username/password in |server|.
+// by parsing `url` and using the username/password in `server`.
 static RTCErrorType ParseIceServerUrl(
     const PeerConnectionInterface::IceServer& server,
     const std::string& url,

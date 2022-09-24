@@ -12,12 +12,14 @@
 #define P2P_BASE_PORT_INTERFACE_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "api/candidate.h"
 #include "p2p/base/transport_description.h"
 #include "rtc_base/async_packet_socket.h"
+#include "rtc_base/callback_list.h"
 #include "rtc_base/socket_address.h"
 
 namespace rtc {
@@ -105,9 +107,6 @@ class PortInterface {
 
   // Sends a response message (normal or error) to the given request.  One of
   // these methods should be called as a response to SignalUnknownAddress.
-  // NOTE: You MUST call CreateConnection BEFORE SendBindingResponse.
-  virtual void SendBindingResponse(StunMessage* request,
-                                   const rtc::SocketAddress& addr) = 0;
   virtual void SendBindingErrorResponse(StunMessage* request,
                                         const rtc::SocketAddress& addr,
                                         int error_code,
@@ -115,7 +114,8 @@ class PortInterface {
 
   // Signaled when this port decides to delete itself because it no longer has
   // any usefulness.
-  sigslot::signal1<PortInterface*> SignalDestroyed;
+  virtual void SubscribePortDestroyed(
+      std::function<void(PortInterface*)> callback) = 0;
 
   // Signaled when Port discovers ice role conflict with the peer.
   sigslot::signal1<PortInterface*> SignalRoleConflict;

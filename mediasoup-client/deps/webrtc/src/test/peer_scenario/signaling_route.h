@@ -25,12 +25,24 @@ class SignalingRoute {
  public:
   SignalingRoute(PeerScenarioClient* caller,
                  PeerScenarioClient* callee,
-                 TrafficRoute* send_route,
-                 TrafficRoute* ret_route);
+                 CrossTrafficRoute* send_route,
+                 CrossTrafficRoute* ret_route);
 
   void StartIceSignaling();
 
+  // The `modify_offer` callback is used to modify an offer after the local
+  // description has been set. This is legal (but odd) behavior.
+  // The `munge_offer` callback is used to modify an offer between its creation
+  // and set local description. This behavior is forbidden according to the spec
+  // but available here in order to allow test coverage on corner cases.
+  // The `exchange_finished` callback is called with the answer produced after
+  // SDP negotations has completed.
   // TODO(srte): Handle lossy links.
+  void NegotiateSdp(
+      std::function<void(SessionDescriptionInterface* offer)> munge_offer,
+      std::function<void(SessionDescriptionInterface* offer)> modify_offer,
+      std::function<void(const SessionDescriptionInterface& answer)>
+          exchange_finished);
   void NegotiateSdp(
       std::function<void(SessionDescriptionInterface* offer)> modify_offer,
       std::function<void(const SessionDescriptionInterface& answer)>
@@ -45,8 +57,8 @@ class SignalingRoute {
  private:
   PeerScenarioClient* const caller_;
   PeerScenarioClient* const callee_;
-  TrafficRoute* const send_route_;
-  TrafficRoute* const ret_route_;
+  CrossTrafficRoute* const send_route_;
+  CrossTrafficRoute* const ret_route_;
 };
 
 }  // namespace test

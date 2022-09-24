@@ -18,21 +18,20 @@ namespace webrtc {
 namespace webrtc_pc_e2e {
 
 void InternalStatsObserver::PollStats() {
-  peer_->pc()->GetStats(this, nullptr,
-                        webrtc::PeerConnectionInterface::StatsOutputLevel::
-                            kStatsOutputLevelStandard);
+  peer_->pc()->GetStats(this);
 }
 
-void InternalStatsObserver::OnComplete(const StatsReports& reports) {
+void InternalStatsObserver::OnStatsDelivered(
+    const rtc::scoped_refptr<const RTCStatsReport>& report) {
   for (auto* observer : observers_) {
-    observer->OnStatsReports(pc_label_, reports);
+    observer->OnStatsReports(pc_label_, report);
   }
 }
 
 StatsPoller::StatsPoller(std::vector<StatsObserverInterface*> observers,
                          std::map<std::string, TestPeer*> peers) {
   for (auto& peer : peers) {
-    pollers_.push_back(new rtc::RefCountedObject<InternalStatsObserver>(
+    pollers_.push_back(rtc::make_ref_counted<InternalStatsObserver>(
         peer.first, peer.second, observers));
   }
 }

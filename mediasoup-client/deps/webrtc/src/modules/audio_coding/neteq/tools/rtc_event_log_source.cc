@@ -42,9 +42,15 @@ std::unique_ptr<RtcEventLogSource> RtcEventLogSource::CreateFromFile(
     absl::optional<uint32_t> ssrc_filter) {
   auto source = std::unique_ptr<RtcEventLogSource>(new RtcEventLogSource());
   ParsedRtcEventLog parsed_log;
-  if (!parsed_log.ParseFile(file_name) ||
-      !source->Initialize(parsed_log, ssrc_filter)) {
-    std::cerr << "Error while parsing event log, skipping." << std::endl;
+  auto status = parsed_log.ParseFile(file_name);
+  if (!status.ok()) {
+    std::cerr << "Failed to parse event log: " << status.message() << std::endl;
+    std::cerr << "Skipping log." << std::endl;
+    return nullptr;
+  }
+  if (!source->Initialize(parsed_log, ssrc_filter)) {
+    std::cerr << "Failed to initialize source from event log, skipping."
+              << std::endl;
     return nullptr;
   }
   return source;
@@ -55,9 +61,15 @@ std::unique_ptr<RtcEventLogSource> RtcEventLogSource::CreateFromString(
     absl::optional<uint32_t> ssrc_filter) {
   auto source = std::unique_ptr<RtcEventLogSource>(new RtcEventLogSource());
   ParsedRtcEventLog parsed_log;
-  if (!parsed_log.ParseString(file_contents) ||
-      !source->Initialize(parsed_log, ssrc_filter)) {
-    std::cerr << "Error while parsing event log, skipping." << std::endl;
+  auto status = parsed_log.ParseString(file_contents);
+  if (!status.ok()) {
+    std::cerr << "Failed to parse event log: " << status.message() << std::endl;
+    std::cerr << "Skipping log." << std::endl;
+    return nullptr;
+  }
+  if (!source->Initialize(parsed_log, ssrc_filter)) {
+    std::cerr << "Failed to initialize source from event log, skipping."
+              << std::endl;
     return nullptr;
   }
   return source;
@@ -126,6 +138,11 @@ bool RtcEventLogSource::Initialize(const ParsedRtcEventLog& parsed_log,
       continue;
     }
     event_processor.AddEvents(rtp_packets.incoming_packets, handle_rtp_packet);
+    // If no SSRC filter has been set, use the first SSRC only. The simulator
+    // does not work properly with interleaved packets from multiple SSRCs.
+    if (!ssrc_filter.has_value()) {
+      ssrc_filter = rtp_packets.ssrc;
+    }
   }
 
   for (const auto& audio_playouts : parsed_log.audio_playout_events()) {

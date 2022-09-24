@@ -10,7 +10,6 @@
 
 #include "modules/video_coding/receiver.h"
 
-#include <assert.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -114,7 +113,8 @@ VCMEncodedFrame* VCMReceiver::FrameForDecoding(uint16_t max_wait_time_ms,
     int frame_delay = static_cast<int>(std::abs(render_time_ms - now_ms));
     RTC_LOG(LS_WARNING)
         << "A frame about to be decoded is out of the configured "
-        << "delay bounds (" << frame_delay << " > " << max_video_delay_ms_
+           "delay bounds ("
+        << frame_delay << " > " << max_video_delay_ms_
         << "). Resetting the video jitter buffer.";
     timing_error = true;
   } else if (static_cast<int>(timing_->TargetVideoDelay()) >
@@ -140,7 +140,8 @@ VCMEncodedFrame* VCMReceiver::FrameForDecoding(uint16_t max_wait_time_ms,
     uint16_t new_max_wait_time =
         static_cast<uint16_t>(VCM_MAX(available_wait_time, 0));
     uint32_t wait_time_ms = rtc::saturated_cast<uint32_t>(
-        timing_->MaxWaitingTime(render_time_ms, clock_->TimeInMilliseconds()));
+        timing_->MaxWaitingTime(render_time_ms, clock_->TimeInMilliseconds(),
+                                /*too_many_frames_queued=*/false));
     if (new_max_wait_time < wait_time_ms) {
       // We're not allowed to wait until the frame is supposed to be rendered,
       // waiting as long as we're allowed to avoid busy looping, and then return
@@ -160,18 +161,6 @@ VCMEncodedFrame* VCMReceiver::FrameForDecoding(uint16_t max_wait_time_ms,
   frame->SetRenderTime(render_time_ms);
   TRACE_EVENT_ASYNC_STEP1("webrtc", "Video", frame->Timestamp(), "SetRenderTS",
                           "render_time", frame->RenderTimeMs());
-  if (!frame->Complete()) {
-    // Update stats for incomplete frames.
-    bool retransmitted = false;
-    const int64_t last_packet_time_ms =
-        jitter_buffer_.LastPacketTime(frame, &retransmitted);
-    if (last_packet_time_ms >= 0 && !retransmitted) {
-      // We don't want to include timestamps which have suffered from
-      // retransmission here, since we compensate with extra retransmission
-      // delay within the jitter estimate.
-      timing_->IncomingTimestamp(frame_timestamp, last_packet_time_ms);
-    }
-  }
   return frame;
 }
 

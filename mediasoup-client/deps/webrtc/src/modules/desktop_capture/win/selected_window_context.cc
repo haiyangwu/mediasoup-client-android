@@ -27,30 +27,29 @@ bool SelectedWindowContext::IsSelectedWindowValid() const {
   return selected_window_thread_id_ != 0;
 }
 
-bool SelectedWindowContext::IsWindowSelected(HWND hwnd) const {
-  return hwnd == selected_window_;
-}
-
-bool SelectedWindowContext::IsWindowOwned(HWND hwnd) const {
-  // This check works for drop-down menus & dialog pop-up windows. It doesn't
-  // work for context menus or tooltips, which are handled differently below.
+bool SelectedWindowContext::IsWindowOwnedBySelectedWindow(HWND hwnd) const {
+  // This check works for drop-down menus & dialog pop-up windows.
   if (GetAncestor(hwnd, GA_ROOTOWNER) == selected_window_) {
     return true;
   }
 
-  // Some pop-up windows aren't owned (e.g. context menus, tooltips); treat
-  // windows that belong to the same thread as owned.
-  DWORD enumerated_window_process_id = 0;
-  DWORD enumerated_window_thread_id =
-      GetWindowThreadProcessId(hwnd, &enumerated_window_process_id);
-  return enumerated_window_thread_id != 0 &&
-         enumerated_window_process_id == selected_window_process_id_ &&
-         enumerated_window_thread_id == selected_window_thread_id_;
+  // Assume that all other windows are unrelated to the selected window.
+  // This will cause some windows that are actually related to be missed,
+  // e.g. context menus and tool-tips, but avoids the risk of capturing
+  // unrelated windows. Using heuristics such as matching the thread and
+  // process Ids suffers from false-positives, e.g. in multi-document
+  // applications.
+
+  return false;
 }
 
-bool SelectedWindowContext::IsWindowOverlapping(HWND hwnd) const {
-  return window_capture_helper_->IsWindowIntersectWithSelectedWindow(
-      hwnd, selected_window_, selected_window_rect_);
+bool SelectedWindowContext::IsWindowOverlappingSelectedWindow(HWND hwnd) const {
+  return window_capture_helper_->AreWindowsOverlapping(hwnd, selected_window_,
+                                                       selected_window_rect_);
+}
+
+HWND SelectedWindowContext::selected_window() const {
+  return selected_window_;
 }
 
 WindowCaptureHelperWin* SelectedWindowContext::window_capture_helper() const {

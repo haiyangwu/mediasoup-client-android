@@ -40,7 +40,7 @@ DeferXFree::~DeferXFree() {
     XFree(data_);
 }
 
-// Iterates through |window| hierarchy to find first visible window, i.e. one
+// Iterates through `window` hierarchy to find first visible window, i.e. one
 // that has WM_STATE property set to NormalState.
 // See http://tronche.com/gui/x/icccm/sec-4.html#s-4.1.3.1 .
 ::Window GetApplicationWindow(XAtomCache* cache, ::Window window) {
@@ -61,7 +61,7 @@ DeferXFree::~DeferXFree() {
   if (!XQueryTree(cache->display(), window, &root, &parent, &children,
                   &num_children)) {
     RTC_LOG(LS_ERROR) << "Failed to query for child windows although window"
-                      << "does not have a valid WM_STATE.";
+                         "does not have a valid WM_STATE.";
     return 0;
   }
   ::Window app_window = 0;
@@ -76,7 +76,7 @@ DeferXFree::~DeferXFree() {
   return app_window;
 }
 
-// Returns true if the |window| is a desktop element.
+// Returns true if the `window` is a desktop element.
 bool IsDesktopElement(XAtomCache* cache, ::Window window) {
   RTC_DCHECK(cache);
   if (window == 0)

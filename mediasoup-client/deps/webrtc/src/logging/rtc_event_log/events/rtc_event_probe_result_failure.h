@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "api/rtc_event_log/rtc_event.h"
+#include "api/units/timestamp.h"
 
 namespace webrtc {
 
@@ -28,12 +29,13 @@ enum class ProbeFailureReason {
 
 class RtcEventProbeResultFailure final : public RtcEvent {
  public:
+  static constexpr Type kType = Type::ProbeResultFailure;
+
   RtcEventProbeResultFailure(int32_t id, ProbeFailureReason failure_reason);
   ~RtcEventProbeResultFailure() override = default;
 
-  Type GetType() const override;
-
-  bool IsConfigEvent() const override;
+  Type GetType() const override { return kType; }
+  bool IsConfigEvent() const override { return false; }
 
   std::unique_ptr<RtcEventProbeResultFailure> Copy() const;
 
@@ -45,6 +47,21 @@ class RtcEventProbeResultFailure final : public RtcEvent {
 
   const int32_t id_;
   const ProbeFailureReason failure_reason_;
+};
+
+struct LoggedBweProbeFailureEvent {
+  LoggedBweProbeFailureEvent() = default;
+  LoggedBweProbeFailureEvent(Timestamp timestamp,
+                             int32_t id,
+                             ProbeFailureReason failure_reason)
+      : timestamp(timestamp), id(id), failure_reason(failure_reason) {}
+
+  int64_t log_time_us() const { return timestamp.us(); }
+  int64_t log_time_ms() const { return timestamp.ms(); }
+
+  Timestamp timestamp = Timestamp::MinusInfinity();
+  int32_t id;
+  ProbeFailureReason failure_reason;
 };
 
 }  // namespace webrtc

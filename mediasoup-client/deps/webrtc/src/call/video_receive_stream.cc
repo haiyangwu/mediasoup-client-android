@@ -14,9 +14,17 @@
 
 namespace webrtc {
 
+VideoReceiveStream::Decoder::Decoder(SdpVideoFormat video_format,
+                                     int payload_type)
+    : video_format(std::move(video_format)), payload_type(payload_type) {}
 VideoReceiveStream::Decoder::Decoder() : video_format("Unset") {}
 VideoReceiveStream::Decoder::Decoder(const Decoder&) = default;
 VideoReceiveStream::Decoder::~Decoder() = default;
+
+bool VideoReceiveStream::Decoder::operator==(const Decoder& other) const {
+  return payload_type == other.payload_type &&
+         video_format == other.video_format;
+}
 
 std::string VideoReceiveStream::Decoder::ToString() const {
   char buf[1024];
@@ -24,8 +32,13 @@ std::string VideoReceiveStream::Decoder::ToString() const {
   ss << "{payload_type: " << payload_type;
   ss << ", payload_name: " << video_format.name;
   ss << ", codec_params: {";
-  for (const auto& it : video_format.parameters)
-    ss << it.first << ": " << it.second;
+  for (auto it = video_format.parameters.begin();
+       it != video_format.parameters.end(); ++it) {
+    if (it != video_format.parameters.begin()) {
+      ss << ", ";
+    }
+    ss << it->first << ": " << it->second;
+  }
   ss << '}';
   ss << '}';
 
@@ -70,11 +83,9 @@ std::string VideoReceiveStream::Stats::ToString(int64_t time_ms) const {
 VideoReceiveStream::Config::Config(const Config&) = default;
 VideoReceiveStream::Config::Config(Config&&) = default;
 VideoReceiveStream::Config::Config(Transport* rtcp_send_transport,
-                                   MediaTransportConfig media_transport_config)
-    : rtcp_send_transport(rtcp_send_transport),
-      media_transport_config(media_transport_config) {}
-VideoReceiveStream::Config::Config(Transport* rtcp_send_transport)
-    : Config(rtcp_send_transport, MediaTransportConfig()) {}
+                                   VideoDecoderFactory* decoder_factory)
+    : decoder_factory(decoder_factory),
+      rtcp_send_transport(rtcp_send_transport) {}
 
 VideoReceiveStream::Config& VideoReceiveStream::Config::operator=(Config&&) =
     default;

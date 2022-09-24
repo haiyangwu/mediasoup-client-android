@@ -20,7 +20,7 @@
 #include "absl/types/optional.h"
 #include "api/rtp_packet_infos.h"
 #include "api/transport/rtp/rtp_source.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/time_utils.h"
 #include "system_wrappers/include/clock.h"
 
@@ -48,8 +48,8 @@ class SourceTracker {
   // RTCRtpReceiver's MediaStreamTrack.
   void OnFrameDelivered(const RtpPacketInfos& packet_infos);
 
-  // Returns an |RtpSource| for each unique SSRC and CSRC identifier updated in
-  // the last |kTimeoutMs| milliseconds. Entries appear in reverse chronological
+  // Returns an `RtpSource` for each unique SSRC and CSRC identifier updated in
+  // the last `kTimeoutMs` milliseconds. Entries appear in reverse chronological
   // order (i.e. with the most recently updated entries appearing first).
   std::vector<RtpSource> GetSources() const;
 
@@ -58,7 +58,7 @@ class SourceTracker {
     SourceKey(RtpSourceType source_type, uint32_t source)
         : source_type(source_type), source(source) {}
 
-    // Type of |source|.
+    // Type of `source`.
     RtpSourceType source_type;
 
     // CSRC or SSRC identifier of the contributing or synchronization source.
@@ -81,17 +81,22 @@ class SourceTracker {
   struct SourceEntry {
     // Timestamp indicating the most recent time a frame from an RTP packet,
     // originating from this source, was delivered to the RTCRtpReceiver's
-    // MediaStreamTrack. Its reference clock is the outer class's |clock_|.
+    // MediaStreamTrack. Its reference clock is the outer class's `clock_`.
     int64_t timestamp_ms;
 
     // Audio level from an RFC 6464 or RFC 6465 header extension received with
     // the most recent packet used to assemble the frame associated with
-    // |timestamp_ms|. May be absent. Only relevant for audio receivers. See the
+    // `timestamp_ms`. May be absent. Only relevant for audio receivers. See the
     // specs for `RTCRtpContributingSource` for more info.
     absl::optional<uint8_t> audio_level;
 
+    // Absolute capture time header extension received or interpolated from the
+    // most recent packet used to assemble the frame. For more info see
+    // https://webrtc.org/experiments/rtp-hdrext/abs-capture-time/
+    absl::optional<AbsoluteCaptureTime> absolute_capture_time;
+
     // RTP timestamp of the most recent packet used to assemble the frame
-    // associated with |timestamp_ms|.
+    // associated with `timestamp_ms`.
     uint32_t rtp_timestamp;
   };
 
@@ -111,7 +116,7 @@ class SourceTracker {
   void PruneEntries(int64_t now_ms) const RTC_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   Clock* const clock_;
-  rtc::CriticalSection lock_;
+  mutable Mutex lock_;
 
   // Entries are stored in reverse chronological order (i.e. with the most
   // recently updated entries appearing first). Mutability is needed for timeout

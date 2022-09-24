@@ -30,18 +30,14 @@ namespace webrtc {
 class TestVCMReceiver : public ::testing::Test {
  protected:
   TestVCMReceiver()
-      : clock_(new SimulatedClock(0)),
-        timing_(clock_.get()),
-        receiver_(&timing_, clock_.get()) {
-    stream_generator_.reset(
-        new StreamGenerator(0, clock_->TimeInMilliseconds()));
-  }
-
-  virtual void SetUp() {}
+      : clock_(0),
+        timing_(&clock_),
+        receiver_(&timing_, &clock_),
+        stream_generator_(0, clock_.TimeInMilliseconds()) {}
 
   int32_t InsertPacket(int index) {
     VCMPacket packet;
-    bool packet_available = stream_generator_->GetPacket(&packet, index);
+    bool packet_available = stream_generator_.GetPacket(&packet, index);
     EXPECT_TRUE(packet_available);
     if (!packet_available)
       return kGeneralError;  // Return here to avoid crashes below.
@@ -50,7 +46,7 @@ class TestVCMReceiver : public ::testing::Test {
 
   int32_t InsertPacketAndPop(int index) {
     VCMPacket packet;
-    bool packet_available = stream_generator_->PopPacket(&packet, index);
+    bool packet_available = stream_generator_.PopPacket(&packet, index);
     EXPECT_TRUE(packet_available);
     if (!packet_available)
       return kGeneralError;  // Return here to avoid crashes below.
@@ -59,18 +55,18 @@ class TestVCMReceiver : public ::testing::Test {
 
   int32_t InsertFrame(VideoFrameType frame_type, bool complete) {
     int num_of_packets = complete ? 1 : 2;
-    stream_generator_->GenerateFrame(
+    stream_generator_.GenerateFrame(
         frame_type,
         (frame_type != VideoFrameType::kEmptyFrame) ? num_of_packets : 0,
         (frame_type == VideoFrameType::kEmptyFrame) ? 1 : 0,
-        clock_->TimeInMilliseconds());
+        clock_.TimeInMilliseconds());
     int32_t ret = InsertPacketAndPop(0);
     if (!complete) {
       // Drop the second packet.
       VCMPacket packet;
-      stream_generator_->PopPacket(&packet, 0);
+      stream_generator_.PopPacket(&packet, 0);
     }
-    clock_->AdvanceTimeMilliseconds(kDefaultFramePeriodMs);
+    clock_.AdvanceTimeMilliseconds(kDefaultFramePeriodMs);
     return ret;
   }
 
@@ -82,10 +78,10 @@ class TestVCMReceiver : public ::testing::Test {
     return true;
   }
 
-  std::unique_ptr<SimulatedClock> clock_;
+  SimulatedClock clock_;
   VCMTiming timing_;
   VCMReceiver receiver_;
-  std::unique_ptr<StreamGenerator> stream_generator_;
+  StreamGenerator stream_generator_;
 };
 
 TEST_F(TestVCMReceiver, NonDecodableDuration_Empty) {
@@ -97,7 +93,7 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_Empty) {
                             kMaxNonDecodableDuration);
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Advance time until it's time to decode the key frame.
-  clock_->AdvanceTimeMilliseconds(kMinDelayMs);
+  clock_.AdvanceTimeMilliseconds(kMinDelayMs);
   EXPECT_TRUE(DecodeNextFrame());
   bool request_key_frame = false;
   std::vector<uint16_t> nack_list = receiver_.NackList(&request_key_frame);
@@ -129,7 +125,7 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_OneIncomplete) {
   receiver_.SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack,
                             kMaxNonDecodableDuration);
   timing_.set_min_playout_delay(kMinDelayMs);
-  int64_t key_frame_inserted = clock_->TimeInMilliseconds();
+  int64_t key_frame_inserted = clock_.TimeInMilliseconds();
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Insert an incomplete frame.
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, false), kNoError);
@@ -138,8 +134,8 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_OneIncomplete) {
     EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, true), kNoError);
   }
   // Advance time until it's time to decode the key frame.
-  clock_->AdvanceTimeMilliseconds(kMinDelayMs - clock_->TimeInMilliseconds() -
-                                  key_frame_inserted);
+  clock_.AdvanceTimeMilliseconds(kMinDelayMs - clock_.TimeInMilliseconds() -
+                                 key_frame_inserted);
   EXPECT_TRUE(DecodeNextFrame());
   // Make sure we get a key frame request.
   bool request_key_frame = false;
@@ -157,7 +153,7 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger) {
   receiver_.SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack,
                             kMaxNonDecodableDuration);
   timing_.set_min_playout_delay(kMinDelayMs);
-  int64_t key_frame_inserted = clock_->TimeInMilliseconds();
+  int64_t key_frame_inserted = clock_.TimeInMilliseconds();
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Insert an incomplete frame.
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, false), kNoError);
@@ -167,8 +163,8 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger) {
     EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, true), kNoError);
   }
   // Advance time until it's time to decode the key frame.
-  clock_->AdvanceTimeMilliseconds(kMinDelayMs - clock_->TimeInMilliseconds() -
-                                  key_frame_inserted);
+  clock_.AdvanceTimeMilliseconds(kMinDelayMs - clock_.TimeInMilliseconds() -
+                                 key_frame_inserted);
   EXPECT_TRUE(DecodeNextFrame());
   // Make sure we don't get a key frame request since we haven't generated
   // enough frames.
@@ -187,7 +183,7 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger2) {
   receiver_.SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack,
                             kMaxNonDecodableDuration);
   timing_.set_min_playout_delay(kMinDelayMs);
-  int64_t key_frame_inserted = clock_->TimeInMilliseconds();
+  int64_t key_frame_inserted = clock_.TimeInMilliseconds();
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Insert enough frames to have too long non-decodable sequence, except that
   // we don't have any losses.
@@ -197,8 +193,8 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger2) {
   // Insert an incomplete frame.
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, false), kNoError);
   // Advance time until it's time to decode the key frame.
-  clock_->AdvanceTimeMilliseconds(kMinDelayMs - clock_->TimeInMilliseconds() -
-                                  key_frame_inserted);
+  clock_.AdvanceTimeMilliseconds(kMinDelayMs - clock_.TimeInMilliseconds() -
+                                 key_frame_inserted);
   EXPECT_TRUE(DecodeNextFrame());
   // Make sure we don't get a key frame request since the non-decodable duration
   // is only one frame.
@@ -217,7 +213,7 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_KeyFrameAfterIncompleteFrames) {
   receiver_.SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack,
                             kMaxNonDecodableDuration);
   timing_.set_min_playout_delay(kMinDelayMs);
-  int64_t key_frame_inserted = clock_->TimeInMilliseconds();
+  int64_t key_frame_inserted = clock_.TimeInMilliseconds();
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Insert an incomplete frame.
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameDelta, false), kNoError);
@@ -227,8 +223,8 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_KeyFrameAfterIncompleteFrames) {
   }
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey, true), kNoError);
   // Advance time until it's time to decode the key frame.
-  clock_->AdvanceTimeMilliseconds(kMinDelayMs - clock_->TimeInMilliseconds() -
-                                  key_frame_inserted);
+  clock_.AdvanceTimeMilliseconds(kMinDelayMs - clock_.TimeInMilliseconds() -
+                                 key_frame_inserted);
   EXPECT_TRUE(DecodeNextFrame());
   // Make sure we don't get a key frame request since we have a key frame
   // in the list.
@@ -248,15 +244,15 @@ class SimulatedClockWithFrames : public SimulatedClock {
         receiver_(receiver) {}
   virtual ~SimulatedClockWithFrames() {}
 
-  // If |stop_on_frame| is true and next frame arrives between now and
-  // now+|milliseconds|, the clock will be advanced to the arrival time of next
+  // If `stop_on_frame` is true and next frame arrives between now and
+  // now+`milliseconds`, the clock will be advanced to the arrival time of next
   // frame.
-  // Otherwise, the clock will be advanced by |milliseconds|.
+  // Otherwise, the clock will be advanced by `milliseconds`.
   //
   // For both cases, a frame will be inserted into the jitter buffer at the
   // instant when the clock time is timestamps_.front().arrive_time.
   //
-  // Return true if some frame arrives between now and now+|milliseconds|.
+  // Return true if some frame arrives between now and now+`milliseconds`.
   bool AdvanceTimeMilliseconds(int64_t milliseconds, bool stop_on_frame) {
     return AdvanceTimeMicroseconds(milliseconds * 1000, stop_on_frame);
   }
@@ -286,10 +282,10 @@ class SimulatedClockWithFrames : public SimulatedClock {
   }
 
   // Input timestamps are in unit Milliseconds.
-  // And |arrive_timestamps| must be positive and in increasing order.
-  // |arrive_timestamps| determine when we are going to insert frames into the
+  // And `arrive_timestamps` must be positive and in increasing order.
+  // `arrive_timestamps` determine when we are going to insert frames into the
   // jitter buffer.
-  // |render_timestamps| are the timestamps on the frame.
+  // `render_timestamps` are the timestamps on the frame.
   void SetFrames(const int64_t* arrive_timestamps,
                  const int64_t* render_timestamps,
                  size_t size) {
@@ -332,12 +328,12 @@ class SimulatedClockWithFrames : public SimulatedClock {
 
 // Use a SimulatedClockWithFrames
 // Wait call will do either of these:
-// 1. If |stop_on_frame| is true, the clock will be turned to the exact instant
+// 1. If `stop_on_frame` is true, the clock will be turned to the exact instant
 // that the first frame comes and the frame will be inserted into the jitter
-// buffer, or the clock will be turned to now + |max_time| if no frame comes in
+// buffer, or the clock will be turned to now + `max_time` if no frame comes in
 // the window.
-// 2. If |stop_on_frame| is false, the clock will be turn to now + |max_time|,
-// and all the frames arriving between now and now + |max_time| will be
+// 2. If `stop_on_frame` is false, the clock will be turn to now + `max_time`,
+// and all the frames arriving between now and now + `max_time` will be
 // inserted into the jitter buffer.
 //
 // This is used to simulate the JitterBuffer getting packets from internet as
@@ -350,8 +346,8 @@ class FrameInjectEvent : public EventWrapper {
 
   bool Set() override { return true; }
 
-  EventTypeWrapper Wait(unsigned long max_time) override {  // NOLINT
-    if (clock_->AdvanceTimeMilliseconds(max_time, stop_on_frame_) &&
+  EventTypeWrapper Wait(int max_time_ms) override {
+    if (clock_->AdvanceTimeMilliseconds(max_time_ms, stop_on_frame_) &&
         stop_on_frame_) {
       return EventTypeWrapper::kEventSignaled;
     } else {
@@ -367,7 +363,6 @@ class FrameInjectEvent : public EventWrapper {
 class VCMReceiverTimingTest : public ::testing::Test {
  protected:
   VCMReceiverTimingTest()
-
       : clock_(&stream_generator_, &receiver_),
         stream_generator_(0, clock_.TimeInMilliseconds()),
         timing_(&clock_),
@@ -387,9 +382,9 @@ class VCMReceiverTimingTest : public ::testing::Test {
 };
 
 // Test whether VCMReceiver::FrameForDecoding handles parameter
-// |max_wait_time_ms| correctly:
-// 1. The function execution should never take more than |max_wait_time_ms|.
-// 2. If the function exit before now + |max_wait_time_ms|, a frame must be
+// `max_wait_time_ms` correctly:
+// 1. The function execution should never take more than `max_wait_time_ms`.
+// 2. If the function exit before now + `max_wait_time_ms`, a frame must be
 //    returned.
 TEST_F(VCMReceiverTimingTest, FrameForDecoding) {
   const size_t kNumFrames = 100;
@@ -441,9 +436,9 @@ TEST_F(VCMReceiverTimingTest, FrameForDecoding) {
 }
 
 // Test whether VCMReceiver::FrameForDecoding handles parameter
-// |prefer_late_decoding| and |max_wait_time_ms| correctly:
-// 1. The function execution should never take more than |max_wait_time_ms|.
-// 2. If the function exit before now + |max_wait_time_ms|, a frame must be
+// `prefer_late_decoding` and `max_wait_time_ms` correctly:
+// 1. The function execution should never take more than `max_wait_time_ms`.
+// 2. If the function exit before now + `max_wait_time_ms`, a frame must be
 //    returned and the end time must be equal to the render timestamp - delay
 //    for decoding and rendering.
 TEST_F(VCMReceiverTimingTest, FrameForDecodingPreferLateDecoding) {

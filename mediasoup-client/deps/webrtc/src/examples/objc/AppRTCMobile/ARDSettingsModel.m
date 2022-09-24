@@ -11,9 +11,9 @@
 #import "ARDSettingsModel+Private.h"
 #import "ARDSettingsStore.h"
 
-#import <WebRTC/RTCCameraVideoCapturer.h>
-#import <WebRTC/RTCDefaultVideoEncoderFactory.h>
-#import <WebRTC/RTCMediaConstraints.h>
+#import "sdk/objc/api/peerconnection/RTCMediaConstraints.h"
+#import "sdk/objc/components/capturer/RTCCameraVideoCapturer.h"
+#import "sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -27,9 +27,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSString *> *)availableVideoResolutions {
   NSMutableSet<NSArray<NSNumber *> *> *resolutions =
       [[NSMutableSet<NSArray<NSNumber *> *> alloc] init];
-  for (AVCaptureDevice *device in [RTCCameraVideoCapturer captureDevices]) {
+  for (AVCaptureDevice *device in [RTC_OBJC_TYPE(RTCCameraVideoCapturer) captureDevices]) {
     for (AVCaptureDeviceFormat *format in
-         [RTCCameraVideoCapturer supportedFormatsForDevice:device]) {
+         [RTC_OBJC_TYPE(RTCCameraVideoCapturer) supportedFormatsForDevice:device]) {
       CMVideoDimensions resolution =
           CMVideoFormatDescriptionGetDimensions(format.formatDescription);
       NSArray<NSNumber *> *resolutionObject = @[ @(resolution.width), @(resolution.height) ];
@@ -70,23 +70,37 @@ NS_ASSUME_NONNULL_BEGIN
   return YES;
 }
 
-- (NSArray<RTCVideoCodecInfo *> *)availableVideoCodecs {
-  return [RTCDefaultVideoEncoderFactory supportedCodecs];
+- (NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *> *)availableVideoCodecs {
+  return [RTC_OBJC_TYPE(RTCDefaultVideoEncoderFactory) supportedCodecs];
 }
 
-- (RTCVideoCodecInfo *)currentVideoCodecSettingFromStore {
+- (RTC_OBJC_TYPE(RTCVideoCodecInfo) *)currentVideoCodecSettingFromStore {
   [self registerStoreDefaults];
   NSData *codecData = [[self settingsStore] videoCodec];
-  return [NSKeyedUnarchiver unarchiveObjectWithData:codecData];
+  Class expectedClass = [RTC_OBJC_TYPE(RTCVideoCodecInfo) class];
+  NSError *error;
+  RTC_OBJC_TYPE(RTCVideoCodecInfo) *videoCodecSetting =
+      [NSKeyedUnarchiver unarchivedObjectOfClass:expectedClass fromData:codecData error:&error];
+  if (!error) {
+    return videoCodecSetting;
+  }
+  return nil;
 }
 
-- (BOOL)storeVideoCodecSetting:(RTCVideoCodecInfo *)videoCodec {
+- (BOOL)storeVideoCodecSetting:(RTC_OBJC_TYPE(RTCVideoCodecInfo) *)videoCodec {
   if (![[self availableVideoCodecs] containsObject:videoCodec]) {
     return NO;
   }
-  NSData *codecData = [NSKeyedArchiver archivedDataWithRootObject:videoCodec];
-  [[self settingsStore] setVideoCodec:codecData];
-  return YES;
+
+  NSError *error;
+  NSData *codecData = [NSKeyedArchiver archivedDataWithRootObject:videoCodec
+                                            requiringSecureCoding:NO
+                                                            error:&error];
+  if (!error) {
+    [[self settingsStore] setVideoCodec:codecData];
+    return YES;
+  }
+  return NO;
 }
 
 - (nullable NSNumber *)currentMaxBitrateSettingFromStore {
@@ -149,7 +163,7 @@ NS_ASSUME_NONNULL_BEGIN
   return [self availableVideoResolutions].firstObject;
 }
 
-- (RTCVideoCodecInfo *)defaultVideoCodecSetting {
+- (RTC_OBJC_TYPE(RTCVideoCodecInfo) *)defaultVideoCodecSetting {
   return [self availableVideoCodecs].firstObject;
 }
 
@@ -165,14 +179,18 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)registerStoreDefaults {
-  NSData *codecData = [NSKeyedArchiver archivedDataWithRootObject:[self defaultVideoCodecSetting]];
-  [ARDSettingsStore setDefaultsForVideoResolution:[self defaultVideoResolutionSetting]
-                                       videoCodec:codecData
-                                          bitrate:nil
-                                        audioOnly:NO
-                                    createAecDump:NO
-                             useManualAudioConfig:YES];
+  NSError *error;
+  NSData *codecData = [NSKeyedArchiver archivedDataWithRootObject:[self defaultVideoCodecSetting]
+                                            requiringSecureCoding:NO
+                                                            error:&error];
+  if (!error) {
+    [ARDSettingsStore setDefaultsForVideoResolution:[self defaultVideoResolutionSetting]
+                                         videoCodec:codecData
+                                            bitrate:nil
+                                          audioOnly:NO
+                                      createAecDump:NO
+                               useManualAudioConfig:YES];
+  }
 }
-
 @end
 NS_ASSUME_NONNULL_END

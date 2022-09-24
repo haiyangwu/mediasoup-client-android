@@ -18,6 +18,14 @@ specific_include_rules = {
     "+rtc_base/memory/aligned_malloc.h",
   ],
 
+  "nv12_buffer\.h": [
+    "+rtc_base/memory/aligned_malloc.h",
+  ],
+
+  "recordable_encoded_frame\.h": [
+    "+rtc_base/ref_count.h",
+  ],
+
   "video_frame\.h": [
   ],
 
@@ -31,5 +39,9 @@ specific_include_rules = {
 
   "video_stream_encoder_create.cc": [
     "+video/video_stream_encoder.h",
+  ],
+
+  "rtp_video_frame_assembler.h": [
+    "+modules/rtp_rtcp/source/rtp_packet_received.h",
   ],
 }

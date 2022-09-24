@@ -21,15 +21,15 @@
 #include "modules/include/module_common_types_public.h"
 #include "modules/utility/include/process_thread.h"
 #include "modules/video_coding/decoding_state.h"
+#include "modules/video_coding/event_wrapper.h"
 #include "modules/video_coding/include/video_coding.h"
 #include "modules/video_coding/include/video_coding_defines.h"
 #include "modules/video_coding/inter_frame_delay.h"
 #include "modules/video_coding/jitter_buffer_common.h"
 #include "modules/video_coding/jitter_estimator.h"
 #include "rtc_base/constructor_magic.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
-#include "system_wrappers/include/event_wrapper.h"
 
 namespace webrtc {
 
@@ -93,7 +93,7 @@ class VCMJitterBuffer {
   // Gets number of duplicated packets received.
   int num_duplicated_packets() const;
 
-  // Wait |max_wait_time_ms| for a complete frame to arrive.
+  // Wait `max_wait_time_ms` for a complete frame to arrive.
   // If found, a pointer to the frame is returned. Returns nullptr otherwise.
   VCMEncodedFrame* NextCompleteFrame(uint32_t max_wait_time_ms);
 
@@ -112,7 +112,7 @@ class VCMJitterBuffer {
                          bool* retransmitted) const;
 
   // Inserts a packet into a frame returned from GetFrame().
-  // If the return value is <= 0, |frame| is invalidated and the pointer must
+  // If the return value is <= 0, `frame` is invalidated and the pointer must
   // be dropped after this function returns.
   VCMFrameBufferEnum InsertPacket(const VCMPacket& packet, bool* retransmitted);
 
@@ -138,73 +138,73 @@ class VCMJitterBuffer {
 
   // Gets the frame assigned to the timestamp of the packet. May recycle
   // existing frames if no free frames are available. Returns an error code if
-  // failing, or kNoError on success. |frame_list| contains which list the
+  // failing, or kNoError on success. `frame_list` contains which list the
   // packet was in, or NULL if it was not in a FrameList (a new frame).
   VCMFrameBufferEnum GetFrame(const VCMPacket& packet,
                               VCMFrameBuffer** frame,
                               FrameList** frame_list)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  // Returns true if |frame| is continuous in |decoding_state|, not taking
+  // Returns true if `frame` is continuous in `decoding_state`, not taking
   // decodable frames into account.
   bool IsContinuousInState(const VCMFrameBuffer& frame,
                            const VCMDecodingState& decoding_state) const
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  // Returns true if |frame| is continuous in the |last_decoded_state_|, taking
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // Returns true if `frame` is continuous in the `last_decoded_state_`, taking
   // all decodable frames into account.
   bool IsContinuous(const VCMFrameBuffer& frame) const
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  // Looks for frames in |incomplete_frames_| which are continuous in the
-  // provided |decoded_state|. Starts the search from the timestamp of
-  // |decoded_state|.
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // Looks for frames in `incomplete_frames_` which are continuous in the
+  // provided `decoded_state`. Starts the search from the timestamp of
+  // `decoded_state`.
   void FindAndInsertContinuousFramesWithState(
       const VCMDecodingState& decoded_state)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  // Looks for frames in |incomplete_frames_| which are continuous in
-  // |last_decoded_state_| taking all decodable frames into account. Starts
-  // the search from |new_frame|.
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // Looks for frames in `incomplete_frames_` which are continuous in
+  // `last_decoded_state_` taking all decodable frames into account. Starts
+  // the search from `new_frame`.
   void FindAndInsertContinuousFrames(const VCMFrameBuffer& new_frame)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  VCMFrameBuffer* NextFrame() const RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  VCMFrameBuffer* NextFrame() const RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Returns true if the NACK list was updated to cover sequence numbers up to
-  // |sequence_number|. If false a key frame is needed to get into a state where
+  // `sequence_number`. If false a key frame is needed to get into a state where
   // we can continue decoding.
   bool UpdateNackList(uint16_t sequence_number)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   bool TooLargeNackList() const;
   // Returns true if the NACK list was reduced without problem. If false a key
   // frame is needed to get into a state where we can continue decoding.
-  bool HandleTooLargeNackList() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  bool HandleTooLargeNackList() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   bool MissingTooOldPacket(uint16_t latest_sequence_number) const
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   // Returns true if the too old packets was successfully removed from the NACK
   // list. If false, a key frame is needed to get into a state where we can
   // continue decoding.
   bool HandleTooOldPackets(uint16_t latest_sequence_number)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  // Drops all packets in the NACK list up until |last_decoded_sequence_number|.
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // Drops all packets in the NACK list up until `last_decoded_sequence_number`.
   void DropPacketsFromNackList(uint16_t last_decoded_sequence_number);
 
   // Gets an empty frame, creating a new frame if necessary (i.e. increases
   // jitter buffer size).
-  VCMFrameBuffer* GetEmptyFrame() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  VCMFrameBuffer* GetEmptyFrame() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Attempts to increase the size of the jitter buffer. Returns true on
   // success, false otherwise.
-  bool TryToIncreaseJitterBufferSize() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  bool TryToIncreaseJitterBufferSize() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Recycles oldest frames until a key frame is found. Used if jitter buffer is
   // completely full. Returns true if a key frame was found.
-  bool RecycleFramesUntilKeyFrame() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  bool RecycleFramesUntilKeyFrame() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Update rolling average of packets per frame.
   void UpdateAveragePacketsPerFrame(int current_number_packets_);
 
   // Cleans the frame list in the JB from old/empty frames.
   // Should only be called prior to actual use.
-  void CleanUpOldOrEmptyFrames() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  void CleanUpOldOrEmptyFrames() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  // Returns true if |packet| is likely to have been retransmitted.
+  // Returns true if `packet` is likely to have been retransmitted.
   bool IsPacketRetransmitted(const VCMPacket& packet) const;
 
   // The following three functions update the jitter estimate with the
@@ -217,35 +217,34 @@ class VCMJitterBuffer {
                             unsigned int frame_size,
                             bool incomplete_frame);
 
-  int NonContinuousOrIncompleteDuration()
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  int NonContinuousOrIncompleteDuration() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   uint16_t EstimatedLowSequenceNumber(const VCMFrameBuffer& frame) const;
 
   // Reset frame buffer and return it to free_frames_.
   void RecycleFrameBuffer(VCMFrameBuffer* frame)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Clock* clock_;
   // If we are running (have started) or not.
   bool running_;
-  rtc::CriticalSection crit_sect_;
+  mutable Mutex mutex_;
   // Event to signal when we have a frame ready for decoder.
   std::unique_ptr<EventWrapper> frame_event_;
   // Number of allocated frames.
   int max_number_of_frames_;
-  UnorderedFrameList free_frames_ RTC_GUARDED_BY(crit_sect_);
-  FrameList decodable_frames_ RTC_GUARDED_BY(crit_sect_);
-  FrameList incomplete_frames_ RTC_GUARDED_BY(crit_sect_);
-  VCMDecodingState last_decoded_state_ RTC_GUARDED_BY(crit_sect_);
+  UnorderedFrameList free_frames_ RTC_GUARDED_BY(mutex_);
+  FrameList decodable_frames_ RTC_GUARDED_BY(mutex_);
+  FrameList incomplete_frames_ RTC_GUARDED_BY(mutex_);
+  VCMDecodingState last_decoded_state_ RTC_GUARDED_BY(mutex_);
   bool first_packet_since_reset_;
 
   // Number of packets in a row that have been too old.
   int num_consecutive_old_packets_;
   // Number of packets received.
-  int num_packets_ RTC_GUARDED_BY(crit_sect_);
+  int num_packets_ RTC_GUARDED_BY(mutex_);
   // Number of duplicated packets received.
-  int num_duplicated_packets_ RTC_GUARDED_BY(crit_sect_);
+  int num_duplicated_packets_ RTC_GUARDED_BY(mutex_);
 
   // Jitter estimation.
   // Filter for estimating jitter.

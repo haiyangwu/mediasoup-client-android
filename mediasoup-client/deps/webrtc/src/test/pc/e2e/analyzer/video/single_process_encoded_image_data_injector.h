@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "api/video/encoded_image.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "test/pc/e2e/analyzer/video/encoded_image_data_injector.h"
 
 namespace webrtc {
@@ -37,35 +37,42 @@ namespace webrtc_pc_e2e {
 // This injector won't add any extra overhead into EncodedImage payload and
 // support frames with any size of payload. Also assumes that every EncodedImage
 // payload size is greater or equals to 3 bytes
-class SingleProcessEncodedImageDataInjector : public EncodedImageDataInjector,
-                                              public EncodedImageDataExtractor {
+class SingleProcessEncodedImageDataInjector
+    : public EncodedImageDataPropagator {
  public:
   SingleProcessEncodedImageDataInjector();
   ~SingleProcessEncodedImageDataInjector() override;
 
   // Id and discard flag will be injected into EncodedImage buffer directly.
-  // This buffer won't be fully copied, so |source| image buffer will be also
+  // This buffer won't be fully copied, so `source` image buffer will be also
   // changed.
   EncodedImage InjectData(uint16_t id,
                           bool discard,
-                          const EncodedImage& source,
-                          int coding_entity_id) override;
-  EncodedImageExtractionResult ExtractData(const EncodedImage& source,
-                                           int coding_entity_id) override;
+                          const EncodedImage& source) override;
+
+  void Start(int expected_receivers_count) override {
+    MutexLock crit(&lock_);
+    expected_receivers_count_ = expected_receivers_count;
+  }
+  void AddParticipantInCall() override;
+  EncodedImageExtractionResult ExtractData(const EncodedImage& source) override;
 
  private:
   // Contains data required to extract frame id from EncodedImage and restore
   // original buffer.
   struct ExtractionInfo {
+    // Number of bytes from the beginning of the EncodedImage buffer that will
+    // be used to store frame id and sub id.
+    const static size_t kUsedBufferSize = 3;
     // Frame sub id to distinguish encoded images for different spatial layers.
     uint8_t sub_id;
-    // Length of the origin buffer encoded image.
-    size_t length;
     // Flag to show is this encoded images should be discarded by analyzing
     // decoder because of not required spatial layer/simulcast stream.
     bool discard;
     // Data from first 3 bytes of origin encoded image's payload.
-    uint8_t origin_data[3];
+    uint8_t origin_data[ExtractionInfo::kUsedBufferSize];
+    // Count of how many times this frame was received.
+    int received_count = 0;
   };
 
   struct ExtractionInfoVector {
@@ -77,7 +84,8 @@ class SingleProcessEncodedImageDataInjector : public EncodedImageDataInjector,
     std::map<uint8_t, ExtractionInfo> infos;
   };
 
-  rtc::CriticalSection lock_;
+  Mutex lock_;
+  int expected_receivers_count_ RTC_GUARDED_BY(lock_);
   // Stores a mapping from frame id to extraction info for spatial layers
   // for this frame id. There can be a lot of them, because if frame was
   // dropped we can't clean it up, because we won't receive a signal on

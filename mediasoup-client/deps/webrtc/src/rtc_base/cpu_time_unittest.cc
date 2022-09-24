@@ -26,12 +26,11 @@
 
 namespace {
 const int kAllowedErrorMillisecs = 30;
-const int kProcessingTimeMillisecs = 300;
+const int kProcessingTimeMillisecs = 500;
 const int kWorkingThreads = 2;
 
 // Consumes approximately kProcessingTimeMillisecs of CPU time in single thread.
-void WorkingFunction(void* counter_pointer) {
-  int64_t* counter = reinterpret_cast<int64_t*>(counter_pointer);
+void WorkingFunction(int64_t* counter) {
   *counter = 0;
   int64_t stop_cpu_time =
       rtc::GetThreadCpuTimeNanos() +
@@ -62,14 +61,12 @@ TEST(CpuTimeTest, MAYBE_TEST(TwoThreads)) {
   int64_t thread_start_time_nanos = GetThreadCpuTimeNanos();
   int64_t counter1;
   int64_t counter2;
-  PlatformThread thread1(WorkingFunction, reinterpret_cast<void*>(&counter1),
-                         "Thread1");
-  PlatformThread thread2(WorkingFunction, reinterpret_cast<void*>(&counter2),
-                         "Thread2");
-  thread1.Start();
-  thread2.Start();
-  thread1.Stop();
-  thread2.Stop();
+  auto thread1 = PlatformThread::SpawnJoinable(
+      [&counter1] { WorkingFunction(&counter1); }, "Thread1");
+  auto thread2 = PlatformThread::SpawnJoinable(
+      [&counter2] { WorkingFunction(&counter2); }, "Thread2");
+  thread1.Finalize();
+  thread2.Finalize();
 
   EXPECT_GE(counter1, 0);
   EXPECT_GE(counter2, 0);
@@ -77,10 +74,11 @@ TEST(CpuTimeTest, MAYBE_TEST(TwoThreads)) {
       GetProcessCpuTimeNanos() - process_start_time_nanos;
   int64_t thread_duration_nanos =
       GetThreadCpuTimeNanos() - thread_start_time_nanos;
-  // This thread did almost nothing.
+  // This thread did almost nothing. Definetly less work than kProcessingTime.
   // Therefore GetThreadCpuTime is not a wall clock.
   EXPECT_LE(thread_duration_nanos,
-            kAllowedErrorMillisecs * kNumNanosecsPerMillisec);
+            (kProcessingTimeMillisecs - kAllowedErrorMillisecs) *
+                kNumNanosecsPerMillisec);
   // Total process time is at least twice working threads' CPU time.
   // Therefore process and thread times are correctly related.
   EXPECT_GE(process_duration_nanos,
@@ -97,7 +95,8 @@ TEST(CpuTimeTest, MAYBE_TEST(Sleeping)) {
   // Sleeping should not introduce any additional CPU time.
   // Therefore GetProcessCpuTime is not a wall clock.
   EXPECT_LE(process_duration_nanos,
-            kWorkingThreads * kAllowedErrorMillisecs * kNumNanosecsPerMillisec);
+            (kProcessingTimeMillisecs - kAllowedErrorMillisecs) *
+                kNumNanosecsPerMillisec);
 }
 
 }  // namespace rtc

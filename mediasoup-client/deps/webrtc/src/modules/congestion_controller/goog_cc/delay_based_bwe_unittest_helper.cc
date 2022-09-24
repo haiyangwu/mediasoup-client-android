@@ -53,8 +53,8 @@ int64_t RtpStream::GenerateFrame(int64_t time_now_us,
   for (size_t i = 0; i < n_packets; ++i) {
     PacketResult packet;
     packet.sent_packet.send_time =
-        Timestamp::us(time_now_us + kSendSideOffsetUs);
-    packet.sent_packet.size = DataSize::bytes(payload_size);
+        Timestamp::Micros(time_now_us + kSendSideOffsetUs);
+    packet.sent_packet.size = DataSize::Bytes(payload_size);
     packets->push_back(packet);
   }
   next_rtp_time_ = time_now_us + (1000000 + fps_ / 2) / fps_;
@@ -96,7 +96,7 @@ void StreamGenerator::set_capacity_bps(int capacity_bps) {
   capacity_ = capacity_bps;
 }
 
-// Divides |bitrate_bps| among all streams. The allocated bitrate per stream
+// Divides `bitrate_bps` among all streams. The allocated bitrate per stream
 // is decided by the current allocation ratios.
 void StreamGenerator::SetBitrateBps(int bitrate_bps) {
   ASSERT_GE(streams_.size(), 0u);
@@ -137,7 +137,7 @@ int64_t StreamGenerator::GenerateFrame(std::vector<PacketResult>* packets,
     prev_arrival_time_us_ =
         std::max(time_now_us + required_network_time_us,
                  prev_arrival_time_us_ + required_network_time_us);
-    packet.receive_time = Timestamp::us(prev_arrival_time_us_);
+    packet.receive_time = Timestamp::Micros(prev_arrival_time_us_);
     ++i;
   }
   it = std::min_element(streams_.begin(), streams_.end(), RtpStream::Compare);
@@ -146,24 +146,10 @@ int64_t StreamGenerator::GenerateFrame(std::vector<PacketResult>* packets,
 }  // namespace test
 
 DelayBasedBweTest::DelayBasedBweTest()
-    : field_trial(),
+    : field_trial(std::make_unique<test::ScopedFieldTrials>(GetParam())),
       clock_(100000000),
       acknowledged_bitrate_estimator_(
-          std::make_unique<AcknowledgedBitrateEstimator>(&field_trial_config_)),
-      probe_bitrate_estimator_(new ProbeBitrateEstimator(nullptr)),
-      bitrate_estimator_(
-          new DelayBasedBwe(&field_trial_config_, nullptr, nullptr)),
-      stream_generator_(new test::StreamGenerator(1e6,  // Capacity.
-                                                  clock_.TimeInMicroseconds())),
-      arrival_time_offset_ms_(0),
-      first_update_(true) {}
-
-DelayBasedBweTest::DelayBasedBweTest(const std::string& field_trial_string)
-    : field_trial(
-          std::make_unique<test::ScopedFieldTrials>(field_trial_string)),
-      clock_(100000000),
-      acknowledged_bitrate_estimator_(
-          std::make_unique<AcknowledgedBitrateEstimator>(&field_trial_config_)),
+          AcknowledgedBitrateEstimatorInterface::Create(&field_trial_config_)),
       probe_bitrate_estimator_(new ProbeBitrateEstimator(nullptr)),
       bitrate_estimator_(
           new DelayBasedBwe(&field_trial_config_, nullptr, nullptr)),
@@ -194,16 +180,16 @@ void DelayBasedBweTest::IncomingFeedback(int64_t arrival_time_ms,
   RTC_CHECK_GE(arrival_time_ms + arrival_time_offset_ms_, 0);
   PacketResult packet;
   packet.receive_time =
-      Timestamp::ms(arrival_time_ms + arrival_time_offset_ms_);
-  packet.sent_packet.send_time = Timestamp::ms(send_time_ms);
-  packet.sent_packet.size = DataSize::bytes(payload_size);
+      Timestamp::Millis(arrival_time_ms + arrival_time_offset_ms_);
+  packet.sent_packet.send_time = Timestamp::Millis(send_time_ms);
+  packet.sent_packet.size = DataSize::Bytes(payload_size);
   packet.sent_packet.pacing_info = pacing_info;
   if (packet.sent_packet.pacing_info.probe_cluster_id !=
       PacedPacketInfo::kNotAProbe)
     probe_bitrate_estimator_->HandleProbeAndEstimateBitrate(packet);
 
   TransportPacketsFeedback msg;
-  msg.feedback_time = Timestamp::ms(clock_.TimeInMilliseconds());
+  msg.feedback_time = Timestamp::Millis(clock_.TimeInMilliseconds());
   msg.packet_feedbacks.push_back(packet);
   acknowledged_bitrate_estimator_->IncomingPacketFeedbackVector(
       msg.SortedByReceiveTime());
@@ -239,7 +225,7 @@ bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t ssrc,
                                  clock_.TimeInMicroseconds());
   for (auto& packet : packets) {
     RTC_CHECK_GE(packet.receive_time.ms() + arrival_time_offset_ms_, 0);
-    packet.receive_time += TimeDelta::ms(arrival_time_offset_ms_);
+    packet.receive_time += TimeDelta::Millis(arrival_time_offset_ms_);
 
     if (packet.sent_packet.pacing_info.probe_cluster_id !=
         PacedPacketInfo::kNotAProbe)
@@ -249,7 +235,7 @@ bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t ssrc,
   acknowledged_bitrate_estimator_->IncomingPacketFeedbackVector(packets);
   TransportPacketsFeedback msg;
   msg.packet_feedbacks = packets;
-  msg.feedback_time = Timestamp::ms(clock_.TimeInMilliseconds());
+  msg.feedback_time = Timestamp::Millis(clock_.TimeInMilliseconds());
 
   DelayBasedBwe::Result result =
       bitrate_estimator_->IncomingPacketFeedbackVector(
@@ -267,8 +253,8 @@ bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t ssrc,
   return overuse;
 }
 
-// Run the bandwidth estimator with a stream of |number_of_frames| frames, or
-// until it reaches |target_bitrate|.
+// Run the bandwidth estimator with a stream of `number_of_frames` frames, or
+// until it reaches `target_bitrate`.
 // Can for instance be used to run the estimator for some time to get it
 // into a steady state.
 uint32_t DelayBasedBweTest::SteadyStateRun(uint32_t ssrc,
@@ -279,7 +265,7 @@ uint32_t DelayBasedBweTest::SteadyStateRun(uint32_t ssrc,
                                            uint32_t target_bitrate) {
   uint32_t bitrate_bps = start_bitrate;
   bool bitrate_update_seen = false;
-  // Produce |number_of_frames| frames and give them to the estimator.
+  // Produce `number_of_frames` frames and give them to the estimator.
   for (int i = 0; i < max_number_of_frames; ++i) {
     bool overuse = GenerateAndProcessFrame(ssrc, bitrate_bps);
     if (overuse) {
@@ -490,7 +476,7 @@ void DelayBasedBweTest::TestTimestampGroupingTestHelper() {
   const int kTimestampGroupLength = 15;
   for (int i = 0; i < 100; ++i) {
     for (int j = 0; j < kTimestampGroupLength; ++j) {
-      // Insert |kTimestampGroupLength| frames with just 1 timestamp ticks in
+      // Insert `kTimestampGroupLength` frames with just 1 timestamp ticks in
       // between. Should be treated as part of the same group by the estimator.
       IncomingFeedback(clock_.TimeInMilliseconds(), send_time_ms, 100);
       clock_.AdvanceTimeMilliseconds(kFrameIntervalMs / kTimestampGroupLength);

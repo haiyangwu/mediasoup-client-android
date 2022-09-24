@@ -42,14 +42,13 @@ namespace webrtc {
 // - Select "multiplex" codec in SDP negotiation.
 class RTC_EXPORT MultiplexEncoderFactory : public VideoEncoderFactory {
  public:
-  // |supports_augmenting_data| defines if the encoder would support augmenting
+  // `supports_augmenting_data` defines if the encoder would support augmenting
   // data. If set, the encoder expects to receive video frame buffers of type
   // AugmentedVideoFrameBuffer.
   MultiplexEncoderFactory(std::unique_ptr<VideoEncoderFactory> factory,
                           bool supports_augmenting_data = false);
 
   std::vector<SdpVideoFormat> GetSupportedFormats() const override;
-  CodecInfo QueryVideoEncoder(const SdpVideoFormat& format) const override;
   std::unique_ptr<VideoEncoder> CreateVideoEncoder(
       const SdpVideoFormat& format) override;
 
@@ -60,7 +59,7 @@ class RTC_EXPORT MultiplexEncoderFactory : public VideoEncoderFactory {
 
 class RTC_EXPORT MultiplexDecoderFactory : public VideoDecoderFactory {
  public:
-  // |supports_augmenting_data| defines if the decoder would support augmenting
+  // `supports_augmenting_data` defines if the decoder would support augmenting
   // data. If set, the decoder is expected to output video frame buffers of type
   // AugmentedVideoFrameBuffer.
   MultiplexDecoderFactory(std::unique_ptr<VideoDecoderFactory> factory,

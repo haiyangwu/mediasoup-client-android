@@ -55,6 +55,16 @@ webrtc::RtpParameters CreateRtpParametersWithEncodings(StreamParams sp) {
   return parameters;
 }
 
+std::vector<webrtc::RtpExtension> GetDefaultEnabledRtpHeaderExtensions(
+    const RtpHeaderExtensionQueryInterface& query_interface) {
+  std::vector<webrtc::RtpExtension> extensions;
+  for (const auto& entry : query_interface.GetRtpHeaderExtensions()) {
+    if (entry.direction != webrtc::RtpTransceiverDirection::kStopped)
+      extensions.emplace_back(entry.uri, *entry.preferred_id);
+  }
+  return extensions;
+}
+
 webrtc::RTCError CheckRtpParametersValues(
     const webrtc::RtpParameters& rtp_parameters) {
   using webrtc::RTCErrorType;
@@ -70,7 +80,13 @@ webrtc::RTCError CheckRtpParametersValues(
       LOG_AND_RETURN_ERROR(
           RTCErrorType::INVALID_RANGE,
           "Attempted to set RtpParameters scale_resolution_down_by to an "
-          "invalid number. scale_resolution_down_by must be >= 1.0");
+          "invalid value. scale_resolution_down_by must be >= 1.0");
+    }
+    if (rtp_parameters.encodings[i].max_framerate &&
+        *rtp_parameters.encodings[i].max_framerate < 0.0) {
+      LOG_AND_RETURN_ERROR(RTCErrorType::INVALID_RANGE,
+                           "Attempted to set RtpParameters max_framerate to an "
+                           "invalid value. max_framerate must be >= 0.0");
     }
     if (rtp_parameters.encodings[i].min_bitrate_bps &&
         rtp_parameters.encodings[i].max_bitrate_bps) {
@@ -145,10 +161,19 @@ webrtc::RTCError CheckRtpParametersInvalidModificationAndValues(
 }
 
 CompositeMediaEngine::CompositeMediaEngine(
-    std::unique_ptr<VoiceEngineInterface> voice_engine,
+    std::unique_ptr<webrtc::WebRtcKeyValueConfig> trials,
+    std::unique_ptr<VoiceEngineInterface> audio_engine,
     std::unique_ptr<VideoEngineInterface> video_engine)
-    : voice_engine_(std::move(voice_engine)),
+    : trials_(std::move(trials)),
+      voice_engine_(std::move(audio_engine)),
       video_engine_(std::move(video_engine)) {}
+
+CompositeMediaEngine::CompositeMediaEngine(
+    std::unique_ptr<VoiceEngineInterface> audio_engine,
+    std::unique_ptr<VideoEngineInterface> video_engine)
+    : CompositeMediaEngine(nullptr,
+                           std::move(audio_engine),
+                           std::move(video_engine)) {}
 
 CompositeMediaEngine::~CompositeMediaEngine() = default;
 

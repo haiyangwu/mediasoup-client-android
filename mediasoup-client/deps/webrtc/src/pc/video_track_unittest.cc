@@ -32,7 +32,7 @@ class VideoTrackTest : public ::testing::Test {
  public:
   VideoTrackTest() : frame_source_(640, 480, rtc::kNumMicrosecsPerSec / 30) {
     static const char kVideoTrackId[] = "track_id";
-    video_track_source_ = new rtc::RefCountedObject<FakeVideoTrackSource>(
+    video_track_source_ = rtc::make_ref_counted<FakeVideoTrackSource>(
         /*is_screencast=*/false);
     video_track_ = VideoTrack::Create(kVideoTrackId, video_track_source_,
                                       rtc::Thread::Current());
@@ -54,14 +54,14 @@ TEST_F(VideoTrackTest, SourceStateChangeTrackState) {
 // Test adding renderers to a video track and render to them by providing
 // frames to the source.
 TEST_F(VideoTrackTest, RenderVideo) {
-  // FakeVideoTrackRenderer register itself to |video_track_|
+  // FakeVideoTrackRenderer register itself to `video_track_`
   std::unique_ptr<FakeVideoTrackRenderer> renderer_1(
       new FakeVideoTrackRenderer(video_track_.get()));
 
   video_track_source_->InjectFrame(frame_source_.GetFrame());
   EXPECT_EQ(1, renderer_1->num_rendered_frames());
 
-  // FakeVideoTrackRenderer register itself to |video_track_|
+  // FakeVideoTrackRenderer register itself to `video_track_`
   std::unique_ptr<FakeVideoTrackRenderer> renderer_2(
       new FakeVideoTrackRenderer(video_track_.get()));
   video_track_source_->InjectFrame(frame_source_.GetFrame());

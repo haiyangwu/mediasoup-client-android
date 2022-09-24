@@ -8,11 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import <WebRTC/RTCSessionDescription.h>
+#import "sdk/objc/api/peerconnection/RTCSessionDescription.h"
 
-@interface RTCSessionDescription (JSON)
+@interface RTC_OBJC_TYPE (RTCSessionDescription)
+(JSON)
 
-+ (RTCSessionDescription *)descriptionFromJSONDictionary:(NSDictionary *)dictionary;
+    + (RTC_OBJC_TYPE(RTCSessionDescription) *)descriptionFromJSONDictionary
+    : (NSDictionary *)dictionary;
 - (NSData *)JSONData;
 
 @end

@@ -15,8 +15,9 @@
 #include <stdint.h>
 
 #include <list>
+#include <memory>
 
-#include "rtc_base/memory/fifo_buffer.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace cricket {
@@ -146,10 +147,10 @@ class RTC_EXPORT PseudoTcp {
   // Creates a packet and submits it to the network. This method can either
   // send payload or just an ACK packet.
   //
-  // |seq| is the sequence number of this packet.
-  // |flags| is the flags for sending this packet.
-  // |offset| is the offset to read from |m_sbuf|.
-  // |len| is the number of bytes to read from |m_sbuf| as payload. If this
+  // `seq` is the sequence number of this packet.
+  // `flags` is the flags for sending this packet.
+  // `offset` is the offset to read from `m_sbuf`.
+  // `len` is the number of bytes to read from `m_sbuf` as payload. If this
   // value is 0 then this is an ACK packet, otherwise this packet has payload.
   IPseudoTcpNotify::WriteResult packet(uint32_t seq,
                                        uint8_t flags,
@@ -189,12 +190,56 @@ class RTC_EXPORT PseudoTcp {
   // Apply window scale option.
   void applyWindowScaleOption(uint8_t scale_factor);
 
-  // Resize the send buffer with |new_size| in bytes.
+  // Resize the send buffer with `new_size` in bytes.
   void resizeSendBuffer(uint32_t new_size);
 
-  // Resize the receive buffer with |new_size| in bytes. This call adjusts
-  // window scale factor |m_swnd_scale| accordingly.
+  // Resize the receive buffer with `new_size` in bytes. This call adjusts
+  // window scale factor `m_swnd_scale` accordingly.
   void resizeReceiveBuffer(uint32_t new_size);
+
+  class LockedFifoBuffer final {
+   public:
+    explicit LockedFifoBuffer(size_t size);
+    ~LockedFifoBuffer();
+
+    size_t GetBuffered() const;
+    bool SetCapacity(size_t size);
+    bool ReadOffset(void* buffer,
+                    size_t bytes,
+                    size_t offset,
+                    size_t* bytes_read);
+    bool WriteOffset(const void* buffer,
+                     size_t bytes,
+                     size_t offset,
+                     size_t* bytes_written);
+    bool Read(void* buffer, size_t bytes, size_t* bytes_read);
+    bool Write(const void* buffer, size_t bytes, size_t* bytes_written);
+    void ConsumeReadData(size_t size);
+    void ConsumeWriteBuffer(size_t size);
+    bool GetWriteRemaining(size_t* size) const;
+
+   private:
+    bool ReadOffsetLocked(void* buffer,
+                          size_t bytes,
+                          size_t offset,
+                          size_t* bytes_read)
+        RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+    bool WriteOffsetLocked(const void* buffer,
+                           size_t bytes,
+                           size_t offset,
+                           size_t* bytes_written)
+        RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+    // the allocated buffer
+    std::unique_ptr<char[]> buffer_ RTC_GUARDED_BY(mutex_);
+    // size of the allocated buffer
+    size_t buffer_length_ RTC_GUARDED_BY(mutex_);
+    // amount of readable data in the buffer
+    size_t data_length_ RTC_GUARDED_BY(mutex_);
+    // offset to the readable data
+    size_t read_position_ RTC_GUARDED_BY(mutex_);
+    mutable webrtc::Mutex mutex_;
+  };
 
   IPseudoTcpNotify* m_notify;
   enum Shutdown { SD_NONE, SD_GRACEFUL, SD_FORCEFUL } m_shutdown;
@@ -211,13 +256,13 @@ class RTC_EXPORT PseudoTcp {
   RList m_rlist;
   uint32_t m_rbuf_len, m_rcv_nxt, m_rcv_wnd, m_lastrecv;
   uint8_t m_rwnd_scale;  // Window scale factor.
-  rtc::FifoBuffer m_rbuf;
+  LockedFifoBuffer m_rbuf;
 
   // Outgoing data
   SList m_slist;
   uint32_t m_sbuf_len, m_snd_nxt, m_snd_wnd, m_lastsend, m_snd_una;
   uint8_t m_swnd_scale;  // Window scale factor.
-  rtc::FifoBuffer m_sbuf;
+  LockedFifoBuffer m_sbuf;
 
   // Maximum segment size, estimated protocol level, largest segment sent
   uint32_t m_mss, m_msslevel, m_largest, m_mtu_advise;

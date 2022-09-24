@@ -11,12 +11,16 @@
 // Handling of certificates and keypairs for SSLStreamAdapter's peer mode.
 #include "rtc_base/ssl_identity.h"
 
+#include <openssl/ossl_typ.h>
 #include <string.h>
 #include <time.h>
-#include <string>
 
 #include "rtc_base/checks.h"
+#ifdef OPENSSL_IS_BORINGSSL
+#include "rtc_base/boringssl_identity.h"
+#else
 #include "rtc_base/openssl_identity.h"
+#endif
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/third_party/base64/base64.h"
@@ -29,8 +33,8 @@ namespace rtc {
 //////////////////////////////////////////////////////////////////////
 
 namespace {
-// Read |n| bytes from ASN1 number string at *|pp| and return the numeric value.
-// Update *|pp| and *|np| to reflect number of read bytes.
+// Read `n` bytes from ASN1 number string at *`pp` and return the numeric value.
+// Update *`pp` and *`np` to reflect number of read bytes.
 // TODO(bugs.webrtc.org/9860) - Remove this code.
 inline int ASN1ReadInt(const unsigned char** pp, size_t* np, size_t n) {
   const unsigned char* p = *pp;
@@ -83,7 +87,7 @@ int64_t ASN1TimeToSec(const unsigned char* s, size_t length, bool long_format) {
     }
   }
 
-  // Read out remaining ASN1 time data and store it in |tm| in documented
+  // Read out remaining ASN1 time data and store it in `tm` in documented
   // std::tm format.
   tm tm;
   tm.tm_year = year;
@@ -210,47 +214,75 @@ std::string SSLIdentity::DerToPem(const std::string& pem_type,
 }
 
 // static
-SSLIdentity* SSLIdentity::GenerateWithExpiration(const std::string& common_name,
-                                                 const KeyParams& key_params,
+std::unique_ptr<SSLIdentity> SSLIdentity::Create(const std::string& common_name,
+                                                 const KeyParams& key_param,
                                                  time_t certificate_lifetime) {
-  return OpenSSLIdentity::GenerateWithExpiration(common_name, key_params,
+#ifdef OPENSSL_IS_BORINGSSL
+  return BoringSSLIdentity::CreateWithExpiration(common_name, key_param,
                                                  certificate_lifetime);
+#else
+  return OpenSSLIdentity::CreateWithExpiration(common_name, key_param,
+                                               certificate_lifetime);
+#endif
 }
 
 // static
-SSLIdentity* SSLIdentity::Generate(const std::string& common_name,
-                                   const KeyParams& key_params) {
-  return OpenSSLIdentity::GenerateWithExpiration(
-      common_name, key_params, kDefaultCertificateLifetimeInSeconds);
+std::unique_ptr<SSLIdentity> SSLIdentity::Create(const std::string& common_name,
+                                                 const KeyParams& key_param) {
+  return Create(common_name, key_param, kDefaultCertificateLifetimeInSeconds);
 }
 
 // static
-SSLIdentity* SSLIdentity::Generate(const std::string& common_name,
-                                   KeyType key_type) {
-  return OpenSSLIdentity::GenerateWithExpiration(
-      common_name, KeyParams(key_type), kDefaultCertificateLifetimeInSeconds);
+std::unique_ptr<SSLIdentity> SSLIdentity::Create(const std::string& common_name,
+                                                 KeyType key_type) {
+  return Create(common_name, KeyParams(key_type),
+                kDefaultCertificateLifetimeInSeconds);
 }
 
-SSLIdentity* SSLIdentity::GenerateForTest(const SSLIdentityParams& params) {
-  return OpenSSLIdentity::GenerateForTest(params);
+//  static
+std::unique_ptr<SSLIdentity> SSLIdentity::CreateForTest(
+    const SSLIdentityParams& params) {
+#ifdef OPENSSL_IS_BORINGSSL
+  return BoringSSLIdentity::CreateForTest(params);
+#else
+  return OpenSSLIdentity::CreateForTest(params);
+#endif
 }
 
+// Construct an identity from a private key and a certificate.
 // static
-SSLIdentity* SSLIdentity::FromPEMStrings(const std::string& private_key,
-                                         const std::string& certificate) {
-  return OpenSSLIdentity::FromPEMStrings(private_key, certificate);
+std::unique_ptr<SSLIdentity> SSLIdentity::CreateFromPEMStrings(
+    const std::string& private_key,
+    const std::string& certificate) {
+#ifdef OPENSSL_IS_BORINGSSL
+  return BoringSSLIdentity::CreateFromPEMStrings(private_key, certificate);
+#else
+  return OpenSSLIdentity::CreateFromPEMStrings(private_key, certificate);
+#endif
 }
 
+// Construct an identity from a private key and a certificate chain.
 // static
-SSLIdentity* SSLIdentity::FromPEMChainStrings(
+std::unique_ptr<SSLIdentity> SSLIdentity::CreateFromPEMChainStrings(
     const std::string& private_key,
     const std::string& certificate_chain) {
-  return OpenSSLIdentity::FromPEMChainStrings(private_key, certificate_chain);
+#ifdef OPENSSL_IS_BORINGSSL
+  return BoringSSLIdentity::CreateFromPEMChainStrings(private_key,
+                                                      certificate_chain);
+#else
+  return OpenSSLIdentity::CreateFromPEMChainStrings(private_key,
+                                                    certificate_chain);
+#endif
 }
 
 bool operator==(const SSLIdentity& a, const SSLIdentity& b) {
+#ifdef OPENSSL_IS_BORINGSSL
+  return static_cast<const BoringSSLIdentity&>(a) ==
+         static_cast<const BoringSSLIdentity&>(b);
+#else
   return static_cast<const OpenSSLIdentity&>(a) ==
          static_cast<const OpenSSLIdentity&>(b);
+#endif
 }
 bool operator!=(const SSLIdentity& a, const SSLIdentity& b) {
   return !(a == b);

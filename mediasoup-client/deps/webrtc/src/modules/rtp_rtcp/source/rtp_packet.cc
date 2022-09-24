@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "modules/rtp_rtcp/source/byte_io.h"
+#include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
@@ -26,6 +27,7 @@ constexpr size_t kFixedHeaderSize = 12;
 constexpr uint8_t kRtpVersion = 2;
 constexpr uint16_t kOneByteExtensionProfileId = 0xBEDE;
 constexpr uint16_t kTwoByteExtensionProfileId = 0x1000;
+constexpr uint16_t kTwobyteExtensionProfileIdAppBitsFilter = 0xfff0;
 constexpr size_t kOneByteExtensionHeaderLength = 1;
 constexpr size_t kTwoByteExtensionHeaderLength = 2;
 constexpr size_t kDefaultPacketSize = 1500;
@@ -69,8 +71,8 @@ RtpPacket::RtpPacket(const ExtensionManager* extensions, size_t capacity)
 
 RtpPacket::~RtpPacket() {}
 
-void RtpPacket::IdentifyExtensions(const ExtensionManager& extensions) {
-  extensions_ = extensions;
+void RtpPacket::IdentifyExtensions(ExtensionManager extensions) {
+  extensions_ = std::move(extensions);
 }
 
 bool RtpPacket::Parse(const uint8_t* buffer, size_t buffer_size) {
@@ -110,8 +112,6 @@ std::vector<uint32_t> RtpPacket::Csrcs() const {
 }
 
 void RtpPacket::CopyHeaderFrom(const RtpPacket& packet) {
-  RTC_DCHECK_GE(capacity(), packet.headers_size());
-
   marker_ = packet.marker_;
   payload_type_ = packet.payload_type_;
   sequence_number_ = packet.sequence_number_;
@@ -165,11 +165,15 @@ void RtpPacket::ZeroMutableExtensions() {
         break;
       }
       case RTPExtensionType::kRtpExtensionVideoTiming: {
-        // Nullify 3 last entries: packetization delay and 2 network timestamps.
-        // Each of them is 2 bytes.
-        memset(
-            WriteAt(extension.offset + VideoSendTiming::kPacerExitDeltaOffset),
-            0, 6);
+        // Nullify last entries, starting at pacer delay.
+        // These are set by pacer and SFUs
+        if (VideoTimingExtension::kPacerExitDeltaOffset < extension.length) {
+          memset(
+              WriteAt(extension.offset +
+                      VideoTimingExtension::kPacerExitDeltaOffset),
+              0,
+              extension.length - VideoTimingExtension::kPacerExitDeltaOffset);
+        }
         break;
       }
       case RTPExtensionType::kRtpExtensionTransportSequenceNumber:
@@ -181,11 +185,10 @@ void RtpPacket::ZeroMutableExtensions() {
         break;
       }
       case RTPExtensionType::kRtpExtensionAudioLevel:
+      case RTPExtensionType::kRtpExtensionCsrcAudioLevel:
       case RTPExtensionType::kRtpExtensionAbsoluteCaptureTime:
       case RTPExtensionType::kRtpExtensionColorSpace:
-      case RTPExtensionType::kRtpExtensionFrameMarking:
       case RTPExtensionType::kRtpExtensionGenericFrameDescriptor00:
-      case RTPExtensionType::kRtpExtensionGenericFrameDescriptor01:
       case RTPExtensionType::kRtpExtensionGenericFrameDescriptor02:
       case RTPExtensionType::kRtpExtensionMid:
       case RTPExtensionType::kRtpExtensionNumberOfExtensions:
@@ -193,7 +196,10 @@ void RtpPacket::ZeroMutableExtensions() {
       case RTPExtensionType::kRtpExtensionRepairedRtpStreamId:
       case RTPExtensionType::kRtpExtensionRtpStreamId:
       case RTPExtensionType::kRtpExtensionVideoContentType:
-      case RTPExtensionType::kRtpExtensionVideoRotation: {
+      case RTPExtensionType::kRtpExtensionVideoLayersAllocation:
+      case RTPExtensionType::kRtpExtensionVideoRotation:
+      case RTPExtensionType::kRtpExtensionInbandComfortNoise:
+      case RTPExtensionType::kRtpExtensionVideoFrameTrackingId: {
         // Non-mutable extension. Don't change it.
         break;
       }
@@ -460,16 +466,6 @@ bool RtpPacket::ParseBuffer(const uint8_t* buffer, size_t size) {
   }
   payload_offset_ = kFixedHeaderSize + number_of_crcs * 4;
 
-  if (has_padding) {
-    padding_size_ = buffer[size - 1];
-    if (padding_size_ == 0) {
-      RTC_LOG(LS_WARNING) << "Padding was set, but padding size is zero";
-      return false;
-    }
-  } else {
-    padding_size_ = 0;
-  }
-
   extensions_size_ = 0;
   extension_entries_.clear();
   if (has_extension) {
@@ -495,7 +491,8 @@ bool RtpPacket::ParseBuffer(const uint8_t* buffer, size_t size) {
       return false;
     }
     if (profile != kOneByteExtensionProfileId &&
-        profile != kTwoByteExtensionProfileId) {
+        (profile & kTwobyteExtensionProfileIdAppBitsFilter) !=
+            kTwoByteExtensionProfileId) {
       RTC_LOG(LS_WARNING) << "Unsupported rtp extension " << profile;
     } else {
       size_t extension_header_length = profile == kOneByteExtensionProfileId
@@ -547,6 +544,16 @@ bool RtpPacket::ParseBuffer(const uint8_t* buffer, size_t size) {
       }
     }
     payload_offset_ = extension_offset + extensions_capacity;
+  }
+
+  if (has_padding && payload_offset_ < size) {
+    padding_size_ = buffer[size - 1];
+    if (padding_size_ == 0) {
+      RTC_LOG(LS_WARNING) << "Padding was set, but padding size is zero";
+      return false;
+    }
+  } else {
+    padding_size_ = 0;
   }
 
   if (payload_offset_ + padding_size_ > size) {
@@ -612,11 +619,6 @@ rtc::ArrayView<uint8_t> RtpPacket::AllocateExtension(ExtensionType type,
 }
 
 bool RtpPacket::HasExtension(ExtensionType type) const {
-  // TODO(webrtc:7990): Add support for empty extensions (length==0).
-  return !FindExtension(type).empty();
-}
-
-bool RtpPacket::IsExtensionReserved(ExtensionType type) const {
   uint8_t id = extensions_.GetId(type);
   if (id == ExtensionManager::kInvalidId) {
     // Extension not registered.

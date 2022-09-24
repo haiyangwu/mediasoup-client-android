@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "api/sequence_checker.h"
 #include "api/transport/enums.h"
 #include "p2p/base/port.h"
 #include "p2p/base/port_interface.h"
@@ -25,7 +26,6 @@
 #include "rtc_base/system/rtc_export.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
-#include "rtc_base/thread_checker.h"
 
 namespace webrtc {
 class TurnCustomizer;
@@ -149,7 +149,7 @@ struct RelayCredentials {
 typedef std::vector<ProtocolAddress> PortList;
 // TODO(deadbeef): Rename to TurnServerConfig.
 struct RTC_EXPORT RelayServerConfig {
-  explicit RelayServerConfig(RelayType type);
+  RelayServerConfig();
   RelayServerConfig(const rtc::SocketAddress& address,
                     const std::string& username,
                     const std::string& password,
@@ -170,12 +170,11 @@ struct RTC_EXPORT RelayServerConfig {
   ~RelayServerConfig();
 
   bool operator==(const RelayServerConfig& o) const {
-    return type == o.type && ports == o.ports && credentials == o.credentials &&
+    return ports == o.ports && credentials == o.credentials &&
            priority == o.priority;
   }
   bool operator!=(const RelayServerConfig& o) const { return !(*this == o); }
 
-  RelayType type;
   PortList ports;
   RelayCredentials credentials;
   int priority = 0;
@@ -241,8 +240,6 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
   // network. Only if all networks of an interface have no connection, the
   // implementation should start re-gathering on all networks of that interface.
   virtual void RegatherOnFailedNetworks() {}
-  // Re-gathers candidates on all networks.
-  virtual void RegatherOnAllNetworks() {}
   // Get candidate-level stats from all candidates on the ready ports and return
   // the stats to the given list.
   virtual void GetCandidateStatsFromReadyPorts(
@@ -286,7 +283,6 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
 
   virtual uint32_t generation();
   virtual void set_generation(uint32_t generation);
-  sigslot::signal1<PortAllocatorSession*> SignalDestroyed;
 
  protected:
   // This method is called when a pooled session (which doesn't have these
@@ -552,7 +548,7 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   // taken via TakePooledSession.
   //
   // A change in the candidate filter also fires a signal
-  // |SignalCandidateFilterChanged|, so that objects subscribed to this signal
+  // `SignalCandidateFilterChanged`, so that objects subscribed to this signal
   // can, for example, update the candidate filter for sessions created by this
   // allocator and already taken by the object.
   //
@@ -602,7 +598,7 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   // Return IceParameters of the pooled sessions.
   std::vector<IceParameters> GetPooledIceCredentials();
 
-  // Fired when |candidate_filter_| changes.
+  // Fired when `candidate_filter_` changes.
   sigslot::signal2<uint32_t /* prev_filter */, uint32_t /* cur_filter */>
       SignalCandidateFilterChanged;
 
@@ -641,7 +637,7 @@ class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
   bool allow_tcp_listen_;
   uint32_t candidate_filter_;
   std::string origin_;
-  rtc::ThreadChecker thread_checker_;
+  webrtc::SequenceChecker thread_checker_;
 
  private:
   ServerAddresses stun_servers_;

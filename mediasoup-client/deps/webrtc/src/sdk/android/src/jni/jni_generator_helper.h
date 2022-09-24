@@ -27,7 +27,16 @@
 
 #define BASE_EXPORT
 #define JNI_REGISTRATION_EXPORT __attribute__((visibility("default")))
+
+#if defined(WEBRTC_ARCH_X86)
+// Dalvik JIT generated code doesn't guarantee 16-byte stack alignment on
+// x86 - use force_align_arg_pointer to realign the stack at the JNI
+// boundary. crbug.com/655248
+#define JNI_GENERATOR_EXPORT \
+  __attribute__((force_align_arg_pointer)) extern "C" JNIEXPORT JNICALL
+#else
 #define JNI_GENERATOR_EXPORT extern "C" JNIEXPORT JNICALL
+#endif
 
 #define CHECK_EXCEPTION(jni)        \
   RTC_CHECK(!jni->ExceptionCheck()) \
@@ -35,11 +44,11 @@
 
 namespace webrtc {
 
-// This function will initialize |atomic_class_id| to contain a global ref to
+// This function will initialize `atomic_class_id` to contain a global ref to
 // the given class, and will return that ref on subsequent calls. The caller is
-// responsible to zero-initialize |atomic_class_id|. It's fine to
+// responsible to zero-initialize `atomic_class_id`. It's fine to
 // simultaneously call this on multiple threads referencing the same
-// |atomic_method_id|.
+// `atomic_method_id`.
 jclass LazyGetClass(JNIEnv* env,
                     const char* class_name,
                     std::atomic<jclass>* atomic_class_id);
@@ -52,11 +61,11 @@ class MethodID {
     TYPE_INSTANCE,
   };
 
-  // This function will initialize |atomic_method_id| to contain a ref to
+  // This function will initialize `atomic_method_id` to contain a ref to
   // the given method, and will return that ref on subsequent calls. The caller
-  // is responsible to zero-initialize |atomic_method_id|. It's fine to
+  // is responsible to zero-initialize `atomic_method_id`. It's fine to
   // simultaneously call this on multiple threads referencing the same
-  // |atomic_method_id|.
+  // `atomic_method_id`.
   template <Type type>
   static jmethodID LazyGet(JNIEnv* env,
                            jclass clazz,
@@ -142,7 +151,7 @@ struct BASE_EXPORT JniJavaCallContextChecked {
             const char* jni_signature,
             std::atomic<jmethodID>* atomic_method_id) {
     base.Init<type>(env, clazz, method_name, jni_signature, atomic_method_id);
-    // Reset |pc| to correct caller.
+    // Reset `pc` to correct caller.
     base.pc = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
   }
 

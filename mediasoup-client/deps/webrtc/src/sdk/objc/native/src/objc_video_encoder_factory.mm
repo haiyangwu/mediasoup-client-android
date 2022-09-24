@@ -12,11 +12,11 @@
 
 #include <string>
 
+#import "base/RTCMacros.h"
 #import "base/RTCVideoEncoder.h"
 #import "base/RTCVideoEncoderFactory.h"
 #import "components/video_codec/RTCCodecSpecificInfoH264+Private.h"
 #import "sdk/objc/api/peerconnection/RTCEncodedImage+Private.h"
-#import "sdk/objc/api/peerconnection/RTCRtpFragmentationHeader+Private.h"
 #import "sdk/objc/api/peerconnection/RTCVideoCodecInfo+Private.h"
 #import "sdk/objc/api/peerconnection/RTCVideoEncoderSettings+Private.h"
 #import "sdk/objc/api/video_codec/RTCVideoCodecConstants.h"
@@ -26,7 +26,6 @@
 #include "api/video/video_frame.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_encoder.h"
-#include "modules/include/module_common_types.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/logging.h"
@@ -38,35 +37,35 @@ namespace {
 
 class ObjCVideoEncoder : public VideoEncoder {
  public:
-  ObjCVideoEncoder(id<RTCVideoEncoder> encoder)
+  ObjCVideoEncoder(id<RTC_OBJC_TYPE(RTCVideoEncoder)> encoder)
       : encoder_(encoder), implementation_name_([encoder implementationName].stdString) {}
 
   int32_t InitEncode(const VideoCodec *codec_settings, const Settings &encoder_settings) override {
-    RTCVideoEncoderSettings *settings =
-        [[RTCVideoEncoderSettings alloc] initWithNativeVideoCodec:codec_settings];
+    RTC_OBJC_TYPE(RTCVideoEncoderSettings) *settings =
+        [[RTC_OBJC_TYPE(RTCVideoEncoderSettings) alloc] initWithNativeVideoCodec:codec_settings];
     return [encoder_ startEncodeWithSettings:settings
                                numberOfCores:encoder_settings.number_of_cores];
   }
 
   int32_t RegisterEncodeCompleteCallback(EncodedImageCallback *callback) override {
-    [encoder_ setCallback:^BOOL(RTCEncodedImage *_Nonnull frame,
-                                id<RTCCodecSpecificInfo> _Nonnull info,
-                                RTCRtpFragmentationHeader *_Nonnull header) {
-      EncodedImage encodedImage = [frame nativeEncodedImage];
+    if (callback) {
+      [encoder_ setCallback:^BOOL(RTC_OBJC_TYPE(RTCEncodedImage) * _Nonnull frame,
+                                  id<RTC_OBJC_TYPE(RTCCodecSpecificInfo)> _Nonnull info) {
+        EncodedImage encodedImage = [frame nativeEncodedImage];
 
-      // Handle types that can be converted into one of CodecSpecificInfo's hard coded cases.
-      CodecSpecificInfo codecSpecificInfo;
-      if ([info isKindOfClass:[RTCCodecSpecificInfoH264 class]]) {
-        codecSpecificInfo = [(RTCCodecSpecificInfoH264 *)info nativeCodecSpecificInfo];
-      }
+        // Handle types that can be converted into one of CodecSpecificInfo's hard coded cases.
+        CodecSpecificInfo codecSpecificInfo;
+        if ([info isKindOfClass:[RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) class]]) {
+          codecSpecificInfo =
+              [(RTC_OBJC_TYPE(RTCCodecSpecificInfoH264) *)info nativeCodecSpecificInfo];
+        }
 
-      std::unique_ptr<RTPFragmentationHeader> fragmentationHeader =
-          [header createNativeFragmentationHeader];
-      EncodedImageCallback::Result res =
-          callback->OnEncodedImage(encodedImage, &codecSpecificInfo, fragmentationHeader.get());
-      return res.error == EncodedImageCallback::Result::OK;
-    }];
-
+        EncodedImageCallback::Result res = callback->OnEncodedImage(encodedImage, &codecSpecificInfo);
+        return res.error == EncodedImageCallback::Result::OK;
+      }];
+    } else {
+      [encoder_ setCallback:nil];
+    }
     return WEBRTC_VIDEO_CODEC_OK;
   }
 
@@ -92,36 +91,69 @@ class ObjCVideoEncoder : public VideoEncoder {
 
   VideoEncoder::EncoderInfo GetEncoderInfo() const override {
     EncoderInfo info;
-    info.supports_native_handle = true;
     info.implementation_name = implementation_name_;
 
-    RTCVideoEncoderQpThresholds *qp_thresholds = [encoder_ scalingSettings];
+    RTC_OBJC_TYPE(RTCVideoEncoderQpThresholds) *qp_thresholds = [encoder_ scalingSettings];
     info.scaling_settings = qp_thresholds ? ScalingSettings(qp_thresholds.low, qp_thresholds.high) :
                                             ScalingSettings::kOff;
 
+    info.requested_resolution_alignment = encoder_.resolutionAlignment > 0 ?: 1;
+    info.apply_alignment_to_all_simulcast_layers = encoder_.applyAlignmentToAllSimulcastLayers;
+    info.supports_native_handle = encoder_.supportsNativeHandle;
     info.is_hardware_accelerated = true;
     info.has_internal_source = false;
     return info;
   }
 
  private:
-  id<RTCVideoEncoder> encoder_;
+  id<RTC_OBJC_TYPE(RTCVideoEncoder)> encoder_;
   const std::string implementation_name_;
 };
+
+class ObjcVideoEncoderSelector : public VideoEncoderFactory::EncoderSelectorInterface {
+ public:
+  ObjcVideoEncoderSelector(id<RTC_OBJC_TYPE(RTCVideoEncoderSelector)> selector) {
+    selector_ = selector;
+  }
+  void OnCurrentEncoder(const SdpVideoFormat &format) override {
+    RTC_OBJC_TYPE(RTCVideoCodecInfo) *info =
+        [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithNativeSdpVideoFormat:format];
+    [selector_ registerCurrentEncoderInfo:info];
+  }
+  absl::optional<SdpVideoFormat> OnEncoderBroken() override {
+    RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_ encoderForBrokenEncoder];
+    if (info) {
+      return [info nativeSdpVideoFormat];
+    }
+    return absl::nullopt;
+  }
+  absl::optional<SdpVideoFormat> OnAvailableBitrate(const DataRate &rate) override {
+    RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_ encoderForBitrate:rate.kbps<NSInteger>()];
+    if (info) {
+      return [info nativeSdpVideoFormat];
+    }
+    return absl::nullopt;
+  }
+
+ private:
+  id<RTC_OBJC_TYPE(RTCVideoEncoderSelector)> selector_;
+};
+
 }  // namespace
 
-ObjCVideoEncoderFactory::ObjCVideoEncoderFactory(id<RTCVideoEncoderFactory> encoder_factory)
+ObjCVideoEncoderFactory::ObjCVideoEncoderFactory(
+    id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> encoder_factory)
     : encoder_factory_(encoder_factory) {}
 
 ObjCVideoEncoderFactory::~ObjCVideoEncoderFactory() {}
 
-id<RTCVideoEncoderFactory> ObjCVideoEncoderFactory::wrapped_encoder_factory() const {
+id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)> ObjCVideoEncoderFactory::wrapped_encoder_factory() const {
   return encoder_factory_;
 }
 
 std::vector<SdpVideoFormat> ObjCVideoEncoderFactory::GetSupportedFormats() const {
   std::vector<SdpVideoFormat> supported_formats;
-  for (RTCVideoCodecInfo *supportedCodec in [encoder_factory_ supportedCodecs]) {
+  for (RTC_OBJC_TYPE(RTCVideoCodecInfo) * supportedCodec in [encoder_factory_ supportedCodecs]) {
     SdpVideoFormat format = [supportedCodec nativeSdpVideoFormat];
     supported_formats.push_back(format);
   }
@@ -130,9 +162,9 @@ std::vector<SdpVideoFormat> ObjCVideoEncoderFactory::GetSupportedFormats() const
 }
 
 std::vector<SdpVideoFormat> ObjCVideoEncoderFactory::GetImplementations() const {
-  if ([encoder_factory_ respondsToSelector:SEL("implementations")]) {
+  if ([encoder_factory_ respondsToSelector:@selector(implementations)]) {
     std::vector<SdpVideoFormat> supported_formats;
-    for (RTCVideoCodecInfo *supportedCodec in [encoder_factory_ implementations]) {
+    for (RTC_OBJC_TYPE(RTCVideoCodecInfo) * supportedCodec in [encoder_factory_ implementations]) {
       SdpVideoFormat format = [supportedCodec nativeSdpVideoFormat];
       supported_formats.push_back(format);
     }
@@ -141,28 +173,27 @@ std::vector<SdpVideoFormat> ObjCVideoEncoderFactory::GetImplementations() const 
   return GetSupportedFormats();
 }
 
-VideoEncoderFactory::CodecInfo ObjCVideoEncoderFactory::QueryVideoEncoder(
-    const SdpVideoFormat &format) const {
-  // TODO(andersc): This is a hack until we figure out how this should be done properly.
-  NSString *formatName = [NSString stringForStdString:format.name];
-  NSSet *wrappedSoftwareFormats =
-      [NSSet setWithObjects:kRTCVideoCodecVp8Name, kRTCVideoCodecVp9Name, nil];
-
-  CodecInfo codec_info;
-  codec_info.is_hardware_accelerated = ![wrappedSoftwareFormats containsObject:formatName];
-  codec_info.has_internal_source = false;
-  return codec_info;
-}
-
 std::unique_ptr<VideoEncoder> ObjCVideoEncoderFactory::CreateVideoEncoder(
     const SdpVideoFormat &format) {
-  RTCVideoCodecInfo *info = [[RTCVideoCodecInfo alloc] initWithNativeSdpVideoFormat:format];
-  id<RTCVideoEncoder> encoder = [encoder_factory_ createEncoder:info];
-  if ([encoder isKindOfClass:[RTCWrappedNativeVideoEncoder class]]) {
-    return [(RTCWrappedNativeVideoEncoder *)encoder releaseWrappedEncoder];
+  RTC_OBJC_TYPE(RTCVideoCodecInfo) *info =
+      [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithNativeSdpVideoFormat:format];
+  id<RTC_OBJC_TYPE(RTCVideoEncoder)> encoder = [encoder_factory_ createEncoder:info];
+  if ([encoder isKindOfClass:[RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) class]]) {
+    return [(RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) *)encoder releaseWrappedEncoder];
   } else {
     return std::unique_ptr<ObjCVideoEncoder>(new ObjCVideoEncoder(encoder));
   }
+}
+
+std::unique_ptr<VideoEncoderFactory::EncoderSelectorInterface>
+    ObjCVideoEncoderFactory::GetEncoderSelector() const {
+  if ([encoder_factory_ respondsToSelector:@selector(encoderSelector)]) {
+    id<RTC_OBJC_TYPE(RTCVideoEncoderSelector)> selector = [encoder_factory_ encoderSelector];
+    if (selector) {
+      return absl::make_unique<ObjcVideoEncoderSelector>(selector);
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace webrtc

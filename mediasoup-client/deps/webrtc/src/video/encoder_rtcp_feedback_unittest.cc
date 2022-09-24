@@ -26,7 +26,8 @@ class VieKeyRequestTest : public ::testing::Test {
         encoder_rtcp_feedback_(
             &simulated_clock_,
             std::vector<uint32_t>(1, VieKeyRequestTest::kSsrc),
-            &encoder_) {}
+            &encoder_,
+            nullptr) {}
 
  protected:
   const uint32_t kSsrc = 1234;
@@ -53,11 +54,6 @@ TEST_F(VieKeyRequestTest, TooManyOnReceivedIntraFrameRequest) {
   encoder_rtcp_feedback_.OnReceivedIntraFrameRequest(kSsrc);
   encoder_rtcp_feedback_.OnReceivedIntraFrameRequest(kSsrc);
   encoder_rtcp_feedback_.OnReceivedIntraFrameRequest(kSsrc);
-}
-
-TEST_F(VieKeyRequestTest, TriggerRequestFromMediaTransport) {
-  EXPECT_CALL(encoder_, SendKeyFrame()).Times(1);
-  encoder_rtcp_feedback_.OnKeyFrameRequested(kSsrc);
 }
 
 }  // namespace webrtc

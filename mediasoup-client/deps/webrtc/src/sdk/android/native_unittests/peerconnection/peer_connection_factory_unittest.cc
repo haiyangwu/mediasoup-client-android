@@ -67,7 +67,7 @@ rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> CreateTestPCF(
   auto factory = CreateModularPeerConnectionFactory(std::move(pcf_deps));
   RTC_LOG(LS_INFO) << "PeerConnectionFactory created: " << factory;
   RTC_CHECK(factory) << "Failed to create the peer connection factory; "
-                     << "WebRTC/libjingle init likely failed on this device";
+                        "WebRTC/libjingle init likely failed on this device";
 
   return factory;
 }
@@ -100,7 +100,7 @@ TEST(PeerConnectionFactoryTest, NativeToJavaPeerConnectionFactory) {
 
   jobject java_factory = NativeToJavaPeerConnectionFactory(
       jni, factory, std::move(network_thread), std::move(worker_thread),
-      std::move(signaling_thread), nullptr /* network_monitor_factory */);
+      std::move(signaling_thread));
 
   RTC_LOG(INFO) << java_factory;
 

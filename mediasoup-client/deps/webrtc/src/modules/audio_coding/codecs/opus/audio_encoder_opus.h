@@ -31,26 +31,6 @@ class RtcEventLog;
 
 class AudioEncoderOpusImpl final : public AudioEncoder {
  public:
-  class NewPacketLossRateOptimizer {
-   public:
-    NewPacketLossRateOptimizer(float min_packet_loss_rate = 0.01,
-                               float max_packet_loss_rate = 0.2,
-                               float slope = 1.0);
-
-    float OptimizePacketLossRate(float packet_loss_rate) const;
-
-    // Getters for testing.
-    float min_packet_loss_rate() const { return min_packet_loss_rate_; }
-    float max_packet_loss_rate() const { return max_packet_loss_rate_; }
-    float slope() const { return slope_; }
-
-   private:
-    const float min_packet_loss_rate_;
-    const float max_packet_loss_rate_;
-    const float slope_;
-    RTC_DISALLOW_COPY_AND_ASSIGN(NewPacketLossRateOptimizer);
-  };
-
   // Returns empty if the current bitrate falls within the hysteresis window,
   // defined by complexity_threshold_bps +/- complexity_threshold_window_bps.
   // Otherwise, returns the current complexity depending on whether the
@@ -104,8 +84,7 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   void DisableAudioNetworkAdaptor() override;
   void OnReceivedUplinkPacketLossFraction(
       float uplink_packet_loss_fraction) override;
-  void OnReceivedUplinkRecoverablePacketLossFraction(
-      float uplink_recoverable_packet_loss_fraction) override;
+  void OnReceivedTargetAudioBitrate(int target_audio_bitrate_bps) override;
   void OnReceivedUplinkBandwidth(
       int target_audio_bitrate_bps,
       absl::optional<int64_t> bwe_period_ms) override;
@@ -123,9 +102,6 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
 
   // Getters for testing.
   float packet_loss_rate() const { return packet_loss_rate_; }
-  NewPacketLossRateOptimizer* new_packet_loss_optimizer() const {
-    return new_packet_loss_optimizer_.get();
-  }
   AudioEncoderOpusConfig::ApplicationMode application() const {
     return config_.application;
   }
@@ -163,7 +139,7 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
       absl::optional<int64_t> link_capacity_allocation);
 
   // TODO(minyue): remove "override" when we can deprecate
-  // |AudioEncoder::SetTargetBitrate|.
+  // `AudioEncoder::SetTargetBitrate`.
   void SetTargetBitrate(int target_bps) override;
 
   void ApplyAudioNetworkAdaptor();
@@ -179,9 +155,11 @@ class AudioEncoderOpusImpl final : public AudioEncoder {
   const bool use_stable_target_for_adaptation_;
   const bool adjust_bandwidth_;
   bool bitrate_changed_;
+  // A multiplier for bitrates at 5 kbps and higher. The target bitrate
+  // will be multiplied by these multipliers, each multiplier is applied to a
+  // 1 kbps range.
+  std::vector<float> bitrate_multipliers_;
   float packet_loss_rate_;
-  const float min_packet_loss_rate_;
-  const std::unique_ptr<NewPacketLossRateOptimizer> new_packet_loss_optimizer_;
   std::vector<int16_t> input_buffer_;
   OpusEncInst* inst_;
   uint32_t first_timestamp_in_buffer_;

@@ -21,7 +21,7 @@
 
 namespace webrtc {
 namespace {
-constexpr TimeDelta kDefaultProcessDelay = TimeDelta::Millis<5>();
+constexpr TimeDelta kDefaultProcessDelay = TimeDelta::Millis(5);
 }  // namespace
 
 CoDelSimulation::CoDelSimulation() = default;
@@ -31,10 +31,10 @@ bool CoDelSimulation::DropDequeuedPacket(Timestamp now,
                                          Timestamp enqueing_time,
                                          DataSize packet_size,
                                          DataSize queue_size) {
-  constexpr TimeDelta kWindow = TimeDelta::Millis<100>();
-  constexpr TimeDelta kDelayThreshold = TimeDelta::Millis<5>();
-  constexpr TimeDelta kDropCountMemory = TimeDelta::Millis<1600>();
-  constexpr DataSize kMaxPacketSize = DataSize::Bytes<1500>();
+  constexpr TimeDelta kWindow = TimeDelta::Millis(100);
+  constexpr TimeDelta kDelayThreshold = TimeDelta::Millis(5);
+  constexpr TimeDelta kDropCountMemory = TimeDelta::Millis(1600);
+  constexpr DataSize kMaxPacketSize = DataSize::Bytes(1500);
 
   // Compensates for process interval in simulation; not part of standard CoDel.
   TimeDelta queuing_time = now - enqueing_time - kDefaultProcessDelay;
@@ -77,18 +77,18 @@ bool CoDelSimulation::DropDequeuedPacket(Timestamp now,
       }
       return false;
   }
+  RTC_CHECK_NOTREACHED();
 }
 
-SimulatedNetwork::SimulatedNetwork(SimulatedNetwork::Config config,
-                                   uint64_t random_seed)
+SimulatedNetwork::SimulatedNetwork(Config config, uint64_t random_seed)
     : random_(random_seed), bursting_(false) {
   SetConfig(config);
 }
 
 SimulatedNetwork::~SimulatedNetwork() = default;
 
-void SimulatedNetwork::SetConfig(const SimulatedNetwork::Config& config) {
-  rtc::CritScope crit(&config_lock_);
+void SimulatedNetwork::SetConfig(const Config& config) {
+  MutexLock lock(&config_lock_);
   config_state_.config = config;  // Shallow copy of the struct.
   double prob_loss = config.loss_percent / 100.0;
   if (config_state_.config.avg_burst_loss_length == -1) {
@@ -101,9 +101,10 @@ void SimulatedNetwork::SetConfig(const SimulatedNetwork::Config& config) {
     int min_avg_burst_loss_length = std::ceil(prob_loss / (1 - prob_loss));
 
     RTC_CHECK_GT(avg_burst_loss_length, min_avg_burst_loss_length)
-        << "For a total packet loss of " << config.loss_percent << "%% then"
-        << " avg_burst_loss_length must be " << min_avg_burst_loss_length + 1
-        << " or higher.";
+        << "For a total packet loss of " << config.loss_percent
+        << "%% then"
+           " avg_burst_loss_length must be "
+        << min_avg_burst_loss_length + 1 << " or higher.";
 
     config_state_.prob_loss_bursting = (1.0 - 1.0 / avg_burst_loss_length);
     config_state_.prob_start_bursting =
@@ -111,8 +112,14 @@ void SimulatedNetwork::SetConfig(const SimulatedNetwork::Config& config) {
   }
 }
 
+void SimulatedNetwork::UpdateConfig(
+    std::function<void(BuiltInNetworkBehaviorConfig*)> config_modifier) {
+  MutexLock lock(&config_lock_);
+  config_modifier(&config_state_.config);
+}
+
 void SimulatedNetwork::PauseTransmissionUntil(int64_t until_us) {
-  rtc::CritScope crit(&config_lock_);
+  MutexLock lock(&config_lock_);
   config_state_.pause_transmission_until_us = until_us;
 }
 
@@ -191,10 +198,10 @@ void SimulatedNetwork::UpdateCapacityQueue(ConfigState state,
     if (state.config.codel_active_queue_management) {
       while (!capacity_link_.empty() &&
              codel_controller_.DropDequeuedPacket(
-                 Timestamp::us(time_us),
-                 Timestamp::us(capacity_link_.front().packet.send_time_us),
-                 DataSize::bytes(capacity_link_.front().packet.size),
-                 DataSize::bytes(queue_size_bytes_))) {
+                 Timestamp::Micros(time_us),
+                 Timestamp::Micros(capacity_link_.front().packet.send_time_us),
+                 DataSize::Bytes(capacity_link_.front().packet.size),
+                 DataSize::Bytes(queue_size_bytes_))) {
         PacketInfo dropped = capacity_link_.front();
         capacity_link_.pop();
         queue_size_bytes_ -= dropped.packet.size;
@@ -209,8 +216,8 @@ void SimulatedNetwork::UpdateCapacityQueue(ConfigState state,
     pending_drain_bits_ -= packet.packet.size * 8;
     RTC_DCHECK(pending_drain_bits_ >= 0);
 
-    // Drop packets at an average rate of |state.config.loss_percent| with
-    // and average loss burst length of |state.config.avg_burst_loss_length|.
+    // Drop packets at an average rate of `state.config.loss_percent` with
+    // and average loss burst length of `state.config.avg_burst_loss_length`.
     if ((bursting_ && random_.Rand<double>() < state.prob_loss_bursting) ||
         (!bursting_ && random_.Rand<double>() < state.prob_start_bursting)) {
       bursting_ = true;
@@ -254,7 +261,7 @@ void SimulatedNetwork::UpdateCapacityQueue(ConfigState state,
 }
 
 SimulatedNetwork::ConfigState SimulatedNetwork::GetConfigState() const {
-  rtc::CritScope crit(&config_lock_);
+  MutexLock lock(&config_lock_);
   return config_state_;
 }
 

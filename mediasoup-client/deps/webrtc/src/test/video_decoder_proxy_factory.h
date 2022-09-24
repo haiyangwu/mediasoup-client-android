@@ -20,7 +20,7 @@
 namespace webrtc {
 namespace test {
 
-// An decoder factory with a single underlying VideoDecoder object, intended for
+// A decoder factory with a single underlying VideoDecoder object, intended for
 // test purposes. Each call to CreateVideoDecoder returns a proxy for the same
 // decoder, typically an instance of FakeDecoder or MockEncoder.
 class VideoDecoderProxyFactory final : public VideoDecoderFactory {
@@ -61,7 +61,9 @@ class VideoDecoderProxyFactory final : public VideoDecoderFactory {
       return decoder_->RegisterDecodeCompleteCallback(callback);
     }
     int32_t Release() override { return decoder_->Release(); }
-    bool PrefersLateDecoding() const { return decoder_->PrefersLateDecoding(); }
+    DecoderInfo GetDecoderInfo() const override {
+      return decoder_->GetDecoderInfo();
+    }
     const char* ImplementationName() const override {
       return decoder_->ImplementationName();
     }

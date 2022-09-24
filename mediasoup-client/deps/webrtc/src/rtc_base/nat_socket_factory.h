@@ -19,13 +19,13 @@
 
 #include "rtc_base/async_socket.h"
 #include "rtc_base/constructor_magic.h"
-#include "rtc_base/message_queue.h"
 #include "rtc_base/nat_server.h"
 #include "rtc_base/nat_types.h"
 #include "rtc_base/socket.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/socket_factory.h"
 #include "rtc_base/socket_server.h"
+#include "rtc_base/thread.h"
 
 namespace rtc {
 
@@ -107,7 +107,7 @@ class NATSocketServer : public SocketServer, public NATInternalSocketFactory {
                const SocketAddress& ext_addr);
     ~Translator();
 
-    SocketFactory* internal_factory() { return internal_factory_.get(); }
+    SocketFactory* internal_factory() { return internal_server_.get(); }
     SocketAddress internal_udp_address() const {
       return nat_server_->internal_udp_address();
     }
@@ -129,7 +129,7 @@ class NATSocketServer : public SocketServer, public NATInternalSocketFactory {
 
    private:
     NATSocketServer* server_;
-    std::unique_ptr<SocketFactory> internal_factory_;
+    std::unique_ptr<SocketServer> internal_server_;
     std::unique_ptr<NATServer> nat_server_;
     TranslatorMap nats_;
     std::set<SocketAddress> clients_;
@@ -138,7 +138,7 @@ class NATSocketServer : public SocketServer, public NATInternalSocketFactory {
   explicit NATSocketServer(SocketServer* ss);
 
   SocketServer* socketserver() { return server_; }
-  MessageQueue* queue() { return msg_queue_; }
+  Thread* queue() { return msg_queue_; }
 
   Translator* GetTranslator(const SocketAddress& ext_ip);
   Translator* AddTranslator(const SocketAddress& ext_ip,
@@ -150,7 +150,7 @@ class NATSocketServer : public SocketServer, public NATInternalSocketFactory {
   Socket* CreateSocket(int family, int type) override;
   AsyncSocket* CreateAsyncSocket(int family, int type) override;
 
-  void SetMessageQueue(MessageQueue* queue) override;
+  void SetMessageQueue(Thread* queue) override;
   bool Wait(int cms, bool process_io) override;
   void WakeUp() override;
 
@@ -162,7 +162,7 @@ class NATSocketServer : public SocketServer, public NATInternalSocketFactory {
 
  private:
   SocketServer* server_;
-  MessageQueue* msg_queue_;
+  Thread* msg_queue_;
   TranslatorMap nats_;
   RTC_DISALLOW_COPY_AND_ASSIGN(NATSocketServer);
 };

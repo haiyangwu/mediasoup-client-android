@@ -8,15 +8,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef RTC_BASE_NUMERICS_MATH_UTILS_H_
-#define RTC_BASE_NUMERICS_MATH_UTILS_H_
+#ifndef API_NUMERICS_MATH_UTILS_H_
+#define API_NUMERICS_MATH_UTILS_H_
 
 #include <limits>
 #include <type_traits>
 
 #include "rtc_base/checks.h"
 
-// Given two numbers |x| and |y| such that x >= y, computes the difference
+namespace webrtc {
+namespace webrtc_impl {
+// Given two numbers `x` and `y` such that x >= y, computes the difference
 // x - y without causing undefined behavior due to signed overflow.
 template <typename T>
 typename std::make_unsigned<T>::type unsigned_difference(T x, T y) {
@@ -67,4 +69,7 @@ constexpr T minus_infinity_or_min() {
   return std::numeric_limits<T>::min();
 }
 
-#endif  // RTC_BASE_NUMERICS_MATH_UTILS_H_
+}  // namespace webrtc_impl
+}  // namespace webrtc
+
+#endif  // API_NUMERICS_MATH_UTILS_H_

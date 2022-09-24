@@ -32,8 +32,12 @@ struct BitrateAllocationUpdate {
   double packet_loss_ratio = 0;
   // Predicted round trip time.
   TimeDelta round_trip_time = TimeDelta::PlusInfinity();
-  // |bwe_period| is deprecated, use |stable_target_bitrate| allocation instead.
+  // `bwe_period` is deprecated, use `stable_target_bitrate` allocation instead.
   TimeDelta bwe_period = TimeDelta::PlusInfinity();
+  // Congestion window pushback bitrate reduction fraction. Used in
+  // VideoStreamEncoder to reduce the bitrate by the given fraction
+  // by dropping frames.
+  double cwnd_reduce_ratio = 0;
 };
 
 }  // namespace webrtc

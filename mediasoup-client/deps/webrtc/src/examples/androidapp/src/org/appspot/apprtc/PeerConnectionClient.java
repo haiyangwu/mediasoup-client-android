@@ -13,7 +13,6 @@ package org.appspot.apprtc;
 import android.content.Context;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
-import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.util.Log;
 import java.io.File;
@@ -37,6 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.appspot.apprtc.AppRTCClient.SignalingParameters;
 import org.appspot.apprtc.RecordedAudioToFileController;
+import org.webrtc.AddIceObserver;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.CameraVideoCapturer;
@@ -50,7 +50,6 @@ import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
-import org.webrtc.MediaStreamTrack.MediaType;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnection.IceConnectionState;
 import org.webrtc.PeerConnection.PeerConnectionState;
@@ -96,6 +95,8 @@ public class PeerConnectionClient {
   private static final String VIDEO_CODEC_H264 = "H264";
   private static final String VIDEO_CODEC_H264_BASELINE = "H264 Baseline";
   private static final String VIDEO_CODEC_H264_HIGH = "H264 High";
+  private static final String VIDEO_CODEC_AV1 = "AV1";
+  private static final String VIDEO_CODEC_AV1_SDP_CODEC_NAME = "AV1X";
   private static final String AUDIO_CODEC_OPUS = "opus";
   private static final String AUDIO_CODEC_ISAC = "ISAC";
   private static final String VIDEO_CODEC_PARAM_START_BITRATE = "x-google-start-bitrate";
@@ -154,8 +155,7 @@ public class PeerConnectionClient {
   @Nullable
   private List<IceCandidate> queuedRemoteCandidates;
   private boolean isInitiator;
-  @Nullable
-  private SessionDescription localSdp; // either offer or answer SDP
+  @Nullable private SessionDescription localDescription; // either offer or answer description
   @Nullable
   private VideoCapturer videoCapturer;
   // enableVideo is set to true if video should be rendered and sent.
@@ -322,7 +322,7 @@ public class PeerConnectionClient {
 
   /**
    * Create a PeerConnectionClient with the specified parameters. PeerConnectionClient takes
-   * ownership of |eglBase|.
+   * ownership of `eglBase`.
    */
   public PeerConnectionClient(Context appContext, EglBase eglBase,
       PeerConnectionParameters peerConnectionParameters, PeerConnectionEvents events) {
@@ -620,7 +620,7 @@ public class PeerConnectionClient {
     isInitiator = false;
 
     // Set INFO libjingle logging.
-    // NOTE: this _must_ happen while |factory| is alive!
+    // NOTE: this _must_ happen while `factory` is alive!
     Logging.enableLogToDebugOutput(Logging.Severity.LS_INFO);
 
     List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
@@ -827,7 +827,16 @@ public class PeerConnectionClient {
         if (queuedRemoteCandidates != null) {
           queuedRemoteCandidates.add(candidate);
         } else {
-          peerConnection.addIceCandidate(candidate);
+          peerConnection.addIceCandidate(candidate, new AddIceObserver() {
+            @Override
+            public void onAddSuccess() {
+              Log.d(TAG, "Candidate " + candidate + " successfully added.");
+            }
+            @Override
+            public void onAddFailure(String error) {
+              Log.d(TAG, "Candidate " + candidate + " addition failed: " + error);
+            }
+          });
         }
       }
     });
@@ -845,25 +854,24 @@ public class PeerConnectionClient {
     });
   }
 
-  public void setRemoteDescription(final SessionDescription sdp) {
+  public void setRemoteDescription(final SessionDescription desc) {
     executor.execute(() -> {
       if (peerConnection == null || isError) {
         return;
       }
-      String sdpDescription = sdp.description;
+      String sdp = desc.description;
       if (preferIsac) {
-        sdpDescription = preferCodec(sdpDescription, AUDIO_CODEC_ISAC, true);
+        sdp = preferCodec(sdp, AUDIO_CODEC_ISAC, true);
       }
       if (isVideoCallEnabled()) {
-        sdpDescription =
-            preferCodec(sdpDescription, getSdpVideoCodecName(peerConnectionParameters), false);
+        sdp = preferCodec(sdp, getSdpVideoCodecName(peerConnectionParameters), false);
       }
       if (peerConnectionParameters.audioStartBitrate > 0) {
-        sdpDescription = setStartBitrate(
-            AUDIO_CODEC_OPUS, false, sdpDescription, peerConnectionParameters.audioStartBitrate);
+        sdp = setStartBitrate(
+            AUDIO_CODEC_OPUS, false, sdp, peerConnectionParameters.audioStartBitrate);
       }
       Log.d(TAG, "Set remote SDP.");
-      SessionDescription sdpRemote = new SessionDescription(sdp.type, sdpDescription);
+      SessionDescription sdpRemote = new SessionDescription(desc.type, sdp);
       peerConnection.setRemoteDescription(sdpObserver, sdpRemote);
     });
   }
@@ -980,6 +988,8 @@ public class PeerConnectionClient {
         return VIDEO_CODEC_VP8;
       case VIDEO_CODEC_VP9:
         return VIDEO_CODEC_VP9;
+      case VIDEO_CODEC_AV1:
+        return VIDEO_CODEC_AV1_SDP_CODEC_NAME;
       case VIDEO_CODEC_H264_HIGH:
       case VIDEO_CODEC_H264_BASELINE:
         return VIDEO_CODEC_H264;
@@ -1004,8 +1014,8 @@ public class PeerConnectionClient {
 
   @SuppressWarnings("StringSplitter")
   private static String setStartBitrate(
-      String codec, boolean isVideoCodec, String sdpDescription, int bitrateKbps) {
-    String[] lines = sdpDescription.split("\r\n");
+      String codec, boolean isVideoCodec, String sdp, int bitrateKbps) {
+    String[] lines = sdp.split("\r\n");
     int rtpmapLineIndex = -1;
     boolean sdpFormatUpdated = false;
     String codecRtpMap = null;
@@ -1023,7 +1033,7 @@ public class PeerConnectionClient {
     }
     if (codecRtpMap == null) {
       Log.w(TAG, "No rtpmap for " + codec + " codec");
-      return sdpDescription;
+      return sdp;
     }
     Log.d(TAG, "Found " + codec + " rtpmap " + codecRtpMap + " at " + lines[rtpmapLineIndex]);
 
@@ -1105,7 +1115,7 @@ public class PeerConnectionClient {
     final List<String> unpreferredPayloadTypes =
         new ArrayList<>(origLineParts.subList(3, origLineParts.size()));
     unpreferredPayloadTypes.removeAll(preferredPayloadTypes);
-    // Reconstruct the line with |preferredPayloadTypes| moved to the beginning of the payload
+    // Reconstruct the line with `preferredPayloadTypes` moved to the beginning of the payload
     // types.
     final List<String> newLineParts = new ArrayList<>();
     newLineParts.addAll(header);
@@ -1114,14 +1124,14 @@ public class PeerConnectionClient {
     return joinString(newLineParts, " ", false /* delimiterAtEnd */);
   }
 
-  private static String preferCodec(String sdpDescription, String codec, boolean isAudio) {
-    final String[] lines = sdpDescription.split("\r\n");
+  private static String preferCodec(String sdp, String codec, boolean isAudio) {
+    final String[] lines = sdp.split("\r\n");
     final int mLineIndex = findMediaDescriptionLine(isAudio, lines);
     if (mLineIndex == -1) {
       Log.w(TAG, "No mediaDescription line, so can't prefer " + codec);
-      return sdpDescription;
+      return sdp;
     }
-    // A list with all the payload types with name |codec|. The payload types are integers in the
+    // A list with all the payload types with name `codec`. The payload types are integers in the
     // range 96-127, but they are stored as strings here.
     final List<String> codecPayloadTypes = new ArrayList<>();
     // a=rtpmap:<payload type> <encoding name>/<clock rate> [/<encoding parameters>]
@@ -1134,12 +1144,12 @@ public class PeerConnectionClient {
     }
     if (codecPayloadTypes.isEmpty()) {
       Log.w(TAG, "No payload types with name " + codec);
-      return sdpDescription;
+      return sdp;
     }
 
     final String newMLine = movePayloadTypesToFront(codecPayloadTypes, lines[mLineIndex]);
     if (newMLine == null) {
-      return sdpDescription;
+      return sdp;
     }
     Log.d(TAG, "Change media description from: " + lines[mLineIndex] + " to " + newMLine);
     lines[mLineIndex] = newMLine;
@@ -1150,7 +1160,16 @@ public class PeerConnectionClient {
     if (queuedRemoteCandidates != null) {
       Log.d(TAG, "Add " + queuedRemoteCandidates.size() + " remote candidates");
       for (IceCandidate candidate : queuedRemoteCandidates) {
-        peerConnection.addIceCandidate(candidate);
+        peerConnection.addIceCandidate(candidate, new AddIceObserver() {
+          @Override
+          public void onAddSuccess() {
+            Log.d(TAG, "Candidate " + candidate + " successfully added.");
+          }
+          @Override
+          public void onAddFailure(String error) {
+            Log.d(TAG, "Candidate " + candidate + " addition failed: " + error);
+          }
+        });
       }
       queuedRemoteCandidates = null;
     }
@@ -1297,31 +1316,33 @@ public class PeerConnectionClient {
 
     @Override
     public void onAddTrack(final RtpReceiver receiver, final MediaStream[] mediaStreams) {}
+
+    @Override
+    public void onRemoveTrack(final RtpReceiver receiver) {}
   }
 
   // Implementation detail: handle offer creation/signaling and answer setting,
   // as well as adding remote ICE candidates once the answer SDP is set.
   private class SDPObserver implements SdpObserver {
     @Override
-    public void onCreateSuccess(final SessionDescription origSdp) {
-      if (localSdp != null) {
+    public void onCreateSuccess(final SessionDescription desc) {
+      if (localDescription != null) {
         reportError("Multiple SDP create.");
         return;
       }
-      String sdpDescription = origSdp.description;
+      String sdp = desc.description;
       if (preferIsac) {
-        sdpDescription = preferCodec(sdpDescription, AUDIO_CODEC_ISAC, true);
+        sdp = preferCodec(sdp, AUDIO_CODEC_ISAC, true);
       }
       if (isVideoCallEnabled()) {
-        sdpDescription =
-            preferCodec(sdpDescription, getSdpVideoCodecName(peerConnectionParameters), false);
+        sdp = preferCodec(sdp, getSdpVideoCodecName(peerConnectionParameters), false);
       }
-      final SessionDescription sdp = new SessionDescription(origSdp.type, sdpDescription);
-      localSdp = sdp;
+      final SessionDescription newDesc = new SessionDescription(desc.type, sdp);
+      localDescription = newDesc;
       executor.execute(() -> {
         if (peerConnection != null && !isError) {
-          Log.d(TAG, "Set local SDP from " + sdp.type);
-          peerConnection.setLocalDescription(sdpObserver, sdp);
+          Log.d(TAG, "Set local SDP from " + desc.type);
+          peerConnection.setLocalDescription(sdpObserver, newDesc);
         }
       });
     }
@@ -1338,7 +1359,7 @@ public class PeerConnectionClient {
           if (peerConnection.getRemoteDescription() == null) {
             // We've just set our local SDP so time to send it.
             Log.d(TAG, "Local SDP set succesfully");
-            events.onLocalDescription(localSdp);
+            events.onLocalDescription(localDescription);
           } else {
             // We've just set remote description, so drain remote
             // and send local ICE candidates.
@@ -1352,7 +1373,7 @@ public class PeerConnectionClient {
             // We've just set our local SDP so time to send it, drain
             // remote and send local ICE candidates.
             Log.d(TAG, "Local SDP set succesfully");
-            events.onLocalDescription(localSdp);
+            events.onLocalDescription(localDescription);
             drainCandidates();
           } else {
             // We've just set remote SDP - do nothing for now -

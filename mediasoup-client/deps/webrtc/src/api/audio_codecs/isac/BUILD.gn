@@ -20,36 +20,24 @@ if (is_android) {
 rtc_source_set("audio_encoder_isac") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
-  public = [
-    "audio_encoder_isac.h",
-  ]
+  public = [ "audio_encoder_isac.h" ]
   public_configs = [ ":isac_config" ]
   if (current_cpu == "arm") {
-    deps = [
-      ":audio_encoder_isac_fix",
-    ]
+    deps = [ ":audio_encoder_isac_fix" ]
   } else {
-    deps = [
-      ":audio_encoder_isac_float",
-    ]
+    deps = [ ":audio_encoder_isac_float" ]
   }
 }
 
 rtc_source_set("audio_decoder_isac") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
-  public = [
-    "audio_decoder_isac.h",
-  ]
+  public = [ "audio_decoder_isac.h" ]
   public_configs = [ ":isac_config" ]
   if (current_cpu == "arm") {
-    deps = [
-      ":audio_decoder_isac_fix",
-    ]
+    deps = [ ":audio_decoder_isac_fix" ]
   } else {
-    deps = [
-      ":audio_decoder_isac_float",
-    ]
+    deps = [ ":audio_decoder_isac_float" ]
   }
 }
 
@@ -68,7 +56,7 @@ config("isac_config") {
   }
 }
 
-rtc_static_library("audio_encoder_isac_fix") {
+rtc_library("audio_encoder_isac_fix") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
   sources = [
@@ -79,12 +67,15 @@ rtc_static_library("audio_encoder_isac_fix") {
     "..:audio_codecs_api",
     "../../../modules/audio_coding:isac_fix",
     "../../../rtc_base:rtc_base_approved",
+    "../../../rtc_base/system:rtc_export",
+  ]
+  absl_deps = [
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
 
-rtc_static_library("audio_decoder_isac_fix") {
+rtc_library("audio_decoder_isac_fix") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
   sources = [
@@ -95,12 +86,15 @@ rtc_static_library("audio_decoder_isac_fix") {
     "..:audio_codecs_api",
     "../../../modules/audio_coding:isac_fix",
     "../../../rtc_base:rtc_base_approved",
+    "../../../rtc_base/system:rtc_export",
+  ]
+  absl_deps = [
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
 
-rtc_static_library("audio_encoder_isac_float") {
+rtc_library("audio_encoder_isac_float") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
   sources = [
@@ -112,12 +106,14 @@ rtc_static_library("audio_encoder_isac_float") {
     "../../../modules/audio_coding:isac",
     "../../../rtc_base:rtc_base_approved",
     "../../../rtc_base/system:rtc_export",
+  ]
+  absl_deps = [
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
 
-rtc_static_library("audio_decoder_isac_float") {
+rtc_library("audio_decoder_isac_float") {
   visibility = [ "*" ]
   poisonous = [ "audio_codecs" ]
   sources = [
@@ -129,6 +125,8 @@ rtc_static_library("audio_decoder_isac_float") {
     "../../../modules/audio_coding:isac",
     "../../../rtc_base:rtc_base_approved",
     "../../../rtc_base/system:rtc_export",
+  ]
+  absl_deps = [
     "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]

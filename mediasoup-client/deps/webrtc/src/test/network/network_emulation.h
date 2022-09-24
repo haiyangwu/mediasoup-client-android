@@ -20,54 +20,373 @@
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "api/array_view.h"
+#include "api/numerics/samples_stats_counter.h"
+#include "api/sequence_checker.h"
 #include "api/test/network_emulation_manager.h"
 #include "api/test/simulated_network.h"
 #include "api/units/timestamp.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/network.h"
+#include "rtc_base/network_constants.h"
 #include "rtc_base/socket_address.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/task_queue_for_test.h"
 #include "rtc_base/task_utils/repeating_task.h"
-#include "rtc_base/thread_checker.h"
+#include "rtc_base/thread_annotations.h"
 #include "system_wrappers/include/clock.h"
 
 namespace webrtc {
 
-struct EmulatedIpPacket {
+// This class is immutable and so thread safe.
+class EmulatedNetworkOutgoingStatsImpl final
+    : public EmulatedNetworkOutgoingStats {
  public:
-  static constexpr int kUdpHeaderSize = 8;
+  EmulatedNetworkOutgoingStatsImpl(
+      int64_t packets_sent,
+      DataSize bytes_sent,
+      SamplesStatsCounter sent_packets_size_counter,
+      DataSize first_sent_packet_size,
+      Timestamp first_packet_sent_time,
+      Timestamp last_packet_sent_time)
+      : packets_sent_(packets_sent),
+        bytes_sent_(bytes_sent),
+        sent_packets_size_counter_(std::move(sent_packets_size_counter)),
+        first_sent_packet_size_(first_sent_packet_size),
+        first_packet_sent_time_(first_packet_sent_time),
+        last_packet_sent_time_(last_packet_sent_time) {}
+  explicit EmulatedNetworkOutgoingStatsImpl(
+      const EmulatedNetworkOutgoingStats& stats)
+      : packets_sent_(stats.PacketsSent()),
+        bytes_sent_(stats.BytesSent()),
+        sent_packets_size_counter_(stats.SentPacketsSizeCounter()),
+        first_sent_packet_size_(stats.FirstSentPacketSize()),
+        first_packet_sent_time_(stats.FirstPacketSentTime()),
+        last_packet_sent_time_(stats.LastPacketSentTime()) {}
+  ~EmulatedNetworkOutgoingStatsImpl() override = default;
 
-  EmulatedIpPacket(const rtc::SocketAddress& from,
-                   const rtc::SocketAddress& to,
-                   rtc::CopyOnWriteBuffer data,
-                   Timestamp arrival_time);
-  ~EmulatedIpPacket() = default;
-  // This object is not copyable or assignable.
-  EmulatedIpPacket(const EmulatedIpPacket&) = delete;
-  EmulatedIpPacket& operator=(const EmulatedIpPacket&) = delete;
-  // This object is only moveable.
-  EmulatedIpPacket(EmulatedIpPacket&&) = default;
-  EmulatedIpPacket& operator=(EmulatedIpPacket&&) = default;
+  int64_t PacketsSent() const override { return packets_sent_; }
 
-  size_t size() const { return data.size(); }
-  const uint8_t* cdata() const { return data.cdata(); }
+  DataSize BytesSent() const override { return bytes_sent_; }
 
-  size_t ip_packet_size() const {
-    return size() + kUdpHeaderSize + ip_header_size;
+  const SamplesStatsCounter& SentPacketsSizeCounter() const override {
+    return sent_packets_size_counter_;
   }
-  rtc::SocketAddress from;
-  rtc::SocketAddress to;
-  // Holds the UDP payload.
-  rtc::CopyOnWriteBuffer data;
-  int ip_header_size;
-  Timestamp arrival_time;
+
+  DataSize FirstSentPacketSize() const override {
+    return first_sent_packet_size_;
+  }
+
+  Timestamp FirstPacketSentTime() const override {
+    return first_packet_sent_time_;
+  }
+
+  Timestamp LastPacketSentTime() const override {
+    return last_packet_sent_time_;
+  }
+
+  DataRate AverageSendRate() const override;
+
+ private:
+  const int64_t packets_sent_;
+  const DataSize bytes_sent_;
+  const SamplesStatsCounter sent_packets_size_counter_;
+  const DataSize first_sent_packet_size_;
+  const Timestamp first_packet_sent_time_;
+  const Timestamp last_packet_sent_time_;
 };
 
-class EmulatedNetworkReceiverInterface {
+// This class is immutable and so thread safe.
+class EmulatedNetworkIncomingStatsImpl final
+    : public EmulatedNetworkIncomingStats {
  public:
-  virtual ~EmulatedNetworkReceiverInterface() = default;
+  EmulatedNetworkIncomingStatsImpl(
+      int64_t packets_received,
+      DataSize bytes_received,
+      SamplesStatsCounter received_packets_size_counter,
+      int64_t packets_dropped,
+      DataSize bytes_dropped,
+      SamplesStatsCounter dropped_packets_size_counter,
+      DataSize first_received_packet_size,
+      Timestamp first_packet_received_time,
+      Timestamp last_packet_received_time)
+      : packets_received_(packets_received),
+        bytes_received_(bytes_received),
+        received_packets_size_counter_(received_packets_size_counter),
+        packets_dropped_(packets_dropped),
+        bytes_dropped_(bytes_dropped),
+        dropped_packets_size_counter_(dropped_packets_size_counter),
+        first_received_packet_size_(first_received_packet_size),
+        first_packet_received_time_(first_packet_received_time),
+        last_packet_received_time_(last_packet_received_time) {}
+  explicit EmulatedNetworkIncomingStatsImpl(
+      const EmulatedNetworkIncomingStats& stats)
+      : packets_received_(stats.PacketsReceived()),
+        bytes_received_(stats.BytesReceived()),
+        received_packets_size_counter_(stats.ReceivedPacketsSizeCounter()),
+        packets_dropped_(stats.PacketsDropped()),
+        bytes_dropped_(stats.BytesDropped()),
+        dropped_packets_size_counter_(stats.DroppedPacketsSizeCounter()),
+        first_received_packet_size_(stats.FirstReceivedPacketSize()),
+        first_packet_received_time_(stats.FirstPacketReceivedTime()),
+        last_packet_received_time_(stats.LastPacketReceivedTime()) {}
+  ~EmulatedNetworkIncomingStatsImpl() override = default;
 
-  virtual void OnPacketReceived(EmulatedIpPacket packet) = 0;
+  int64_t PacketsReceived() const override { return packets_received_; }
+
+  DataSize BytesReceived() const override { return bytes_received_; }
+
+  const SamplesStatsCounter& ReceivedPacketsSizeCounter() const override {
+    return received_packets_size_counter_;
+  }
+
+  int64_t PacketsDropped() const override { return packets_dropped_; }
+
+  DataSize BytesDropped() const override { return bytes_dropped_; }
+
+  const SamplesStatsCounter& DroppedPacketsSizeCounter() const override {
+    return dropped_packets_size_counter_;
+  }
+
+  DataSize FirstReceivedPacketSize() const override {
+    return first_received_packet_size_;
+  }
+
+  Timestamp FirstPacketReceivedTime() const override {
+    return first_packet_received_time_;
+  }
+
+  Timestamp LastPacketReceivedTime() const override {
+    return last_packet_received_time_;
+  }
+
+  DataRate AverageReceiveRate() const override;
+
+ private:
+  const int64_t packets_received_;
+  const DataSize bytes_received_;
+  const SamplesStatsCounter received_packets_size_counter_;
+  const int64_t packets_dropped_;
+  const DataSize bytes_dropped_;
+  const SamplesStatsCounter dropped_packets_size_counter_;
+  const DataSize first_received_packet_size_;
+  const Timestamp first_packet_received_time_;
+  const Timestamp last_packet_received_time_;
+};
+
+// This class is immutable and so is thread safe.
+class EmulatedNetworkStatsImpl final : public EmulatedNetworkStats {
+ public:
+  EmulatedNetworkStatsImpl(
+      std::vector<rtc::IPAddress> local_addresses,
+      SamplesStatsCounter sent_packets_queue_wait_time_us,
+      std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+          outgoing_stats_per_destination,
+      std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+          incoming_stats_per_source)
+      : local_addresses_(std::move(local_addresses)),
+        sent_packets_queue_wait_time_us_(sent_packets_queue_wait_time_us),
+        outgoing_stats_per_destination_(
+            std::move(outgoing_stats_per_destination)),
+        incoming_stats_per_source_(std::move(incoming_stats_per_source)),
+        overall_outgoing_stats_(GetOverallOutgoingStats()),
+        overall_incoming_stats_(GetOverallIncomingStats()) {}
+  ~EmulatedNetworkStatsImpl() override = default;
+
+  std::vector<rtc::IPAddress> LocalAddresses() const override {
+    return local_addresses_;
+  }
+
+  int64_t PacketsSent() const override {
+    return overall_outgoing_stats_->PacketsSent();
+  }
+
+  DataSize BytesSent() const override {
+    return overall_outgoing_stats_->BytesSent();
+  }
+
+  const SamplesStatsCounter& SentPacketsSizeCounter() const override {
+    return overall_outgoing_stats_->SentPacketsSizeCounter();
+  }
+
+  const SamplesStatsCounter& SentPacketsQueueWaitTimeUs() const override {
+    return sent_packets_queue_wait_time_us_;
+  }
+
+  DataSize FirstSentPacketSize() const override {
+    return overall_outgoing_stats_->FirstSentPacketSize();
+  }
+
+  Timestamp FirstPacketSentTime() const override {
+    return overall_outgoing_stats_->FirstPacketSentTime();
+  }
+
+  Timestamp LastPacketSentTime() const override {
+    return overall_outgoing_stats_->LastPacketSentTime();
+  }
+
+  DataRate AverageSendRate() const override {
+    return overall_outgoing_stats_->AverageSendRate();
+  }
+
+  int64_t PacketsReceived() const override {
+    return overall_incoming_stats_->PacketsReceived();
+  }
+
+  DataSize BytesReceived() const override {
+    return overall_incoming_stats_->BytesReceived();
+  }
+
+  const SamplesStatsCounter& ReceivedPacketsSizeCounter() const override {
+    return overall_incoming_stats_->ReceivedPacketsSizeCounter();
+  }
+
+  int64_t PacketsDropped() const override {
+    return overall_incoming_stats_->PacketsDropped();
+  }
+
+  DataSize BytesDropped() const override {
+    return overall_incoming_stats_->BytesDropped();
+  }
+
+  const SamplesStatsCounter& DroppedPacketsSizeCounter() const override {
+    return overall_incoming_stats_->DroppedPacketsSizeCounter();
+  }
+
+  DataSize FirstReceivedPacketSize() const override {
+    return overall_incoming_stats_->FirstReceivedPacketSize();
+  }
+
+  Timestamp FirstPacketReceivedTime() const override {
+    return overall_incoming_stats_->FirstPacketReceivedTime();
+  }
+
+  Timestamp LastPacketReceivedTime() const override {
+    return overall_incoming_stats_->LastPacketReceivedTime();
+  }
+
+  DataRate AverageReceiveRate() const override {
+    return overall_incoming_stats_->AverageReceiveRate();
+  }
+
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+  OutgoingStatsPerDestination() const override;
+
+  std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+  IncomingStatsPerSource() const override;
+
+ private:
+  std::unique_ptr<EmulatedNetworkOutgoingStats> GetOverallOutgoingStats() const;
+  std::unique_ptr<EmulatedNetworkIncomingStats> GetOverallIncomingStats() const;
+
+  const std::vector<rtc::IPAddress> local_addresses_;
+  const SamplesStatsCounter sent_packets_queue_wait_time_us_;
+  const std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkOutgoingStats>>
+      outgoing_stats_per_destination_;
+  const std::map<rtc::IPAddress, std::unique_ptr<EmulatedNetworkIncomingStats>>
+      incoming_stats_per_source_;
+  const std::unique_ptr<EmulatedNetworkOutgoingStats> overall_outgoing_stats_;
+  const std::unique_ptr<EmulatedNetworkIncomingStats> overall_incoming_stats_;
+};
+
+class EmulatedNetworkOutgoingStatsBuilder {
+ public:
+  EmulatedNetworkOutgoingStatsBuilder();
+
+  void OnPacketSent(Timestamp sent_time,
+                    DataSize packet_size,
+                    EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  void AddOutgoingStats(const EmulatedNetworkOutgoingStats& stats);
+
+  std::unique_ptr<EmulatedNetworkOutgoingStats> Build() const;
+
+ private:
+  SequenceChecker sequence_checker_;
+
+  int64_t packets_sent_ RTC_GUARDED_BY(sequence_checker_) = 0;
+  DataSize bytes_sent_ RTC_GUARDED_BY(sequence_checker_) = DataSize::Zero();
+  SamplesStatsCounter sent_packets_size_counter_
+      RTC_GUARDED_BY(sequence_checker_);
+  DataSize first_sent_packet_size_ RTC_GUARDED_BY(sequence_checker_) =
+      DataSize::Zero();
+  Timestamp first_packet_sent_time_ RTC_GUARDED_BY(sequence_checker_) =
+      Timestamp::PlusInfinity();
+  Timestamp last_packet_sent_time_ RTC_GUARDED_BY(sequence_checker_) =
+      Timestamp::MinusInfinity();
+};
+
+class EmulatedNetworkIncomingStatsBuilder {
+ public:
+  EmulatedNetworkIncomingStatsBuilder();
+
+  void OnPacketDropped(DataSize packet_size,
+                       EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  void OnPacketReceived(Timestamp received_time,
+                        DataSize packet_size,
+                        EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  // Adds stats collected from another endpoints to the builder.
+  void AddIncomingStats(const EmulatedNetworkIncomingStats& stats);
+
+  std::unique_ptr<EmulatedNetworkIncomingStats> Build() const;
+
+ private:
+  SequenceChecker sequence_checker_;
+
+  int64_t packets_received_ RTC_GUARDED_BY(sequence_checker_) = 0;
+  DataSize bytes_received_ RTC_GUARDED_BY(sequence_checker_) = DataSize::Zero();
+  SamplesStatsCounter received_packets_size_counter_
+      RTC_GUARDED_BY(sequence_checker_);
+  int64_t packets_dropped_ RTC_GUARDED_BY(sequence_checker_) = 0;
+  DataSize bytes_dropped_ RTC_GUARDED_BY(sequence_checker_) = DataSize::Zero();
+  SamplesStatsCounter dropped_packets_size_counter_
+      RTC_GUARDED_BY(sequence_checker_);
+  DataSize first_received_packet_size_ RTC_GUARDED_BY(sequence_checker_) =
+      DataSize::Zero();
+  Timestamp first_packet_received_time_ RTC_GUARDED_BY(sequence_checker_) =
+      Timestamp::PlusInfinity();
+  Timestamp last_packet_received_time_ RTC_GUARDED_BY(sequence_checker_) =
+      Timestamp::MinusInfinity();
+};
+
+// All methods of EmulatedNetworkStatsBuilder have to be used on a single
+// thread. It may be created on another thread.
+class EmulatedNetworkStatsBuilder {
+ public:
+  EmulatedNetworkStatsBuilder();
+  explicit EmulatedNetworkStatsBuilder(rtc::IPAddress local_ip);
+
+  void OnPacketSent(Timestamp queued_time,
+                    Timestamp sent_time,
+                    rtc::IPAddress destination_ip,
+                    DataSize packet_size,
+                    EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  void OnPacketDropped(rtc::IPAddress source_ip,
+                       DataSize packet_size,
+                       EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  void OnPacketReceived(Timestamp received_time,
+                        rtc::IPAddress source_ip,
+                        DataSize packet_size,
+                        EmulatedEndpointConfig::StatsGatheringMode mode);
+
+  void AddEmulatedNetworkStats(const EmulatedNetworkStats& stats);
+
+  std::unique_ptr<EmulatedNetworkStats> Build() const;
+
+ private:
+  SequenceChecker sequence_checker_;
+
+  std::vector<rtc::IPAddress> local_addresses_
+      RTC_GUARDED_BY(sequence_checker_);
+  SamplesStatsCounter sent_packets_queue_wait_time_us_;
+  std::map<rtc::IPAddress, EmulatedNetworkOutgoingStatsBuilder>
+      outgoing_stats_per_destination_ RTC_GUARDED_BY(sequence_checker_);
+  std::map<rtc::IPAddress, EmulatedNetworkIncomingStatsBuilder>
+      incoming_stats_per_source_ RTC_GUARDED_BY(sequence_checker_);
 };
 
 class LinkEmulation : public EmulatedNetworkReceiverInterface {
@@ -100,21 +419,34 @@ class LinkEmulation : public EmulatedNetworkReceiverInterface {
   uint64_t next_packet_id_ RTC_GUARDED_BY(task_queue_) = 1;
 };
 
+// Represents a component responsible for routing packets based on their IP
+// address. All possible routes have to be set explicitly before packet for
+// desired destination will be seen for the first time. If route is unknown
+// the packet will be silently dropped.
 class NetworkRouterNode : public EmulatedNetworkReceiverInterface {
  public:
   explicit NetworkRouterNode(rtc::TaskQueue* task_queue);
 
   void OnPacketReceived(EmulatedIpPacket packet) override;
-  void SetReceiver(rtc::IPAddress dest_ip,
+  void SetReceiver(const rtc::IPAddress& dest_ip,
                    EmulatedNetworkReceiverInterface* receiver);
-  void RemoveReceiver(rtc::IPAddress dest_ip);
+  void RemoveReceiver(const rtc::IPAddress& dest_ip);
+  // Sets a default receive that will be used for all incoming packets for which
+  // there is no specific receiver binded to their destination port.
+  void SetDefaultReceiver(EmulatedNetworkReceiverInterface* receiver);
+  void RemoveDefaultReceiver();
   void SetWatcher(std::function<void(const EmulatedIpPacket&)> watcher);
+  void SetFilter(std::function<bool(const EmulatedIpPacket&)> filter);
 
  private:
   rtc::TaskQueue* const task_queue_;
+  absl::optional<EmulatedNetworkReceiverInterface*> default_receiver_
+      RTC_GUARDED_BY(task_queue_);
   std::map<rtc::IPAddress, EmulatedNetworkReceiverInterface*> routing_
       RTC_GUARDED_BY(task_queue_);
   std::function<void(const EmulatedIpPacket&)> watcher_
+      RTC_GUARDED_BY(task_queue_);
+  std::function<bool(const EmulatedIpPacket&)> filter_
       RTC_GUARDED_BY(task_queue_);
 };
 
@@ -124,10 +456,10 @@ class NetworkRouterNode : public EmulatedNetworkReceiverInterface {
 // NetworkBehaviorInterface that is provided on construction.
 class EmulatedNetworkNode : public EmulatedNetworkReceiverInterface {
  public:
-  // Creates node based on |network_behavior|. The specified |packet_overhead|
+  // Creates node based on `network_behavior`. The specified `packet_overhead`
   // is added to the size of each packet in the information provided to
-  // |network_behavior|.
-  // |task_queue| is used to process packets and to forward the packets when
+  // `network_behavior`.
+  // `task_queue` is used to process packets and to forward the packets when
   // they are ready.
   EmulatedNetworkNode(
       Clock* clock,
@@ -143,10 +475,10 @@ class EmulatedNetworkNode : public EmulatedNetworkReceiverInterface {
 
   // Creates a route for the given receiver_ip over all the given nodes to the
   // given receiver.
-  static void CreateRoute(rtc::IPAddress receiver_ip,
+  static void CreateRoute(const rtc::IPAddress& receiver_ip,
                           std::vector<EmulatedNetworkNode*> nodes,
                           EmulatedNetworkReceiverInterface* receiver);
-  static void ClearRoute(rtc::IPAddress receiver_ip,
+  static void ClearRoute(const rtc::IPAddress& receiver_ip,
                          std::vector<EmulatedNetworkNode*> nodes);
 
  private:
@@ -158,42 +490,59 @@ class EmulatedNetworkNode : public EmulatedNetworkReceiverInterface {
 // It will be used as sender from socket side to send data to the network and
 // will act as packet receiver from emulated network side to receive packets
 // from other EmulatedNetworkNodes.
-class EmulatedEndpoint : public EmulatedNetworkReceiverInterface {
+class EmulatedEndpointImpl : public EmulatedEndpoint {
  public:
-  EmulatedEndpoint(uint64_t id,
-                   const rtc::IPAddress& ip,
-                   bool is_enabled,
-                   rtc::TaskQueue* task_queue,
-                   Clock* clock);
-  ~EmulatedEndpoint() override;
+  struct Options {
+    Options(uint64_t id,
+            const rtc::IPAddress& ip,
+            const EmulatedEndpointConfig& config);
+
+    // TODO(titovartem) check if we can remove id.
+    uint64_t id;
+    // Endpoint local IP address.
+    rtc::IPAddress ip;
+    EmulatedEndpointConfig::StatsGatheringMode stats_gathering_mode;
+    rtc::AdapterType type;
+    // Allow endpoint to send packets specifying source IP address different to
+    // the current endpoint IP address. If false endpoint will crash if attempt
+    // to send such packet will be done.
+    bool allow_send_packet_with_different_source_ip;
+    // Allow endpoint to receive packet with destination IP address different to
+    // the current endpoint IP address. If false endpoint will crash if such
+    // packet will arrive.
+    bool allow_receive_packets_with_different_dest_ip;
+    // Name of the endpoint used for logging purposes.
+    std::string log_name;
+  };
+
+  EmulatedEndpointImpl(const Options& options,
+                       bool is_enabled,
+                       rtc::TaskQueue* task_queue,
+                       Clock* clock);
+  ~EmulatedEndpointImpl() override;
 
   uint64_t GetId() const;
 
   NetworkRouterNode* router() { return &router_; }
-  // Send packet into network.
-  // |from| will be used to set source address for the packet in destination
-  // socket.
-  // |to| will be used for routing verification and picking right socket by port
-  // on destination endpoint.
+
   void SendPacket(const rtc::SocketAddress& from,
                   const rtc::SocketAddress& to,
-                  rtc::CopyOnWriteBuffer packet_data);
+                  rtc::CopyOnWriteBuffer packet_data,
+                  uint16_t application_overhead = 0) override;
 
-  // Binds receiver to this endpoint to send and receive data.
-  // |desired_port| is a port that should be used. If it is equal to 0,
-  // endpoint will pick the first available port starting from
-  // |kFirstEphemeralPort|.
-  //
-  // Returns the port, that should be used (it will be equals to desired, if
-  // |desired_port| != 0 and is free or will be the one, selected by endpoint)
-  // or absl::nullopt if desired_port in used. Also fails if there are no more
-  // free ports to bind to.
   absl::optional<uint16_t> BindReceiver(
       uint16_t desired_port,
+      EmulatedNetworkReceiverInterface* receiver) override;
+  // Binds a receiver, and automatically removes the binding after first call to
+  // OnPacketReceived.
+  absl::optional<uint16_t> BindOneShotReceiver(
+      uint16_t desired_port,
       EmulatedNetworkReceiverInterface* receiver);
-  void UnbindReceiver(uint16_t port);
+  void UnbindReceiver(uint16_t port) override;
+  void BindDefaultReceiver(EmulatedNetworkReceiverInterface* receiver) override;
+  void UnbindDefaultReceiver() override;
 
-  rtc::IPAddress GetPeerLocalAddress() const;
+  rtc::IPAddress GetPeerLocalAddress() const override;
 
   // Will be called to deliver packet into endpoint from network node.
   void OnPacketReceived(EmulatedIpPacket packet) override;
@@ -204,19 +553,26 @@ class EmulatedEndpoint : public EmulatedNetworkReceiverInterface {
 
   const rtc::Network& network() const { return *network_.get(); }
 
-  EmulatedNetworkStats stats();
+  std::unique_ptr<EmulatedNetworkStats> stats() const;
 
  private:
+  struct ReceiverBinding {
+    EmulatedNetworkReceiverInterface* receiver;
+    bool is_one_shot;
+  };
+
+  absl::optional<uint16_t> BindReceiverInternal(
+      uint16_t desired_port,
+      EmulatedNetworkReceiverInterface* receiver,
+      bool is_one_shot);
+
   static constexpr uint16_t kFirstEphemeralPort = 49152;
   uint16_t NextPort() RTC_EXCLUSIVE_LOCKS_REQUIRED(receiver_lock_);
-  void UpdateReceiveStats(const EmulatedIpPacket& packet);
 
-  rtc::CriticalSection receiver_lock_;
-  rtc::ThreadChecker enabled_state_checker_;
+  Mutex receiver_lock_;
+  SequenceChecker enabled_state_checker_;
 
-  uint64_t id_;
-  // Peer's local IP address for this endpoint network interface.
-  const rtc::IPAddress peer_local_addr_;
+  const Options options_;
   bool is_enabled_ RTC_GUARDED_BY(enabled_state_checker_);
   Clock* const clock_;
   rtc::TaskQueue* const task_queue_;
@@ -224,37 +580,50 @@ class EmulatedEndpoint : public EmulatedNetworkReceiverInterface {
   NetworkRouterNode router_;
 
   uint16_t next_port_ RTC_GUARDED_BY(receiver_lock_);
-  std::map<uint16_t, EmulatedNetworkReceiverInterface*> port_to_receiver_
+  absl::optional<EmulatedNetworkReceiverInterface*> default_receiver_
+      RTC_GUARDED_BY(receiver_lock_);
+  std::map<uint16_t, ReceiverBinding> port_to_receiver_
       RTC_GUARDED_BY(receiver_lock_);
 
-  EmulatedNetworkStats stats_ RTC_GUARDED_BY(task_queue_);
+  EmulatedNetworkStatsBuilder stats_builder_ RTC_GUARDED_BY(task_queue_);
 };
 
 class EmulatedRoute {
  public:
-  EmulatedRoute(EmulatedEndpoint* from,
+  EmulatedRoute(EmulatedEndpointImpl* from,
                 std::vector<EmulatedNetworkNode*> via_nodes,
-                EmulatedEndpoint* to)
-      : from(from), via_nodes(std::move(via_nodes)), to(to), active(true) {}
+                EmulatedEndpointImpl* to,
+                bool is_default)
+      : from(from),
+        via_nodes(std::move(via_nodes)),
+        to(to),
+        active(true),
+        is_default(is_default) {}
 
-  EmulatedEndpoint* from;
+  EmulatedEndpointImpl* from;
   std::vector<EmulatedNetworkNode*> via_nodes;
-  EmulatedEndpoint* to;
+  EmulatedEndpointImpl* to;
   bool active;
+  bool is_default;
 };
+
+// This object is immutable and so thread safe.
 class EndpointsContainer {
  public:
-  explicit EndpointsContainer(const std::vector<EmulatedEndpoint*>& endpoints);
+  explicit EndpointsContainer(
+      const std::vector<EmulatedEndpointImpl*>& endpoints);
 
-  EmulatedEndpoint* LookupByLocalAddress(const rtc::IPAddress& local_ip) const;
-  bool HasEndpoint(EmulatedEndpoint* endpoint) const;
+  EmulatedEndpointImpl* LookupByLocalAddress(
+      const rtc::IPAddress& local_ip) const;
+  bool HasEndpoint(EmulatedEndpointImpl* endpoint) const;
   // Returns list of networks for enabled endpoints. Caller takes ownership of
   // returned rtc::Network objects.
   std::vector<std::unique_ptr<rtc::Network>> GetEnabledNetworks() const;
-  EmulatedNetworkStats GetStats() const;
+  std::vector<EmulatedEndpoint*> GetEndpoints() const;
+  std::unique_ptr<EmulatedNetworkStats> GetStats() const;
 
  private:
-  const std::vector<EmulatedEndpoint*> endpoints_;
+  const std::vector<EmulatedEndpointImpl*> endpoints_;
 };
 
 template <typename FakePacketType>
@@ -274,12 +643,12 @@ class FakePacketRoute : public EmulatedNetworkReceiverInterface {
     RTC_CHECK_GE(size, sizeof(int));
     sent_.emplace(next_packet_id_, packet);
     rtc::CopyOnWriteBuffer buf(size);
-    reinterpret_cast<int*>(buf.data())[0] = next_packet_id_++;
+    reinterpret_cast<int*>(buf.MutableData())[0] = next_packet_id_++;
     route_->from->SendPacket(send_addr_, recv_addr_, buf);
   }
 
   void OnPacketReceived(EmulatedIpPacket packet) override {
-    int packet_id = reinterpret_cast<int*>(packet.data.data())[0];
+    int packet_id = reinterpret_cast<const int*>(packet.data.data())[0];
     action_(std::move(sent_[packet_id]), packet.arrival_time);
     sent_.erase(packet_id);
   }

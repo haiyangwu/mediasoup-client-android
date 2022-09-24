@@ -35,9 +35,11 @@ struct BitrateProberConfig {
   FieldTrialParameter<TimeDelta> min_probe_delta;
   // The minimum probing duration.
   FieldTrialParameter<TimeDelta> min_probe_duration;
-  // Maximum amount of time each probe can be delayed. Probe cluster is reset
-  // and retried from the start when this limit is reached.
+  // Maximum amount of time each probe can be delayed.
   FieldTrialParameter<TimeDelta> max_probe_delay;
+  // If NextProbeTime() is called with a delay higher than specified by
+  // `max_probe_delay`, abort it.
+  FieldTrialParameter<bool> abort_delayed_probes;
 };
 
 // Note that this class isn't thread-safe by itself and therefore relies
@@ -52,33 +54,34 @@ class BitrateProber {
   // Returns true if the prober is in a probing session, i.e., it currently
   // wants packets to be sent out according to the time returned by
   // TimeUntilNextProbe().
-  bool IsProbing() const;
+  bool is_probing() const { return probing_state_ == ProbingState::kActive; }
 
   // Initializes a new probing session if the prober is allowed to probe. Does
   // not initialize the prober unless the packet size is large enough to probe
   // with.
-  void OnIncomingPacket(size_t packet_size);
+  void OnIncomingPacket(DataSize packet_size);
 
-  // Create a cluster used to probe for |bitrate_bps| with |num_probes| number
+  // Create a cluster used to probe for `bitrate_bps` with `num_probes` number
   // of probes.
-  void CreateProbeCluster(int bitrate_bps, int64_t now_ms, int cluster_id);
+  void CreateProbeCluster(DataRate bitrate, Timestamp now, int cluster_id);
 
-  // Returns the number of milliseconds until the next probe should be sent to
-  // get accurate probing.
-  int TimeUntilNextProbe(int64_t now_ms);
+  // Returns the time at which the next probe should be sent to get accurate
+  // probing. If probing is not desired at this time, Timestamp::PlusInfinity()
+  // will be returned.
+  // TODO(bugs.webrtc.org/11780): Remove `now` argument when old mode is gone.
+  Timestamp NextProbeTime(Timestamp now) const;
 
   // Information about the current probing cluster.
-  PacedPacketInfo CurrentCluster() const;
+  absl::optional<PacedPacketInfo> CurrentCluster(Timestamp now);
 
   // Returns the minimum number of bytes that the prober recommends for
-  // the next probe.
-  size_t RecommendedMinProbeSize() const;
+  // the next probe, or zero if not probing.
+  DataSize RecommendedMinProbeSize() const;
 
   // Called to report to the prober that a probe has been sent. In case of
   // multiple packets per probe, this call would be made at the end of sending
-  // the last packet in probe. |probe_size| is the total size of all packets
-  // in probe.
-  void ProbeSent(int64_t now_ms, size_t probe_size);
+  // the last packet in probe. `size` is the total size of all packets in probe.
+  void ProbeSent(Timestamp now, DataSize size);
 
  private:
   enum class ProbingState {
@@ -101,12 +104,12 @@ class BitrateProber {
 
     int sent_probes = 0;
     int sent_bytes = 0;
-    int64_t time_created_ms = -1;
-    int64_t time_started_ms = -1;
+    Timestamp created_at = Timestamp::MinusInfinity();
+    Timestamp started_at = Timestamp::MinusInfinity();
     int retries = 0;
   };
 
-  int64_t GetNextProbeTime(const ProbeCluster& cluster);
+  Timestamp CalculateNextProbeTime(const ProbeCluster& cluster) const;
 
   ProbingState probing_state_;
 
@@ -116,7 +119,7 @@ class BitrateProber {
   std::queue<ProbeCluster> clusters_;
 
   // Time the next probe should be sent when in kActive state.
-  int64_t next_probe_time_ms_;
+  Timestamp next_probe_time_;
 
   int total_probe_count_;
   int total_failed_probe_count_;

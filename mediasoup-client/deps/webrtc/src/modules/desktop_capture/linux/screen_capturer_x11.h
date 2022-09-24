@@ -15,6 +15,7 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xrandr.h>
 
 #include <memory>
 
@@ -64,6 +65,8 @@ class ScreenCapturerX11 : public DesktopCapturer,
   bool HandleXEvent(const XEvent& event) override;
 
   void InitXDamage();
+  void InitXrandr();
+  void UpdateMonitors();
 
   // Capture screen pixels to the current buffer in the queue. In the DAMAGE
   // case, the ScreenCapturerHelper already holds the list of invalid rectangles
@@ -75,10 +78,10 @@ class ScreenCapturerX11 : public DesktopCapturer,
   // Called when the screen configuration is changed.
   void ScreenConfigurationChanged();
 
-  // Synchronize the current buffer with |last_buffer_|, by copying pixels from
-  // the area of |last_invalid_rects|.
+  // Synchronize the current buffer with `last_buffer_`, by copying pixels from
+  // the area of `last_invalid_rects`.
   // Note this only works on the assumption that kNumBuffers == 2, as
-  // |last_invalid_rects| holds the differences from the previous buffer and
+  // `last_invalid_rects` holds the differences from the previous buffer and
   // the one prior to that (which will then be the current buffer).
   void SynchronizeFrame();
 
@@ -91,6 +94,22 @@ class ScreenCapturerX11 : public DesktopCapturer,
   // X11 graphics context.
   GC gc_ = nullptr;
   Window root_window_ = BadValue;
+
+  // XRandR 1.5 monitors.
+  bool use_randr_ = false;
+  int randr_event_base_ = 0;
+  XRRMonitorInfo* monitors_ = nullptr;
+  int num_monitors_ = 0;
+  DesktopRect selected_monitor_rect_;
+  // selected_monitor_name_ will be changed to kFullDesktopScreenId
+  // by a call to SelectSource() at the end of Init() because
+  // selected_monitor_rect_ should be updated as well.
+  // Setting it to kFullDesktopScreenId here might be misleading.
+  Atom selected_monitor_name_ = 0;
+  typedef XRRMonitorInfo* (*get_monitors_func)(Display*, Window, Bool, int*);
+  typedef void (*free_monitors_func)(XRRMonitorInfo*);
+  get_monitors_func get_monitors_ = nullptr;
+  free_monitors_func free_monitors_ = nullptr;
 
   // XFixes.
   bool has_xfixes_ = false;

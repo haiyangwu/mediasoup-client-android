@@ -21,6 +21,7 @@
 // Tests were copied from samples_stats_counter_unittest.cc.
 
 namespace webrtc {
+namespace webrtc_impl {
 namespace {
 
 RunningStatistics<double> CreateStatsFilledWithIntsFrom1ToN(int n) {
@@ -55,14 +56,13 @@ class RunningStatisticsTest : public ::testing::TestWithParam<int> {};
 
 constexpr int SIZE_FOR_MERGE = 5;
 
-}  // namespace
-
 TEST(RunningStatistics, FullSimpleTest) {
   auto stats = CreateStatsFilledWithIntsFrom1ToN(100);
 
   EXPECT_DOUBLE_EQ(*stats.GetMin(), 1.0);
   EXPECT_DOUBLE_EQ(*stats.GetMax(), 100.0);
-  EXPECT_DOUBLE_EQ(*stats.GetMean(), 50.5);
+  // EXPECT_DOUBLE_EQ is too strict (max 4 ULP) for this one.
+  ASSERT_NEAR(*stats.GetMean(), 50.5, 1e-10);
 }
 
 TEST(RunningStatistics, VarianceAndDeviation) {
@@ -191,4 +191,6 @@ INSTANTIATE_TEST_SUITE_P(RunningStatisticsTests,
                          RunningStatisticsTest,
                          ::testing::Range(0, SIZE_FOR_MERGE + 1));
 
+}  // namespace
+}  // namespace webrtc_impl
 }  // namespace webrtc

@@ -44,7 +44,6 @@ class ScenarioIceConnectionImpl : public ScenarioIceConnection,
       const std::string& mid,
       RtpTransportInternal* rtp_transport,
       rtc::scoped_refptr<DtlsTransport> dtls_transport,
-      MediaTransportInterface* media_transport,
       DataChannelTransportInterface* data_channel_transport) override;
 
   void OnRtpPacket(const RtpPacketReceived& packet) override;
@@ -86,7 +85,7 @@ ScenarioIceConnectionImpl::ScenarioIceConnectionImpl(
       signaling_thread_(rtc::Thread::Current()),
       network_thread_(manager_->network_thread()),
       certificate_(rtc::RTCCertificate::Create(
-          absl::WrapUnique(rtc::SSLIdentity::Generate("", ::rtc::KT_DEFAULT)))),
+          rtc::SSLIdentity::Create("", ::rtc::KT_DEFAULT))),
       transport_description_(
           /*transport_options*/ {},
           rtc::CreateRandomString(cricket::ICE_UFRAG_LENGTH),
@@ -98,8 +97,7 @@ ScenarioIceConnectionImpl::ScenarioIceConnectionImpl(
       port_allocator_(
           new cricket::BasicPortAllocator(manager_->network_manager())),
       jsep_controller_(
-          new JsepTransportController(signaling_thread_,
-                                      network_thread_,
+          new JsepTransportController(network_thread_,
                                       port_allocator_.get(),
                                       /*async_resolver_factory*/ nullptr,
                                       CreateJsepConfig())) {
@@ -166,8 +164,12 @@ void ScenarioIceConnectionImpl::SetRemoteSdp(SdpType type,
                                              const std::string& remote_sdp) {
   RTC_DCHECK_RUN_ON(signaling_thread_);
   remote_description_ = webrtc::CreateSessionDescription(type, remote_sdp);
-  jsep_controller_->SignalIceCandidatesGathered.connect(
-      this, &ScenarioIceConnectionImpl::OnCandidates);
+  jsep_controller_->SubscribeIceCandidateGathered(
+      [this](const std::string& transport,
+             const std::vector<cricket::Candidate>& candidate) {
+        ScenarioIceConnectionImpl::OnCandidates(transport, candidate);
+      });
+
   auto res = jsep_controller_->SetRemoteDescription(
       remote_description_->GetType(), remote_description_->description());
   RTC_CHECK(res.ok()) << res.message();
@@ -208,7 +210,6 @@ bool ScenarioIceConnectionImpl::OnTransportChanged(
     const std::string& mid,
     RtpTransportInternal* rtp_transport,
     rtc::scoped_refptr<DtlsTransport> dtls_transport,
-    MediaTransportInterface* media_transport,
     DataChannelTransportInterface* data_channel_transport) {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (rtp_transport == nullptr) {

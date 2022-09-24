@@ -25,12 +25,16 @@ namespace webrtc {
 // negotiate in SDP, in order of preference.
 std::vector<SdpVideoFormat> SupportedVP9Codecs();
 
+// Returns a vector with all supported internal VP9 decode profiles in order of
+// preference. These will be availble for receive-only connections.
+std::vector<SdpVideoFormat> SupportedVP9DecoderCodecs();
+
 class VP9Encoder : public VideoEncoder {
  public:
   // Deprecated. Returns default implementation using VP9 Profile 0.
   // TODO(emircan): Remove once this is no longer used.
   static std::unique_ptr<VP9Encoder> Create();
-  // Parses VP9 Profile from |codec| and returns the appropriate implementation.
+  // Parses VP9 Profile from `codec` and returns the appropriate implementation.
   static std::unique_ptr<VP9Encoder> Create(const cricket::VideoCodec& codec);
 
   ~VP9Encoder() override {}

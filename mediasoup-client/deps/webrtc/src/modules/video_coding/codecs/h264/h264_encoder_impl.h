@@ -57,8 +57,8 @@ class H264EncoderImpl : public H264Encoder {
   explicit H264EncoderImpl(const cricket::VideoCodec& codec);
   ~H264EncoderImpl() override;
 
-  // |settings.max_payload_size| is ignored.
-  // The following members of |codec_settings| are used. The rest are ignored.
+  // `settings.max_payload_size` is ignored.
+  // The following members of `codec_settings` are used. The rest are ignored.
   // - codecType (must be kVideoCodecH264)
   // - targetBitrate
   // - maxFramerate
@@ -72,7 +72,7 @@ class H264EncoderImpl : public H264Encoder {
       EncodedImageCallback* callback) override;
   void SetRates(const RateControlParameters& parameters) override;
 
-  // The result of encoding - an EncodedImage and RTPFragmentationHeader - are
+  // The result of encoding - an EncodedImage and CodecSpecificInfo - are
   // passed to the encode complete callback.
   int32_t Encode(const VideoFrame& frame,
                  const std::vector<VideoFrameType>* frame_types) override;

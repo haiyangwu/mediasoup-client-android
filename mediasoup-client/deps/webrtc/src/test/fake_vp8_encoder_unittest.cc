@@ -28,7 +28,7 @@ namespace {
 std::unique_ptr<SimulcastTestFixture> CreateSpecificSimulcastTestFixture() {
   std::unique_ptr<VideoEncoderFactory> encoder_factory =
       std::make_unique<FunctionVideoEncoderFactory>([]() {
-        return std::make_unique<FakeVP8Encoder>(Clock::GetRealTimeClock());
+        return std::make_unique<FakeVp8Encoder>(Clock::GetRealTimeClock());
       });
   std::unique_ptr<VideoDecoderFactory> decoder_factory =
       std::make_unique<FunctionVideoDecoderFactory>(
@@ -102,6 +102,12 @@ TEST(TestFakeVp8Codec, TestSpatioTemporalLayers333PatternEncoder) {
 TEST(TestFakeVp8Codec, TestDecodeWidthHeightSet) {
   auto fixture = CreateSpecificSimulcastTestFixture();
   fixture->TestDecodeWidthHeightSet();
+}
+
+TEST(TestFakeVp8Codec,
+     TestEncoderInfoForDefaultTemporalLayerProfileHasFpsAllocation) {
+  auto fixture = CreateSpecificSimulcastTestFixture();
+  fixture->TestEncoderInfoForDefaultTemporalLayerProfileHasFpsAllocation();
 }
 
 }  // namespace test

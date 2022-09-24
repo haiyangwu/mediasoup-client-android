@@ -19,8 +19,8 @@ import android.annotation.TargetApi;
 import android.graphics.Matrix;
 import android.opengl.GLES11Ext;
 import android.support.annotation.Nullable;
-import android.support.test.filters.SmallTest;
 import android.util.Log;
+import androidx.test.filters.SmallTest;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +34,6 @@ import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -96,13 +95,12 @@ public class HardwareVideoEncoderTest {
       bufferCopy.rewind();
 
       frameQueue.offer(EncodedImage.builder()
-                           .setBuffer(bufferCopy)
+                           .setBuffer(bufferCopy, null)
                            .setEncodedWidth(frame.encodedWidth)
                            .setEncodedHeight(frame.encodedHeight)
                            .setCaptureTimeNs(frame.captureTimeNs)
                            .setFrameType(frame.frameType)
                            .setRotation(frame.rotation)
-                           .setCompleteFrame(frame.completeFrame)
                            .setQp(frame.qp)
                            .createEncodedImage());
     }

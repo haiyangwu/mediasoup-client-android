@@ -12,22 +12,26 @@
 #define CALL_RTP_DEMUXER_H_
 
 #include <map>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "rtc_base/containers/flat_map.h"
+#include "rtc_base/containers/flat_set.h"
 
 namespace webrtc {
 
 class RtpPacketReceived;
 class RtpPacketSinkInterface;
-class SsrcBindingObserver;
 
 // This struct describes the criteria that will be used to match packets to a
 // specific sink.
 struct RtpDemuxerCriteria {
   RtpDemuxerCriteria();
   ~RtpDemuxerCriteria();
+
+  bool operator==(const RtpDemuxerCriteria& other) const;
+  bool operator!=(const RtpDemuxerCriteria& other) const;
 
   // If not the empty string, will match packets with this MID.
   std::string mid;
@@ -40,10 +44,13 @@ struct RtpDemuxerCriteria {
   std::string rsid;
 
   // Will match packets with any of these SSRCs.
-  std::set<uint32_t> ssrcs;
+  flat_set<uint32_t> ssrcs;
 
   // Will match packets with any of these payload types.
-  std::set<uint8_t> payload_types;
+  flat_set<uint8_t> payload_types;
+
+  // Return string representation of demux criteria to facilitate logging
+  std::string ToString() const;
 };
 
 // This class represents the RTP demuxing, for a single RTP session (i.e., one
@@ -92,7 +99,7 @@ class RtpDemuxer {
   // relevant for demuxing.
   static std::string DescribePacket(const RtpPacketReceived& packet);
 
-  RtpDemuxer();
+  explicit RtpDemuxer(bool use_mid = true);
   ~RtpDemuxer();
 
   RtpDemuxer(const RtpDemuxer&) = delete;
@@ -130,21 +137,6 @@ class RtpDemuxer {
   // if the packet was forwarded and false if the packet was dropped.
   bool OnRtpPacket(const RtpPacketReceived& packet);
 
-  // The Observer will be notified when an attribute (e.g., RSID, MID, etc.) is
-  // bound to an SSRC.
-  void RegisterSsrcBindingObserver(SsrcBindingObserver* observer);
-  // Deprecated: Use the above method.
-  void RegisterRsidResolutionObserver(SsrcBindingObserver* observer);
-
-  // Undo a previous RegisterSsrcBindingObserver().
-  void DeregisterSsrcBindingObserver(const SsrcBindingObserver* observer);
-  // Deprecated: Use the above method.
-  void DeregisterRsidResolutionObserver(const SsrcBindingObserver* observer);
-
-  // Configure whether to look at the MID header extension when demuxing
-  // incoming RTP packets. By default this is enabled.
-  void set_use_mid(bool use_mid) { use_mid_ = use_mid; }
-
  private:
   // Returns true if adding a sink with the given criteria would cause conflicts
   // with the existing criteria and should be rejected.
@@ -178,35 +170,29 @@ class RtpDemuxer {
   // Note: Mappings are only modified by AddSink/RemoveSink (except for
   // SSRC mapping which receives all MID, payload type, or RSID to SSRC bindings
   // discovered when demuxing packets).
-  std::map<std::string, RtpPacketSinkInterface*> sink_by_mid_;
-  std::map<uint32_t, RtpPacketSinkInterface*> sink_by_ssrc_;
+  flat_map<std::string, RtpPacketSinkInterface*> sink_by_mid_;
+  flat_map<uint32_t, RtpPacketSinkInterface*> sink_by_ssrc_;
   std::multimap<uint8_t, RtpPacketSinkInterface*> sinks_by_pt_;
-  std::map<std::pair<std::string, std::string>, RtpPacketSinkInterface*>
+  flat_map<std::pair<std::string, std::string>, RtpPacketSinkInterface*>
       sink_by_mid_and_rsid_;
-  std::map<std::string, RtpPacketSinkInterface*> sink_by_rsid_;
+  flat_map<std::string, RtpPacketSinkInterface*> sink_by_rsid_;
 
   // Tracks all the MIDs that have been identified in added criteria. Used to
   // determine if a packet should be dropped right away because the MID is
   // unknown.
-  std::set<std::string> known_mids_;
+  flat_set<std::string> known_mids_;
 
   // Records learned mappings of MID --> SSRC and RSID --> SSRC as packets are
   // received.
   // This is stored separately from the sink mappings because if a sink is
   // removed we want to still remember these associations.
-  std::map<uint32_t, std::string> mid_by_ssrc_;
-  std::map<uint32_t, std::string> rsid_by_ssrc_;
+  flat_map<uint32_t, std::string> mid_by_ssrc_;
+  flat_map<uint32_t, std::string> rsid_by_ssrc_;
 
-  // Adds a binding from the SSRC to the given sink. Returns true if there was
-  // not already a sink bound to the SSRC or if the sink replaced a different
-  // sink. Returns false if the binding was unchanged.
-  bool AddSsrcSinkBinding(uint32_t ssrc, RtpPacketSinkInterface* sink);
+  // Adds a binding from the SSRC to the given sink.
+  void AddSsrcSinkBinding(uint32_t ssrc, RtpPacketSinkInterface* sink);
 
-  // Observers which will be notified when an RSID association to an SSRC is
-  // resolved by this object.
-  std::vector<SsrcBindingObserver*> ssrc_binding_observers_;
-
-  bool use_mid_ = true;
+  const bool use_mid_;
 };
 
 }  // namespace webrtc

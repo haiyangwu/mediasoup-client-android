@@ -13,19 +13,11 @@
 #include <utility>
 #include <vector>
 
+#include "api/transport/rtp/dependency_descriptor.h"
 #include "rtc_base/bit_buffer.h"
 #include "rtc_base/checks.h"
 
 namespace webrtc {
-namespace {
-
-constexpr int kMaxTemporalId = 7;
-constexpr int kMaxSpatialId = 3;
-constexpr int kMaxTemplates = 63;
-constexpr int kMaxTemplateId = kMaxTemplates - 1;
-constexpr int kExtendedFieldsIndicator = kMaxTemplates;
-
-}  // namespace
 
 RtpDependencyDescriptorReader::RtpDependencyDescriptorReader(
     rtc::ArrayView<const uint8_t> raw_data,
@@ -35,29 +27,34 @@ RtpDependencyDescriptorReader::RtpDependencyDescriptorReader(
   RTC_DCHECK(descriptor);
 
   ReadMandatoryFields();
-  if (frame_dependency_template_id_ == kExtendedFieldsIndicator)
+  if (raw_data.size() > 3)
     ReadExtendedFields();
 
   structure_ = descriptor->attached_structure
                    ? descriptor->attached_structure.get()
                    : structure;
-  if (structure_ == nullptr) {
+  if (structure_ == nullptr || parsing_failed_) {
     parsing_failed_ = true;
     return;
   }
+  if (active_decode_targets_present_flag_) {
+    descriptor->active_decode_targets_bitmask =
+        ReadBits(structure_->num_decode_targets);
+  }
+
   ReadFrameDependencyDefinition();
 }
 
 uint32_t RtpDependencyDescriptorReader::ReadBits(size_t bit_count) {
   uint32_t value = 0;
-  if (!buffer_.ReadBits(&value, bit_count))
+  if (!buffer_.ReadBits(bit_count, value))
     parsing_failed_ = true;
   return value;
 }
 
 uint32_t RtpDependencyDescriptorReader::ReadNonSymmetric(size_t num_values) {
   uint32_t value = 0;
-  if (!buffer_.ReadNonSymmetric(&value, num_values))
+  if (!buffer_.ReadNonSymmetric(num_values, value))
     parsing_failed_ = true;
   return value;
 }
@@ -66,11 +63,6 @@ void RtpDependencyDescriptorReader::ReadTemplateDependencyStructure() {
   descriptor_->attached_structure =
       std::make_unique<FrameDependencyStructure>();
   descriptor_->attached_structure->structure_id = ReadBits(6);
-  if (descriptor_->attached_structure->structure_id ==
-      kExtendedFieldsIndicator) {
-    parsing_failed_ = true;
-    return;
-  }
   descriptor_->attached_structure->num_decode_targets = ReadBits(5) + 1;
 
   ReadTemplateLayers();
@@ -96,7 +88,7 @@ void RtpDependencyDescriptorReader::ReadTemplateLayers() {
   int spatial_id = 0;
   NextLayerIdc next_layer_idc;
   do {
-    if (templates.size() == kMaxTemplates) {
+    if (templates.size() == DependencyDescriptor::kMaxTemplates) {
       parsing_failed_ = true;
       break;
     }
@@ -108,14 +100,14 @@ void RtpDependencyDescriptorReader::ReadTemplateLayers() {
     next_layer_idc = static_cast<NextLayerIdc>(ReadBits(2));
     if (next_layer_idc == kNextTemporalLayer) {
       temporal_id++;
-      if (temporal_id > kMaxTemporalId) {
+      if (temporal_id >= DependencyDescriptor::kMaxTemporalIds) {
         parsing_failed_ = true;
         break;
       }
     } else if (next_layer_idc == kNextSpatialLayer) {
       temporal_id = 0;
       spatial_id++;
-      if (spatial_id > kMaxSpatialId) {
+      if (spatial_id >= DependencyDescriptor::kMaxSpatialIds) {
         parsing_failed_ = true;
         break;
       }
@@ -154,7 +146,7 @@ void RtpDependencyDescriptorReader::ReadTemplateChains() {
   if (structure->num_chains == 0)
     return;
   for (int i = 0; i < structure->num_decode_targets; ++i) {
-    uint32_t protected_by_chain = ReadNonSymmetric(structure->num_chains + 1);
+    uint32_t protected_by_chain = ReadNonSymmetric(structure->num_chains);
     structure->decode_target_protected_by_chain.push_back(protected_by_chain);
   }
   for (FrameDependencyTemplate& frame_template : structure->templates) {
@@ -184,25 +176,25 @@ void RtpDependencyDescriptorReader::ReadMandatoryFields() {
 }
 
 void RtpDependencyDescriptorReader::ReadExtendedFields() {
-  frame_dependency_template_id_ = ReadBits(6);
-  if (frame_dependency_template_id_ == kExtendedFieldsIndicator) {
-    parsing_failed_ = true;
-    return;
-  }
   bool template_dependency_structure_present_flag = ReadBits(1);
+  active_decode_targets_present_flag_ = ReadBits(1);
   custom_dtis_flag_ = ReadBits(1);
   custom_fdiffs_flag_ = ReadBits(1);
   custom_chains_flag_ = ReadBits(1);
   if (template_dependency_structure_present_flag) {
     ReadTemplateDependencyStructure();
     RTC_DCHECK(descriptor_->attached_structure);
+    descriptor_->active_decode_targets_bitmask =
+        (uint64_t{1} << descriptor_->attached_structure->num_decode_targets) -
+        1;
   }
 }
 
 void RtpDependencyDescriptorReader::ReadFrameDependencyDefinition() {
-  size_t template_index = (frame_dependency_template_id_ +
-                           (kMaxTemplateId + 1) - structure_->structure_id) %
-                          (kMaxTemplateId + 1);
+  size_t template_index =
+      (frame_dependency_template_id_ + DependencyDescriptor::kMaxTemplates -
+       structure_->structure_id) %
+      DependencyDescriptor::kMaxTemplates;
 
   if (template_index >= structure_->templates.size()) {
     parsing_failed_ = true;

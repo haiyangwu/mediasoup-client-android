@@ -22,7 +22,6 @@ extern "C" {
 
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
-#include "api/transport/media/media_transport_interface.h"
 #include "api/video_codecs/video_decoder_factory.h"
 #include "api/video_codecs/video_encoder_factory.h"
 #include "modules/audio_device/include/audio_device.h"
@@ -39,7 +38,7 @@ extern "C" {
 @implementation RTCPeerConnectionFactoryBuilderTest
 
 - (void)testBuilder {
-  id factoryMock = OCMStrictClassMock([RTCPeerConnectionFactory class]);
+  id factoryMock = OCMStrictClassMock([RTC_OBJC_TYPE(RTCPeerConnectionFactory) class]);
   OCMExpect([factoryMock alloc]).andReturn(factoryMock);
 #ifdef HAVE_NO_MEDIA
   RTC_UNUSED([[[factoryMock expect] andReturn:factoryMock] initWithNoMedia]);
@@ -50,17 +49,17 @@ extern "C" {
               nativeVideoEncoderFactory:nullptr
               nativeVideoDecoderFactory:nullptr
                       audioDeviceModule:nullptr
-                  audioProcessingModule:nullptr
-                  mediaTransportFactory:nullptr]);
+                  audioProcessingModule:nullptr]);
 #endif
   RTCPeerConnectionFactoryBuilder* builder = [[RTCPeerConnectionFactoryBuilder alloc] init];
-  RTCPeerConnectionFactory* peerConnectionFactory = [builder createPeerConnectionFactory];
+  RTC_OBJC_TYPE(RTCPeerConnectionFactory)* peerConnectionFactory =
+      [builder createPeerConnectionFactory];
   EXPECT_TRUE(peerConnectionFactory != nil);
   OCMVerifyAll(factoryMock);
 }
 
 - (void)testDefaultComponentsBuilder {
-  id factoryMock = OCMStrictClassMock([RTCPeerConnectionFactory class]);
+  id factoryMock = OCMStrictClassMock([RTC_OBJC_TYPE(RTCPeerConnectionFactory) class]);
   OCMExpect([factoryMock alloc]).andReturn(factoryMock);
 #ifdef HAVE_NO_MEDIA
   RTC_UNUSED([[[factoryMock expect] andReturn:factoryMock] initWithNoMedia]);
@@ -71,11 +70,11 @@ extern "C" {
               nativeVideoEncoderFactory:nullptr
               nativeVideoDecoderFactory:nullptr
                       audioDeviceModule:nullptr
-                  audioProcessingModule:nullptr
-                  mediaTransportFactory:nullptr]);
+                  audioProcessingModule:nullptr]);
 #endif
   RTCPeerConnectionFactoryBuilder* builder = [RTCPeerConnectionFactoryBuilder defaultBuilder];
-  RTCPeerConnectionFactory* peerConnectionFactory = [builder createPeerConnectionFactory];
+  RTC_OBJC_TYPE(RTCPeerConnectionFactory)* peerConnectionFactory =
+      [builder createPeerConnectionFactory];
   EXPECT_TRUE(peerConnectionFactory != nil);
   OCMVerifyAll(factoryMock);
 }

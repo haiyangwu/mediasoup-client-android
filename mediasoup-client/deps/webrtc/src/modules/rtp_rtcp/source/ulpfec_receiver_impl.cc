@@ -37,12 +37,13 @@ UlpfecReceiverImpl::UlpfecReceiverImpl(
       fec_(ForwardErrorCorrection::CreateUlpfec(ssrc_)) {}
 
 UlpfecReceiverImpl::~UlpfecReceiverImpl() {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
   received_packets_.clear();
   fec_->ResetState(&recovered_packets_);
 }
 
 FecPacketCounter UlpfecReceiverImpl::GetPacketCounter() const {
-  rtc::CritScope cs(&crit_sect_);
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
   return packet_counter_;
 }
 
@@ -74,8 +75,13 @@ FecPacketCounter UlpfecReceiverImpl::GetPacketCounter() const {
 //    block length:  10 bits Length in bytes of the corresponding data
 //        block excluding header.
 
-bool UlpfecReceiverImpl::AddReceivedRedPacket(const RtpPacket& rtp_packet,
-                                              uint8_t ulpfec_payload_type) {
+bool UlpfecReceiverImpl::AddReceivedRedPacket(
+    const RtpPacketReceived& rtp_packet,
+    uint8_t ulpfec_payload_type) {
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  // TODO(bugs.webrtc.org/11993): We get here via Call::DeliverRtp, so should be
+  // moved to the network thread.
+
   if (rtp_packet.Ssrc() != ssrc_) {
     RTC_LOG(LS_WARNING)
         << "Received RED packet with different SSRC than expected; dropping.";
@@ -86,7 +92,6 @@ bool UlpfecReceiverImpl::AddReceivedRedPacket(const RtpPacket& rtp_packet,
                            "packet size; dropping.";
     return false;
   }
-  rtc::CritScope cs(&crit_sect_);
 
   static constexpr uint8_t kRedHeaderLength = 1;
 
@@ -103,6 +108,7 @@ bool UlpfecReceiverImpl::AddReceivedRedPacket(const RtpPacket& rtp_packet,
   // Get payload type from RED header and sequence number from RTP header.
   uint8_t payload_type = rtp_packet.payload()[0] & 0x7f;
   received_packet->is_fec = payload_type == ulpfec_payload_type;
+  received_packet->is_recovered = rtp_packet.recovered();
   received_packet->ssrc = rtp_packet.Ssrc();
   received_packet->seq_num = rtp_packet.SequenceNumber();
 
@@ -126,18 +132,19 @@ bool UlpfecReceiverImpl::AddReceivedRedPacket(const RtpPacket& rtp_packet,
         rtp_packet.Buffer().Slice(rtp_packet.headers_size() + kRedHeaderLength,
                                   rtp_packet.payload_size() - kRedHeaderLength);
   } else {
-    auto red_payload = rtp_packet.payload().subview(kRedHeaderLength);
-    received_packet->pkt->data.EnsureCapacity(rtp_packet.headers_size() +
-                                              red_payload.size());
+    received_packet->pkt->data.EnsureCapacity(rtp_packet.size() -
+                                              kRedHeaderLength);
     // Copy RTP header.
     received_packet->pkt->data.SetData(rtp_packet.data(),
                                        rtp_packet.headers_size());
     // Set payload type.
-    received_packet->pkt->data[1] &= 0x80;          // Reset RED payload type.
-    received_packet->pkt->data[1] += payload_type;  // Set media payload type.
-    // Copy payload data.
-    received_packet->pkt->data.AppendData(red_payload.data(),
-                                          red_payload.size());
+    uint8_t& payload_type_byte = received_packet->pkt->data.MutableData()[1];
+    payload_type_byte &= 0x80;          // Reset RED payload type.
+    payload_type_byte += payload_type;  // Set media payload type.
+    // Copy payload and padding data, after the RED header.
+    received_packet->pkt->data.AppendData(
+        rtp_packet.data() + rtp_packet.headers_size() + kRedHeaderLength,
+        rtp_packet.size() - rtp_packet.headers_size() - kRedHeaderLength);
   }
 
   if (received_packet->pkt->data.size() > 0) {
@@ -148,12 +155,12 @@ bool UlpfecReceiverImpl::AddReceivedRedPacket(const RtpPacket& rtp_packet,
 
 // TODO(nisse): Drop always-zero return value.
 int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
-  crit_sect_.Enter();
+  RTC_DCHECK_RUN_ON(&sequence_checker_);
 
-  // If we iterate over |received_packets_| and it contains a packet that cause
+  // If we iterate over `received_packets_` and it contains a packet that cause
   // us to recurse back to this function (for example a RED packet encapsulating
   // a RED packet), then we will recurse forever. To avoid this we swap
-  // |received_packets_| with an empty vector so that the next recursive call
+  // `received_packets_` with an empty vector so that the next recursive call
   // wont iterate over the same packet again. This also solves the problem of
   // not modifying the vector we are currently iterating over (packets are added
   // in AddReceivedRedPacket).
@@ -165,10 +172,8 @@ int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
     // Send received media packet to VCM.
     if (!received_packet->is_fec) {
       ForwardErrorCorrection::Packet* packet = received_packet->pkt;
-      crit_sect_.Leave();
       recovered_packet_callback_->OnRecoveredPacket(packet->data.data(),
                                                     packet->data.size());
-      crit_sect_.Enter();
       // Create a packet with the buffer to modify it.
       RtpPacketReceived rtp_packet;
       const uint8_t* const original_data = packet->data.cdata();
@@ -185,7 +190,13 @@ int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
         RTC_DCHECK_EQ(packet->data.cdata(), original_data);
       }
     }
-    fec_->DecodeFec(*received_packet, &recovered_packets_);
+    if (!received_packet->is_recovered) {
+      // Do not pass recovered packets to FEC. Recovered packet might have
+      // different set of the RTP header extensions and thus different byte
+      // representation than the original packet, That will corrupt
+      // FEC calculation.
+      fec_->DecodeFec(*received_packet, &recovered_packets_);
+    }
   }
 
   // Send any recovered media packets to VCM.
@@ -199,13 +210,10 @@ int32_t UlpfecReceiverImpl::ProcessReceivedFec() {
     // Set this flag first; in case the recovered packet carries a RED
     // header, OnRecoveredPacket will recurse back here.
     recovered_packet->returned = true;
-    crit_sect_.Leave();
     recovered_packet_callback_->OnRecoveredPacket(packet->data.data(),
                                                   packet->data.size());
-    crit_sect_.Enter();
   }
 
-  crit_sect_.Leave();
   return 0;
 }
 

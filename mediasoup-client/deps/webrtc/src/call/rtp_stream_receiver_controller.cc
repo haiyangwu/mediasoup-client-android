@@ -25,7 +25,8 @@ RtpStreamReceiverController::Receiver::Receiver(
   if (!sink_added) {
     RTC_LOG(LS_ERROR)
         << "RtpStreamReceiverController::Receiver::Receiver: Sink "
-        << "could not be added for SSRC=" << ssrc << ".";
+           "could not be added for SSRC="
+        << ssrc << ".";
   }
 }
 
@@ -36,11 +37,7 @@ RtpStreamReceiverController::Receiver::~Receiver() {
   controller_->RemoveSink(sink_);
 }
 
-RtpStreamReceiverController::RtpStreamReceiverController() {
-  // At this level the demuxer is only configured to demux by SSRC, so don't
-  // worry about MIDs (MIDs are handled by upper layers).
-  demuxer_.set_use_mid(false);
-}
+RtpStreamReceiverController::RtpStreamReceiverController() {}
 
 RtpStreamReceiverController::~RtpStreamReceiverController() = default;
 
@@ -51,19 +48,19 @@ RtpStreamReceiverController::CreateReceiver(uint32_t ssrc,
 }
 
 bool RtpStreamReceiverController::OnRtpPacket(const RtpPacketReceived& packet) {
-  rtc::CritScope cs(&lock_);
+  RTC_DCHECK_RUN_ON(&demuxer_sequence_);
   return demuxer_.OnRtpPacket(packet);
 }
 
 bool RtpStreamReceiverController::AddSink(uint32_t ssrc,
                                           RtpPacketSinkInterface* sink) {
-  rtc::CritScope cs(&lock_);
+  RTC_DCHECK_RUN_ON(&demuxer_sequence_);
   return demuxer_.AddSink(ssrc, sink);
 }
 
 size_t RtpStreamReceiverController::RemoveSink(
     const RtpPacketSinkInterface* sink) {
-  rtc::CritScope cs(&lock_);
+  RTC_DCHECK_RUN_ON(&demuxer_sequence_);
   return demuxer_.RemoveSink(sink);
 }
 

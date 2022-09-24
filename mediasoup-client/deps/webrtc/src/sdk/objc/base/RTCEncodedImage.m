@@ -10,7 +10,7 @@
 
 #import "RTCEncodedImage.h"
 
-@implementation RTCEncodedImage
+@implementation RTC_OBJC_TYPE (RTCEncodedImage)
 
 @synthesize buffer = _buffer;
 @synthesize encodedWidth = _encodedWidth;
@@ -23,7 +23,6 @@
 @synthesize encodeFinishMs = _encodeFinishMs;
 @synthesize frameType = _frameType;
 @synthesize rotation = _rotation;
-@synthesize completeFrame = _completeFrame;
 @synthesize qp = _qp;
 @synthesize contentType = _contentType;
 

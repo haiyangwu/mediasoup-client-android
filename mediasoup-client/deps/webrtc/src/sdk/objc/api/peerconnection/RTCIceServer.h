@@ -20,7 +20,7 @@ typedef NS_ENUM(NSUInteger, RTCTlsCertPolicy) {
 NS_ASSUME_NONNULL_BEGIN
 
 RTC_OBJC_EXPORT
-@interface RTCIceServer : NSObject
+@interface RTC_OBJC_TYPE (RTCIceServer) : NSObject
 
 /** URI(s) for this server represented as NSStrings. */
 @property(nonatomic, readonly) NSArray<NSString *> *urlStrings;
@@ -37,9 +37,9 @@ RTC_OBJC_EXPORT
 @property(nonatomic, readonly) RTCTlsCertPolicy tlsCertPolicy;
 
 /**
-  If the URIs in |urls| only contain IP addresses, this field can be used
+  If the URIs in `urls` only contain IP addresses, this field can be used
   to indicate the hostname, which may be necessary for TLS (using the SNI
-  extension). If |urls| itself contains the hostname, this isn't necessary.
+  extension). If `urls` itself contains the hostname, this isn't necessary.
  */
 @property(nonatomic, readonly, nullable) NSString *hostname;
 

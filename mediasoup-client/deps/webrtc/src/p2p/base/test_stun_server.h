@@ -11,18 +11,18 @@
 #ifndef P2P_BASE_TEST_STUN_SERVER_H_
 #define P2P_BASE_TEST_STUN_SERVER_H_
 
-#include "p2p/base/stun.h"
+#include "api/transport/stun.h"
 #include "p2p/base/stun_server.h"
 #include "rtc_base/async_udp_socket.h"
 #include "rtc_base/socket_address.h"
-#include "rtc_base/thread.h"
+#include "rtc_base/socket_server.h"
 
 namespace cricket {
 
 // A test STUN server. Useful for unit tests.
 class TestStunServer : StunServer {
  public:
-  static TestStunServer* Create(rtc::Thread* thread,
+  static TestStunServer* Create(rtc::SocketServer* ss,
                                 const rtc::SocketAddress& addr);
 
   // Set a fake STUN address to return to the client.

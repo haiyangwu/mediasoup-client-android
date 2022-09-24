@@ -67,8 +67,7 @@ class TestBasicJitterBuffer : public ::testing::Test {
     video_header.is_first_packet_in_frame = true;
     video_header.frame_type = VideoFrameType::kVideoFrameDelta;
     packet_.reset(new VCMPacket(data_, size_, rtp_header, video_header,
-                                /*ntp_time_ms=*/0,
-                                clock_->TimeInMilliseconds()));
+                                /*ntp_time_ms=*/0, clock_->CurrentTime()));
   }
 
   VCMEncodedFrame* DecodeCompleteFrame() {
@@ -541,7 +540,7 @@ TEST_F(TestBasicJitterBuffer, TestReorderingWithPadding) {
   video_header.codec = kVideoCodecGeneric;
   video_header.frame_type = VideoFrameType::kEmptyFrame;
   VCMPacket empty_packet(data_, 0, rtp_header, video_header,
-                         /*ntp_time_ms=*/0, clock_->TimeInMilliseconds());
+                         /*ntp_time_ms=*/0, clock_->CurrentTime());
   EXPECT_EQ(kOldPacket,
             jitter_buffer_->InsertPacket(empty_packet, &retransmitted));
   empty_packet.seqNum += 1;
@@ -1545,7 +1544,7 @@ TEST_F(TestJitterBufferNack, NackTooOldPackets) {
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey), kNoError);
   EXPECT_TRUE(DecodeCompleteFrame());
 
-  // Drop one frame and insert |kNackHistoryLength| to trigger NACKing a too
+  // Drop one frame and insert `kNackHistoryLength` to trigger NACKing a too
   // old packet.
   DropFrame(1);
   // Insert a frame which should trigger a recycle until the next key frame.
@@ -1598,7 +1597,7 @@ TEST_F(TestJitterBufferNack, NackListFull) {
   EXPECT_GE(InsertFrame(VideoFrameType::kVideoFrameKey), kNoError);
   EXPECT_TRUE(DecodeCompleteFrame());
 
-  // Generate and drop |kNackHistoryLength| packets to fill the NACK list.
+  // Generate and drop `kNackHistoryLength` packets to fill the NACK list.
   DropFrame(max_nack_list_size_ + 1);
   // Insert a frame which should trigger a recycle until the next key frame.
   EXPECT_EQ(kFlushIndicator, InsertFrame(VideoFrameType::kVideoFrameDelta));

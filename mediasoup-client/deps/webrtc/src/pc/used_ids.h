@@ -28,7 +28,7 @@ class UsedIds {
         next_id_(max_allowed_id) {}
   virtual ~UsedIds() {}
 
-  // Loops through all Id in |ids| and changes its id if it is
+  // Loops through all Id in `ids` and changes its id if it is
   // already in use by another IdStruct. Call this methods with all Id
   // in a session description to make sure no duplicate ids exists.
   // Note that typename Id must be a type of IdStruct.
@@ -39,7 +39,7 @@ class UsedIds {
     }
   }
 
-  // Finds and sets an unused id if the |idstruct| id is already in use.
+  // Finds and sets an unused id if the `idstruct` id is already in use.
   void FindAndSetIdUsed(IdStruct* idstruct) {
     const int original_id = idstruct->id;
     int new_id = idstruct->id;
@@ -60,7 +60,9 @@ class UsedIds {
   }
 
  protected:
-  bool IsIdUsed(int new_id) { return id_set_.find(new_id) != id_set_.end(); }
+  virtual bool IsIdUsed(int new_id) {
+    return id_set_.find(new_id) != id_set_.end();
+  }
   const int min_allowed_id_;
   const int max_allowed_id_;
 
@@ -92,11 +94,24 @@ class UsedIds {
 class UsedPayloadTypes : public UsedIds<Codec> {
  public:
   UsedPayloadTypes()
-      : UsedIds<Codec>(kDynamicPayloadTypeMin, kDynamicPayloadTypeMax) {}
+      : UsedIds<Codec>(kFirstDynamicPayloadTypeLowerRange,
+                       kLastDynamicPayloadTypeUpperRange) {}
+
+ protected:
+  bool IsIdUsed(int new_id) override {
+    // Range marked for RTCP avoidance is "used".
+    if (new_id > kLastDynamicPayloadTypeLowerRange &&
+        new_id < kFirstDynamicPayloadTypeUpperRange)
+      return true;
+    return UsedIds<Codec>::IsIdUsed(new_id);
+  }
 
  private:
-  static const int kDynamicPayloadTypeMin = 96;
-  static const int kDynamicPayloadTypeMax = 127;
+  static const int kFirstDynamicPayloadTypeLowerRange = 35;
+  static const int kLastDynamicPayloadTypeLowerRange = 63;
+
+  static const int kFirstDynamicPayloadTypeUpperRange = 96;
+  static const int kLastDynamicPayloadTypeUpperRange = 127;
 };
 
 // Helper class used for finding duplicate RTP Header extension ids among
@@ -126,7 +141,7 @@ class UsedRtpHeaderExtensionIds : public UsedIds<webrtc::RtpExtension> {
   // header extensions. This hopefully reduce the risk of more collisions. We
   // want to change the default ids as little as possible. If no unused id is
   // found and two byte header extensions are enabled (i.e.,
-  // |extmap_allow_mixed_| is true), search for unused ids from 15 to 255.
+  // `extmap_allow_mixed_` is true), search for unused ids from 15 to 255.
   int FindUnusedId() override {
     if (next_extension_id_ <=
         webrtc::RtpExtension::kOneByteHeaderExtensionMaxId) {

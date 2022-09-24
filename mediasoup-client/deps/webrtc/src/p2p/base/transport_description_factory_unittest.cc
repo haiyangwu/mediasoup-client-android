@@ -26,7 +26,6 @@
 #include "test/gmock.h"
 #include "test/gtest.h"
 
-using cricket::OpaqueTransportParameters;
 using cricket::TransportDescription;
 using cricket::TransportDescriptionFactory;
 using cricket::TransportOptions;
@@ -70,7 +69,7 @@ class TransportDescriptionFactoryTest : public ::testing::Test {
   // This test ice restart by doing two offer answer exchanges. On the second
   // exchange ice is restarted. The test verifies that the ufrag and password
   // in the offer and answer is changed.
-  // If |dtls| is true, the test verifies that the finger print is not changed.
+  // If `dtls` is true, the test verifies that the finger print is not changed.
   void TestIceRestart(bool dtls) {
     SetDtls(dtls);
     cricket::TransportOptions options;
@@ -210,97 +209,6 @@ TEST_F(TransportDescriptionFactoryTest, TestOfferDtlsReofferDtls) {
   CheckDesc(desc.get(), "", old_desc->ice_ufrag, old_desc->ice_pwd, digest_alg);
 }
 
-TEST_F(TransportDescriptionFactoryTest, TestOfferOpaqueTransportParameters) {
-  OpaqueTransportParameters params;
-  params.protocol = "fake";
-  params.parameters = "foobar";
-
-  TransportOptions options;
-  options.opaque_parameters = params;
-
-  std::unique_ptr<TransportDescription> desc =
-      f1_.CreateOffer(options, NULL, &ice_credentials_);
-
-  CheckDesc(desc.get(), "", "", "", "");
-  EXPECT_EQ(desc->opaque_parameters, params);
-}
-
-TEST_F(TransportDescriptionFactoryTest, TestAnswerOpaqueTransportParameters) {
-  OpaqueTransportParameters params;
-  params.protocol = "fake";
-  params.parameters = "foobar";
-
-  TransportOptions options;
-  options.opaque_parameters = params;
-
-  std::unique_ptr<TransportDescription> offer =
-      f1_.CreateOffer(options, NULL, &ice_credentials_);
-  std::unique_ptr<TransportDescription> answer =
-      f2_.CreateAnswer(offer.get(), options, true, NULL, &ice_credentials_);
-
-  CheckDesc(answer.get(), "", "", "", "");
-  EXPECT_EQ(answer->opaque_parameters, params);
-}
-
-TEST_F(TransportDescriptionFactoryTest, TestAnswerNoOpaqueTransportParameters) {
-  OpaqueTransportParameters params;
-  params.protocol = "fake";
-  params.parameters = "foobar";
-
-  TransportOptions options;
-  options.opaque_parameters = params;
-
-  std::unique_ptr<TransportDescription> offer =
-      f1_.CreateOffer(options, NULL, &ice_credentials_);
-  std::unique_ptr<TransportDescription> answer = f2_.CreateAnswer(
-      offer.get(), TransportOptions(), true, NULL, &ice_credentials_);
-
-  CheckDesc(answer.get(), "", "", "", "");
-  EXPECT_EQ(answer->opaque_parameters, absl::nullopt);
-}
-
-TEST_F(TransportDescriptionFactoryTest,
-       TestAnswerDifferentOpaqueTransportParameters) {
-  OpaqueTransportParameters offer_params;
-  offer_params.protocol = "fake";
-  offer_params.parameters = "foobar";
-
-  TransportOptions options;
-  options.opaque_parameters = offer_params;
-
-  std::unique_ptr<TransportDescription> offer =
-      f1_.CreateOffer(options, NULL, &ice_credentials_);
-
-  OpaqueTransportParameters answer_params;
-  answer_params.protocol = "fake";
-  answer_params.parameters = "baz";
-
-  options.opaque_parameters = answer_params;
-  std::unique_ptr<TransportDescription> answer =
-      f2_.CreateAnswer(offer.get(), options, true, NULL, &ice_credentials_);
-
-  CheckDesc(answer.get(), "", "", "", "");
-  EXPECT_EQ(answer->opaque_parameters, absl::nullopt);
-}
-
-TEST_F(TransportDescriptionFactoryTest,
-       TestAnswerNoOpaqueTransportParametersInOffer) {
-  std::unique_ptr<TransportDescription> offer =
-      f1_.CreateOffer(TransportOptions(), NULL, &ice_credentials_);
-
-  OpaqueTransportParameters params;
-  params.protocol = "fake";
-  params.parameters = "foobar";
-
-  TransportOptions options;
-  options.opaque_parameters = params;
-  std::unique_ptr<TransportDescription> answer =
-      f2_.CreateAnswer(offer.get(), options, true, NULL, &ice_credentials_);
-
-  CheckDesc(answer.get(), "", "", "", "");
-  EXPECT_EQ(answer->opaque_parameters, absl::nullopt);
-}
-
 TEST_F(TransportDescriptionFactoryTest, TestAnswerDefault) {
   std::unique_ptr<TransportDescription> offer =
       f1_.CreateOffer(TransportOptions(), NULL, &ice_credentials_);
@@ -383,25 +291,25 @@ TEST_F(TransportDescriptionFactoryTest, TestAnswerDtlsToDtls) {
 }
 
 // Test that ice ufrag and password is changed in an updated offer and answer
-// if |TransportDescriptionOptions::ice_restart| is true.
+// if `TransportDescriptionOptions::ice_restart` is true.
 TEST_F(TransportDescriptionFactoryTest, TestIceRestart) {
   TestIceRestart(false);
 }
 
 // Test that ice ufrag and password is changed in an updated offer and answer
-// if |TransportDescriptionOptions::ice_restart| is true and DTLS is enabled.
+// if `TransportDescriptionOptions::ice_restart` is true and DTLS is enabled.
 TEST_F(TransportDescriptionFactoryTest, TestIceRestartWithDtls) {
   TestIceRestart(true);
 }
 
 // Test that ice renomination is set in an updated offer and answer
-// if |TransportDescriptionOptions::enable_ice_renomination| is true.
+// if `TransportDescriptionOptions::enable_ice_renomination` is true.
 TEST_F(TransportDescriptionFactoryTest, TestIceRenomination) {
   TestIceRenomination(false);
 }
 
 // Test that ice renomination is set in an updated offer and answer
-// if |TransportDescriptionOptions::enable_ice_renomination| is true and DTLS
+// if `TransportDescriptionOptions::enable_ice_renomination` is true and DTLS
 // is enabled.
 TEST_F(TransportDescriptionFactoryTest, TestIceRenominationWithDtls) {
   TestIceRenomination(true);

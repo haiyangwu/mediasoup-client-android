@@ -16,8 +16,8 @@
 #include "api/transport/field_trial_based_config.h"
 #include "api/transport/network_types.h"
 #include "api/transport/test/mock_network_control.h"
-#include "modules/pacing/packet_router.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/transport_feedback.h"
+#include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "system_wrappers/include/clock.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
@@ -25,6 +25,7 @@
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Invoke;
+using ::testing::MockFunction;
 using ::testing::Return;
 using ::testing::SizeIs;
 
@@ -63,19 +64,12 @@ std::vector<int64_t> TimestampsMs(
   return timestamps;
 }
 
-class MockTransportFeedbackSender : public TransportFeedbackSenderInterface {
- public:
-  MOCK_METHOD1(
-      SendCombinedRtcpPacket,
-      bool(std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets));
-};
-
 class RemoteEstimatorProxyTest : public ::testing::Test {
  public:
   RemoteEstimatorProxyTest()
       : clock_(0),
         proxy_(&clock_,
-               &router_,
+               feedback_sender_.AsStdFunction(),
                &field_trial_config_,
                &network_state_estimator_) {}
 
@@ -112,7 +106,8 @@ class RemoteEstimatorProxyTest : public ::testing::Test {
 
   FieldTrialBasedConfig field_trial_config_;
   SimulatedClock clock_;
-  ::testing::StrictMock<MockTransportFeedbackSender> router_;
+  MockFunction<void(std::vector<std::unique_ptr<rtcp::RtcpPacket>>)>
+      feedback_sender_;
   ::testing::NiceMock<MockNetworkStateEstimator> network_state_estimator_;
   RemoteEstimatorProxy proxy_;
 };
@@ -120,7 +115,7 @@ class RemoteEstimatorProxyTest : public ::testing::Test {
 TEST_F(RemoteEstimatorProxyTest, SendsSinglePacketFeedback) {
   IncomingPacket(kBaseSeq, kBaseTimeMs);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -133,7 +128,6 @@ TEST_F(RemoteEstimatorProxyTest, SendsSinglePacketFeedback) {
                         ElementsAre(kBaseSeq));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs));
-            return true;
           }));
 
   Process();
@@ -143,7 +137,7 @@ TEST_F(RemoteEstimatorProxyTest, DuplicatedPackets) {
   IncomingPacket(kBaseSeq, kBaseTimeMs);
   IncomingPacket(kBaseSeq, kBaseTimeMs + 1000);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -166,13 +160,13 @@ TEST_F(RemoteEstimatorProxyTest, FeedbackWithMissingStart) {
   // First feedback.
   IncomingPacket(kBaseSeq, kBaseTimeMs);
   IncomingPacket(kBaseSeq + 1, kBaseTimeMs + 1000);
-  EXPECT_CALL(router_, SendCombinedRtcpPacket).WillOnce(Return(true));
+  EXPECT_CALL(feedback_sender_, Call);
   Process();
 
   // Second feedback starts with a missing packet (DROP kBaseSeq + 2).
   IncomingPacket(kBaseSeq + 3, kBaseTimeMs + 3000);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -185,7 +179,6 @@ TEST_F(RemoteEstimatorProxyTest, FeedbackWithMissingStart) {
                         ElementsAre(kBaseSeq + 3));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + 3000));
-            return true;
           }));
 
   Process();
@@ -196,7 +189,7 @@ TEST_F(RemoteEstimatorProxyTest, SendsFeedbackWithVaryingDeltas) {
   IncomingPacket(kBaseSeq + 1, kBaseTimeMs + kMaxSmallDeltaMs);
   IncomingPacket(kBaseSeq + 2, kBaseTimeMs + (2 * kMaxSmallDeltaMs) + 1);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -210,7 +203,6 @@ TEST_F(RemoteEstimatorProxyTest, SendsFeedbackWithVaryingDeltas) {
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs, kBaseTimeMs + kMaxSmallDeltaMs,
                                     kBaseTimeMs + (2 * kMaxSmallDeltaMs) + 1));
-            return true;
           }));
 
   Process();
@@ -223,7 +215,7 @@ TEST_F(RemoteEstimatorProxyTest, SendsFragmentedFeedback) {
   IncomingPacket(kBaseSeq, kBaseTimeMs);
   IncomingPacket(kBaseSeq + 1, kBaseTimeMs + kTooLargeDelta);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -236,7 +228,6 @@ TEST_F(RemoteEstimatorProxyTest, SendsFragmentedFeedback) {
                         ElementsAre(kBaseSeq));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs));
-            return true;
           }))
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
@@ -250,7 +241,6 @@ TEST_F(RemoteEstimatorProxyTest, SendsFragmentedFeedback) {
                         ElementsAre(kBaseSeq + 1));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + kTooLargeDelta));
-            return true;
           }));
 
   Process();
@@ -262,7 +252,7 @@ TEST_F(RemoteEstimatorProxyTest, HandlesReorderingAndWrap) {
   IncomingPacket(kBaseSeq, kBaseTimeMs);
   IncomingPacket(kLargeSeq, kBaseTimeMs + kDeltaMs);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [&](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -273,7 +263,6 @@ TEST_F(RemoteEstimatorProxyTest, HandlesReorderingAndWrap) {
 
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + kDeltaMs, kBaseTimeMs));
-            return true;
           }));
 
   Process();
@@ -292,7 +281,7 @@ TEST_F(RemoteEstimatorProxyTest, HandlesMalformedSequenceNumbers) {
   }
 
   // Only expect feedback for the last two packets.
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [&](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -305,7 +294,6 @@ TEST_F(RemoteEstimatorProxyTest, HandlesMalformedSequenceNumbers) {
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + 28 * kDeltaMs,
                                     kBaseTimeMs + 29 * kDeltaMs));
-            return true;
           }));
 
   Process();
@@ -323,7 +311,7 @@ TEST_F(RemoteEstimatorProxyTest, HandlesBackwardsWrappingSequenceNumbers) {
   }
 
   // Only expect feedback for the first two packets.
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [&](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -335,7 +323,6 @@ TEST_F(RemoteEstimatorProxyTest, HandlesBackwardsWrappingSequenceNumbers) {
                         ElementsAre(kBaseSeq + 40000, kBaseSeq));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + kDeltaMs, kBaseTimeMs));
-            return true;
           }));
 
   Process();
@@ -345,7 +332,7 @@ TEST_F(RemoteEstimatorProxyTest, ResendsTimestampsOnReordering) {
   IncomingPacket(kBaseSeq, kBaseTimeMs);
   IncomingPacket(kBaseSeq + 2, kBaseTimeMs + 2);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -358,14 +345,13 @@ TEST_F(RemoteEstimatorProxyTest, ResendsTimestampsOnReordering) {
                         ElementsAre(kBaseSeq, kBaseSeq + 2));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs, kBaseTimeMs + 2));
-            return true;
           }));
 
   Process();
 
   IncomingPacket(kBaseSeq + 1, kBaseTimeMs + 1);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -378,7 +364,6 @@ TEST_F(RemoteEstimatorProxyTest, ResendsTimestampsOnReordering) {
                         ElementsAre(kBaseSeq + 1, kBaseSeq + 2));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + 1, kBaseTimeMs + 2));
-            return true;
           }));
 
   Process();
@@ -389,7 +374,7 @@ TEST_F(RemoteEstimatorProxyTest, RemovesTimestampsOutOfScope) {
 
   IncomingPacket(kBaseSeq + 2, kBaseTimeMs);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -399,14 +384,13 @@ TEST_F(RemoteEstimatorProxyTest, RemovesTimestampsOutOfScope) {
 
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs));
-            return true;
           }));
 
   Process();
 
   IncomingPacket(kBaseSeq + 3, kTimeoutTimeMs);  // kBaseSeq + 2 times out here.
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [&](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -416,7 +400,6 @@ TEST_F(RemoteEstimatorProxyTest, RemovesTimestampsOutOfScope) {
 
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kTimeoutTimeMs));
-            return true;
           }));
 
   Process();
@@ -426,7 +409,7 @@ TEST_F(RemoteEstimatorProxyTest, RemovesTimestampsOutOfScope) {
   IncomingPacket(kBaseSeq, kBaseTimeMs - 1);
   IncomingPacket(kBaseSeq + 1, kTimeoutTimeMs - 1);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [&](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -439,7 +422,6 @@ TEST_F(RemoteEstimatorProxyTest, RemovesTimestampsOutOfScope) {
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs - 1, kTimeoutTimeMs - 1,
                                     kTimeoutTimeMs));
-            return true;
           }));
 
   Process();
@@ -462,7 +444,7 @@ TEST_F(RemoteEstimatorProxyTest, TimeUntilNextProcessIsMinIntervalOn300kbps) {
 
 TEST_F(RemoteEstimatorProxyTest, TimeUntilNextProcessIsMaxIntervalOn0kbps) {
   Process();
-  // TimeUntilNextProcess should be limited by |kMaxSendIntervalMs| when
+  // TimeUntilNextProcess should be limited by `kMaxSendIntervalMs` when
   // bitrate is small. We choose 0 bps as a special case, which also tests
   // erroneous behaviors like division-by-zero.
   proxy_.OnBitrateChanged(0);
@@ -495,7 +477,7 @@ TEST_F(RemoteEstimatorProxyOnRequestTest, TimeUntilNextProcessIsHigh) {
 TEST_F(RemoteEstimatorProxyOnRequestTest, ProcessDoesNotSendFeedback) {
   proxy_.SetSendPeriodicFeedback(false);
   IncomingPacket(kBaseSeq, kBaseTimeMs);
-  EXPECT_CALL(router_, SendCombinedRtcpPacket).Times(0);
+  EXPECT_CALL(feedback_sender_, Call).Times(0);
   Process();
 }
 
@@ -505,7 +487,7 @@ TEST_F(RemoteEstimatorProxyOnRequestTest, RequestSinglePacketFeedback) {
   IncomingPacket(kBaseSeq + 1, kBaseTimeMs + kMaxSmallDeltaMs);
   IncomingPacket(kBaseSeq + 2, kBaseTimeMs + 2 * kMaxSmallDeltaMs);
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -518,7 +500,6 @@ TEST_F(RemoteEstimatorProxyOnRequestTest, RequestSinglePacketFeedback) {
                         ElementsAre(kBaseSeq + 3));
             EXPECT_THAT(TimestampsMs(*feedback_packet),
                         ElementsAre(kBaseTimeMs + 3 * kMaxSmallDeltaMs));
-            return true;
           }));
 
   constexpr FeedbackRequest kSinglePacketFeedbackRequest = {
@@ -534,7 +515,7 @@ TEST_F(RemoteEstimatorProxyOnRequestTest, RequestLastFivePacketFeedback) {
     IncomingPacket(kBaseSeq + i, kBaseTimeMs + i * kMaxSmallDeltaMs);
   }
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -552,7 +533,6 @@ TEST_F(RemoteEstimatorProxyOnRequestTest, RequestLastFivePacketFeedback) {
                                     kBaseTimeMs + 8 * kMaxSmallDeltaMs,
                                     kBaseTimeMs + 9 * kMaxSmallDeltaMs,
                                     kBaseTimeMs + 10 * kMaxSmallDeltaMs));
-            return true;
           }));
 
   constexpr FeedbackRequest kFivePacketsFeedbackRequest = {
@@ -570,7 +550,7 @@ TEST_F(RemoteEstimatorProxyOnRequestTest,
       IncomingPacket(kBaseSeq + i, kBaseTimeMs + i * kMaxSmallDeltaMs);
   }
 
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
+  EXPECT_CALL(feedback_sender_, Call)
       .WillOnce(Invoke(
           [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
             rtcp::TransportFeedback* feedback_packet =
@@ -585,7 +565,6 @@ TEST_F(RemoteEstimatorProxyOnRequestTest,
                         ElementsAre(kBaseTimeMs + 6 * kMaxSmallDeltaMs,
                                     kBaseTimeMs + 8 * kMaxSmallDeltaMs,
                                     kBaseTimeMs + 10 * kMaxSmallDeltaMs));
-            return true;
           }));
 
   constexpr FeedbackRequest kFivePacketsFeedbackRequest = {
@@ -595,10 +574,10 @@ TEST_F(RemoteEstimatorProxyOnRequestTest,
 }
 
 TEST_F(RemoteEstimatorProxyTest, ReportsIncomingPacketToNetworkStateEstimator) {
-  Timestamp first_send_timestamp = Timestamp::ms(0);
+  Timestamp first_send_timestamp = Timestamp::Millis(0);
   EXPECT_CALL(network_state_estimator_, OnReceivedPacket(_))
       .WillOnce(Invoke([&first_send_timestamp](const PacketResult& packet) {
-        EXPECT_EQ(packet.receive_time, Timestamp::ms(kBaseTimeMs));
+        EXPECT_EQ(packet.receive_time, Timestamp::Millis(kBaseTimeMs));
         first_send_timestamp = packet.sent_packet.send_time;
       }));
   // Incoming packet with abs sendtime but without transport sequence number.
@@ -611,7 +590,7 @@ TEST_F(RemoteEstimatorProxyTest, ReportsIncomingPacketToNetworkStateEstimator) {
   // time as the previous packet due to reordering.
   EXPECT_CALL(network_state_estimator_, OnReceivedPacket(_))
       .WillOnce(Invoke([&first_send_timestamp](const PacketResult& packet) {
-        EXPECT_EQ(packet.receive_time, Timestamp::ms(kBaseTimeMs));
+        EXPECT_EQ(packet.receive_time, Timestamp::Millis(kBaseTimeMs));
         EXPECT_EQ(packet.sent_packet.send_time, first_send_timestamp);
       }));
   proxy_.IncomingPacket(
@@ -626,12 +605,12 @@ TEST_F(RemoteEstimatorProxyTest, IncomingPacketHandlesWrapInAbsSendTime) {
       AbsoluteSendTime::MsTo24Bits((1 << 24) - 30);
   // Second abs send time has wrapped.
   const uint32_t kSecondAbsSendTime = AbsoluteSendTime::MsTo24Bits((1 << 24));
-  const TimeDelta kExpectedAbsSendTimeDelta = TimeDelta::ms(30);
+  const TimeDelta kExpectedAbsSendTimeDelta = TimeDelta::Millis(30);
 
-  Timestamp first_send_timestamp = Timestamp::ms(0);
+  Timestamp first_send_timestamp = Timestamp::Millis(0);
   EXPECT_CALL(network_state_estimator_, OnReceivedPacket(_))
       .WillOnce(Invoke([&first_send_timestamp](const PacketResult& packet) {
-        EXPECT_EQ(packet.receive_time, Timestamp::ms(kBaseTimeMs));
+        EXPECT_EQ(packet.receive_time, Timestamp::Millis(kBaseTimeMs));
         first_send_timestamp = packet.sent_packet.send_time;
       }));
   proxy_.IncomingPacket(
@@ -641,7 +620,7 @@ TEST_F(RemoteEstimatorProxyTest, IncomingPacketHandlesWrapInAbsSendTime) {
   EXPECT_CALL(network_state_estimator_, OnReceivedPacket(_))
       .WillOnce(Invoke([first_send_timestamp,
                         kExpectedAbsSendTimeDelta](const PacketResult& packet) {
-        EXPECT_EQ(packet.receive_time, Timestamp::ms(kBaseTimeMs + 123));
+        EXPECT_EQ(packet.receive_time, Timestamp::Millis(kBaseTimeMs + 123));
         EXPECT_EQ(packet.sent_packet.send_time.ms(),
                   (first_send_timestamp + kExpectedAbsSendTimeDelta).ms());
       }));
@@ -657,13 +636,7 @@ TEST_F(RemoteEstimatorProxyTest, SendTransportFeedbackAndNetworkStateUpdate) {
                    AbsoluteSendTime::MsTo24Bits(kBaseTimeMs - 1)));
   EXPECT_CALL(network_state_estimator_, GetCurrentEstimate())
       .WillOnce(Return(NetworkStateEstimate()));
-  EXPECT_CALL(router_, SendCombinedRtcpPacket)
-      .WillOnce(
-          [](std::vector<std::unique_ptr<rtcp::RtcpPacket>> feedback_packets) {
-            EXPECT_THAT(feedback_packets, SizeIs(2));
-            return true;
-          });
-
+  EXPECT_CALL(feedback_sender_, Call(SizeIs(2)));
   Process();
 }
 

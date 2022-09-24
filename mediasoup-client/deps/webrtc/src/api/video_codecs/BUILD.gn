@@ -12,16 +12,19 @@ if (is_android) {
   import("//build/config/android/rules.gni")
 }
 
-rtc_source_set("video_codecs_api") {
+rtc_library("video_codecs_api") {
   visibility = [ "*" ]
   sources = [
+    "h264_profile_level_id.cc",
+    "h264_profile_level_id.h",
     "sdp_video_format.cc",
     "sdp_video_format.h",
+    "spatial_layer.cc",
+    "spatial_layer.h",
     "video_codec.cc",
     "video_codec.h",
     "video_decoder.cc",
     "video_decoder.h",
-    "video_decoder_factory.cc",
     "video_decoder_factory.h",
     "video_encoder.cc",
     "video_encoder.h",
@@ -33,22 +36,27 @@ rtc_source_set("video_codecs_api") {
     "vp8_frame_config.h",
     "vp8_temporal_layers.cc",
     "vp8_temporal_layers.h",
+    "vp9_profile.cc",
+    "vp9_profile.h",
   ]
 
   deps = [
     "..:fec_controller_api",
     "..:scoped_refptr",
-    "../..:webrtc_common",
+    "../../api:array_view",
     "../../modules/video_coding:codec_globals_headers",
     "../../rtc_base:checks",
     "../../rtc_base:rtc_base_approved",
     "../../rtc_base/system:rtc_export",
     "../units:data_rate",
     "../video:encoded_image",
+    "../video:render_resolution",
     "../video:video_bitrate_allocation",
     "../video:video_codec_constants",
     "../video:video_frame",
     "../video:video_rtp_headers",
+  ]
+  absl_deps = [
     "//third_party/abseil-cpp/absl/algorithm:container",
     "//third_party/abseil-cpp/absl/container:inlined_vector",
     "//third_party/abseil-cpp/absl/strings",
@@ -58,15 +66,11 @@ rtc_source_set("video_codecs_api") {
 
 rtc_source_set("bitstream_parser_api") {
   visibility = [ "*" ]
-  sources = [
-    "bitstream_parser.h",
-  ]
-  deps = [
-    "..:array_view",
-  ]
+  sources = [ "bitstream_parser.h" ]
+  deps = [ "..:array_view" ]
 }
 
-rtc_static_library("builtin_video_decoder_factory") {
+rtc_library("builtin_video_decoder_factory") {
   visibility = [ "*" ]
   allow_poison = [
     "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
@@ -85,7 +89,7 @@ rtc_static_library("builtin_video_decoder_factory") {
   ]
 }
 
-rtc_static_library("builtin_video_encoder_factory") {
+rtc_library("builtin_video_encoder_factory") {
   visibility = [ "*" ]
   allow_poison = [
     "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
@@ -104,11 +108,11 @@ rtc_static_library("builtin_video_encoder_factory") {
     "../../media:rtc_media_base",
     "../../rtc_base:checks",
     "../../rtc_base/system:rtc_export",
-    "//third_party/abseil-cpp/absl/strings",
   ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/strings" ]
 }
 
-rtc_static_library("vp8_temporal_layers_factory") {
+rtc_library("vp8_temporal_layers_factory") {
   visibility = [ "*" ]
   allow_poison = [ "software_video_codecs" ]
   sources = [
@@ -125,7 +129,7 @@ rtc_static_library("vp8_temporal_layers_factory") {
   ]
 }
 
-rtc_static_library("rtc_software_fallback_wrappers") {
+rtc_library("rtc_software_fallback_wrappers") {
   visibility = [ "*" ]
 
   sources = [
@@ -138,18 +142,23 @@ rtc_static_library("rtc_software_fallback_wrappers") {
   deps = [
     ":video_codecs_api",
     "..:fec_controller_api",
-    "../../media:rtc_h264_profile_id",
+    "../../api/video:video_frame",
     "../../media:rtc_media_base",
     "../../modules/video_coding:video_codec_interface",
+    "../../modules/video_coding:video_coding_utility",
     "../../rtc_base:checks",
     "../../rtc_base:rtc_base_approved",
-    "../../rtc_base/system:fallthrough",
     "../../rtc_base/system:rtc_export",
     "../../system_wrappers:field_trial",
+    "../../system_wrappers:metrics",
     "../video:encoded_image",
     "../video:video_bitrate_allocation",
     "../video:video_frame",
     "../video:video_rtp_headers",
+  ]
+  absl_deps = [
+    "//third_party/abseil-cpp/absl/base:core_headers",
+    "//third_party/abseil-cpp/absl/strings",
     "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
