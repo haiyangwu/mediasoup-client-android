@@ -8,7 +8,7 @@ set(mediasoup_client_so_VERSION_MINOR 0)
 set(mediasoup_client_so_VERSION_PATCH 8)
 
 # C++ standard requirements.
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(
@@ -76,6 +76,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_compile_definitions(${PROJECT_NAME} PUBLIC
 	$<$<NOT:$<PLATFORM_ID:Windows>>:WEBRTC_POSIX>
 	$<$<PLATFORM_ID:Windows>:WEBRTC_WIN>
+	$<$<PLATFORM_ID:Windows>:NOMINMAX>
+	$<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
 	$<$<PLATFORM_ID:Darwin>:WEBRTC_MAC>
 )
 
