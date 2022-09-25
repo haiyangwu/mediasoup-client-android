@@ -1,5 +1,5 @@
 apply plugin: 'com.android.library'
-apply plugin: 'com.novoda.bintray-release'
+apply plugin: 'maven'
 
 // Source of webrtc.
 def WEBRTC_INC_PATH = "${projectDir}/deps/webrtc/src"
@@ -7,14 +7,14 @@ def WEBRTC_INC_PATH = "${projectDir}/deps/webrtc/src"
 def WEBRTC_LIB_PATH = "${projectDir}/deps/webrtc/lib"
 
 android {
-    compileSdkVersion 28
-    ndkVersion "20.0.5594570"
+    compileSdkVersion 31
+    ndkVersion "22.0.7026061"
 
     defaultConfig {
         minSdkVersion 18
-        targetSdkVersion 28
-        versionCode 308
-        versionName "3.0.8"
+        targetSdkVersion 31
+        versionCode 340
+        versionName '3.4.0'
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -68,11 +68,67 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 }
 
-publish {
-    userOrg = 'haiyangwu'
-    groupId = 'org.mediasoup.droid'
-    artifactId = 'mediasoup-client'
-    publishVersion = '3.0.8-beta-4'
-    desc = 'mediasoup android client side library'
-    website = 'https://github.com/haiyangwu/mediasoup-client-android'
+def getReleaseRepositoryUrl() {
+    return hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL
+            : "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+}
+
+def getSnapshotRepositoryUrl() {
+    return hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL
+            : "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+}
+
+def getRepositoryUsername() {
+    return hasProperty('NEXUS_USERNAME') ? NEXUS_USERNAME : ""
+}
+
+def getRepositoryPassword() {
+    return hasProperty('NEXUS_PASSWORD') ? NEXUS_PASSWORD : ""
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+
+            repository(url: getReleaseRepositoryUrl()) {
+                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+            }
+
+            snapshotRepository(url: getSnapshotRepositoryUrl()) {
+                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+            }
+
+            pom.project {
+                name POM_NAME
+                version POM_VERSION
+                groupId POM_GROUP
+                packaging POM_PACKAGING
+                artifactId POM_ARTIFACT_ID
+                description POM_DESCRIPTION
+                url POM_URL
+
+                scm {
+                    url POM_SCM_URL
+                    connection POM_SCM_CONNECTION
+                    developerConnection POM_SCM_DEV_CONNECTION
+                }
+
+                licenses {
+                    license {
+                        name POM_LICENCE_NAME
+                        url POM_LICENCE_URL
+                        distribution POM_LICENCE_DIST
+                    }
+                }
+
+                developers {
+                    developer {
+                        id POM_DEVELOPER_ID
+                        name POM_DEVELOPER_NAME
+                        email POM_DEVELOPER_EMAIL
+                    }
+                }
+            }
+        }
+    }
 }
