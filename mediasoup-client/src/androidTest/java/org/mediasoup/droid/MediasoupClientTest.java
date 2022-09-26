@@ -101,7 +101,7 @@ public class MediasoupClientTest extends BaseTest {
       exceptionException(
           () ->
               device.createRecvTransport(
-                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null));
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
     }
 
     // device->load() with invalid routerRtpCapabilities throws.
@@ -163,7 +163,7 @@ public class MediasoupClientTest extends BaseTest {
       recvTransportListener = new FakeTransportListener.FakeRecvTransportListener();
       recvTransport =
           device.createRecvTransport(
-              recvTransportListener, mId, mIceParameters, mIceCandidates, mDtlsParameters, null);
+              recvTransportListener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
 
       assertEquals(mId, recvTransport.getId());
       assertFalse(recvTransport.isClosed());
