@@ -64,7 +64,7 @@ public class Device {
    * Whether the device can produce media of the given kind. This depends on the media codecs
    * enabled in the mediasoup router and the media capabilities of libwebrtc.
    *
-   * @param kind “audio” or “video”.
+   * @param kind "audio" or "video".
    * @return bool
    * @throws MediasoupException, if device not loaded or if invalid kind
    */
@@ -75,7 +75,8 @@ public class Device {
 
   /**
    * Creates a new WebRTC transport to send media. The transport must be previously created in the
-   * mediasoup router via <a href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   * mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
    *
    * @param listener The identifier of the server side transport.
    * @param id The identifier of the server side transport.
@@ -98,7 +99,8 @@ public class Device {
 
   /**
    * Creates a new WebRTC transport to send media. The transport must be previously created in the
-   * mediasoup router via <a href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   * mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
    *
    * @param listener The identifier of the server side transport.
    * @param id The identifier of the server side transport.
@@ -133,8 +135,9 @@ public class Device {
   }
 
   /**
-   * Creates a new WebRTC transport to receive media. The transport must be previously created in the
-   * mediasoup router via <a href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   * Creates a new WebRTC transport to receive media. The transport must be previously created in
+   * the mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
    *
    * @param listener The identifier of the server side transport.
    * @param id The identifier of the server side transport.
@@ -156,8 +159,9 @@ public class Device {
   }
 
   /**
-   * Creates a new WebRTC transport to receive media. The transport must be previously created in the
-   * mediasoup router via <a href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   * Creates a new WebRTC transport to receive media. The transport must be previously created in
+   * the mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
    *
    * @param listener The identifier of the server side transport.
    * @param id The identifier of the server side transport.
