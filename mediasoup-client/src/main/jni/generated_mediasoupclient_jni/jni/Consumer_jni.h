@@ -61,6 +61,16 @@ JNI_GENERATOR_EXPORT jstring Java_org_mediasoup_droid_Consumer_nativeGetNativeId
   return JNI_Consumer_GetNativeId(env, consumer).Release();
 }
 
+static base::android::ScopedJavaLocalRef<jstring> JNI_Consumer_GetLocalId(JNIEnv* env, jlong
+    consumer);
+
+JNI_GENERATOR_EXPORT jstring Java_org_mediasoup_droid_Consumer_nativeGetLocalId(
+    JNIEnv* env,
+    jclass jcaller,
+    jlong consumer) {
+  return JNI_Consumer_GetLocalId(env, consumer).Release();
+}
+
 static base::android::ScopedJavaLocalRef<jstring> JNI_Consumer_GetProducerId(JNIEnv* env, jlong
     consumer);
 

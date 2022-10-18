@@ -29,6 +29,10 @@ public class Consumer {
     return nativeGetNativeId(mNativeConsumer);
   }
 
+  public String getLocalId() {
+    return nativeGetLocalId(mNativeConsumer);
+  }
+
   public String getProducerId() {
     return nativeGetProducerId(mNativeConsumer);
   }
@@ -74,6 +78,8 @@ public class Consumer {
   }
 
   private static native String nativeGetNativeId(long consumer);
+
+  private static native String nativeGetLocalId(long consumer);
 
   private static native String nativeGetProducerId(long consumer);
 

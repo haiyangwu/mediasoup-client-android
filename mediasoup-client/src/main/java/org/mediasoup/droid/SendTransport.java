@@ -14,6 +14,10 @@ public class SendTransport extends Transport {
     /** @return producer Id */
     @CalledByNative("Listener")
     String onProduce(Transport transport, String kind, String rtpParameters, String appData);
+
+    /** @return producer Id */
+    @CalledByNative("Listener")
+    String onProduceData(Transport transport, String sctpStreamParameters, String label, String protocol, String appData);
   }
 
   private long mNativeTransport;
@@ -44,9 +48,10 @@ public class SendTransport extends Transport {
       Producer.Listener listener,
       MediaStreamTrack track,
       List<RtpParameters.Encoding> encodings,
-      String codecOptions)
+      String codecOptions,
+      String codec)
       throws MediasoupException {
-    return produce(listener, track, encodings, codecOptions, null);
+    return produce(listener, track, encodings, codecOptions, codec, null);
   }
 
   public Producer produce(
@@ -54,6 +59,7 @@ public class SendTransport extends Transport {
       MediaStreamTrack track,
       List<RtpParameters.Encoding> encodings,
       String codecOptions,
+      String codec,
       String appData)
       throws MediasoupException {
     checkTransportExists();
@@ -64,7 +70,7 @@ public class SendTransport extends Transport {
       encodings.toArray(pEncodings);
     }
     return nativeProduce(
-        mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, appData);
+        mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, codec, appData);
   }
 
   private static native long nativeGetNativeTransport(long transport);
@@ -76,6 +82,7 @@ public class SendTransport extends Transport {
       long track,
       RtpParameters.Encoding[] encodings,
       String codecOptions,
+      String codec,
       String appData);
 
   private static native void nativeFreeTransport(long transport);

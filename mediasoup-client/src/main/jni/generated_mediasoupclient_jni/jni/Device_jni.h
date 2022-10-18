@@ -90,6 +90,16 @@ JNI_GENERATOR_EXPORT jstring Java_org_mediasoup_droid_Device_nativeGetRtpCapabil
   return JNI_Device_GetRtpCapabilities(env, device).Release();
 }
 
+static base::android::ScopedJavaLocalRef<jstring> JNI_Device_GetSctpCapabilities(JNIEnv* env, jlong
+    device);
+
+JNI_GENERATOR_EXPORT jstring Java_org_mediasoup_droid_Device_nativeGetSctpCapabilities(
+    JNIEnv* env,
+    jclass jcaller,
+    jlong device) {
+  return JNI_Device_GetSctpCapabilities(env, device).Release();
+}
+
 static jboolean JNI_Device_CanProduce(JNIEnv* env, jlong device,
     const base::android::JavaParamRef<jstring>& kind);
 
@@ -108,6 +118,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport
     const base::android::JavaParamRef<jstring>& iceParameters,
     const base::android::JavaParamRef<jstring>& iceCandidates,
     const base::android::JavaParamRef<jstring>& dtlsParameters,
+    const base::android::JavaParamRef<jstring>& sctpParameters,
     const base::android::JavaParamRef<jobject>& configuration,
     jlong peerConnectionFactory,
     const base::android::JavaParamRef<jstring>& appData);
@@ -121,6 +132,7 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_Device_nativeCreateSendTra
     jstring iceParameters,
     jstring iceCandidates,
     jstring dtlsParameters,
+    jstring sctpParameters,
     jobject configuration,
     jlong peerConnectionFactory,
     jstring appData) {
@@ -129,6 +141,7 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_Device_nativeCreateSendTra
       base::android::JavaParamRef<jstring>(env, iceParameters),
       base::android::JavaParamRef<jstring>(env, iceCandidates),
       base::android::JavaParamRef<jstring>(env, dtlsParameters),
+      base::android::JavaParamRef<jstring>(env, sctpParameters),
       base::android::JavaParamRef<jobject>(env, configuration), peerConnectionFactory,
       base::android::JavaParamRef<jstring>(env, appData)).Release();
 }
@@ -140,6 +153,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport
     const base::android::JavaParamRef<jstring>& iceParameters,
     const base::android::JavaParamRef<jstring>& iceCandidates,
     const base::android::JavaParamRef<jstring>& dtlsParameters,
+    const base::android::JavaParamRef<jstring>& sctpParameters,
     const base::android::JavaParamRef<jobject>& configuration,
     jlong peerConnectionFactory,
     const base::android::JavaParamRef<jstring>& appData);
@@ -153,6 +167,7 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_Device_nativeCreateRecvTra
     jstring iceParameters,
     jstring iceCandidates,
     jstring dtlsParameters,
+    jstring sctpParameters,
     jobject configuration,
     jlong peerConnectionFactory,
     jstring appData) {
@@ -161,6 +176,7 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_Device_nativeCreateRecvTra
       base::android::JavaParamRef<jstring>(env, iceParameters),
       base::android::JavaParamRef<jstring>(env, iceCandidates),
       base::android::JavaParamRef<jstring>(env, dtlsParameters),
+      base::android::JavaParamRef<jstring>(env, sctpParameters),
       base::android::JavaParamRef<jobject>(env, configuration), peerConnectionFactory,
       base::android::JavaParamRef<jstring>(env, appData)).Release();
 }

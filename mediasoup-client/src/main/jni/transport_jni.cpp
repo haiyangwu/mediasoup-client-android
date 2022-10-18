@@ -47,6 +47,23 @@ std::future<std::string> SendTransportListenerJni::OnProduce(
 	return promise.get_future();
 }
 
+std::future<std::string> SendTransportListenerJni::OnProduceData(
+		SendTransport* transport, const json& sctpStreamParameters, const std::string& label, const std::string& protocol, const json& appData)
+{
+	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
+	auto result = Java_Listener_onProduceData(
+	  env,
+	  j_listener_,
+	  j_transport_,
+	  NativeToJavaString(env, sctpStreamParameters.dump()),
+	  NativeToJavaString(env, label),
+	  NativeToJavaString(env, protocol),
+	  NativeToJavaString(env, appData.dump()));
+	std::promise<std::string> promise;
+	promise.set_value(JavaToNativeString(env, result));
+	return promise.get_future();
+}
+
 std::future<void> RecvTransportListenerJni::OnConnect(Transport* /*transport*/, const json& dtlsParameters)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
@@ -189,6 +206,7 @@ static ScopedJavaLocalRef<jobject> JNI_SendTransport_Produce(
   jlong j_track,
   const JavaParamRef<jobjectArray>& j_encodings,
   const JavaParamRef<jstring>& j_codecOptions,
+  const JavaParamRef<jstring>& j_codec,
   const JavaParamRef<jstring>& j_appData)
 {
 	MSC_TRACE();
@@ -205,18 +223,28 @@ static ScopedJavaLocalRef<jobject> JNI_SendTransport_Produce(
 			  webrtc::JavaParamRef<jobjectArray>(j_encodings.obj()),
 			  &webrtc::jni::JavaToNativeRtpEncodingParameters);
 		}
-		json codecOptions = json::object();
+		json* codecOptions = nullptr;
+		json codecOptionsJson;
 		if (!j_codecOptions.is_null())
 		{
-			codecOptions = json::parse(JavaToNativeString(env, j_codecOptions));
+			codecOptionsJson = json::parse(JavaToNativeString(env, j_codecOptions));
+			codecOptions = &codecOptionsJson;
 		}
+		json* codec = nullptr;
+		json codecJson;
+		if (!j_codec.is_null())
+		{
+			codecJson = json::parse(JavaToNativeString(env, j_codec));
+			codec = &codecJson;
+		}
+
 		json appData = json::object();
 		if (!j_appData.is_null())
 		{
 			appData = json::parse(JavaToNativeString(env, j_appData));
 		}
 		auto transport = (reinterpret_cast<OwnedSendTransport*>(j_transport))->transport();
-		auto producer  = transport->Produce(listener, track, &encodings, &codecOptions, appData);
+		auto producer  = transport->Produce(listener, track, &encodings, codecOptions, codec, appData);
 		return NativeToJavaProducer(env, producer, listener);
 	}
 	catch (const std::exception& e)

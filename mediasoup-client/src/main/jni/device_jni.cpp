@@ -76,6 +76,23 @@ static ScopedJavaLocalRef<jstring> JNI_Device_GetRtpCapabilities(JNIEnv* env, jl
 	}
 }
 
+static ScopedJavaLocalRef<jstring> JNI_Device_GetSctpCapabilities(JNIEnv* env, jlong j_device)
+{
+	MSC_TRACE();
+
+	try
+	{
+		auto rtpCap = reinterpret_cast<Device*>(j_device)->GetSctpCapabilities().dump();
+		return NativeToJavaString(env, rtpCap);
+	}
+	catch (const std::exception& e)
+	{
+		MSC_ERROR("%s", e.what());
+		THROW_MEDIASOUP_CLIENT_EXCEPTION(env, e);
+		return nullptr;
+	}
+}
+
 static jboolean JNI_Device_CanProduce(JNIEnv* env, jlong j_device, const JavaParamRef<jstring>& j_kind)
 {
 	MSC_TRACE();
@@ -102,6 +119,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport(
   const JavaParamRef<jstring>& j_iceParameters,
   const JavaParamRef<jstring>& j_iceCandidates,
   const JavaParamRef<jstring>& j_dtlsParameters,
+  const JavaParamRef<jstring>& j_sctpParameters,
   const JavaParamRef<jobject>& j_config,
   jlong j_peerConnection_factory,
   const JavaParamRef<jstring>& j_appData)
@@ -114,6 +132,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport(
 		auto iceParameters  = JavaToNativeString(env, j_iceParameters);
 		auto iceCandidates  = JavaToNativeString(env, j_iceCandidates);
 		auto dtlsParameters = JavaToNativeString(env, j_dtlsParameters);
+		auto sctpParameters = JavaToNativeString(env, j_sctpParameters);
 
 		PeerConnection::Options options;
 		JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
@@ -130,6 +149,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport(
 		  json::parse(iceParameters),
 		  json::parse(iceCandidates),
 		  json::parse(dtlsParameters),
+		  json::parse(sctpParameters),
 		  &options,
 		  appData);
 		return NativeToJavaSendTransport(env, transport, listener);
@@ -150,6 +170,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
   const JavaParamRef<jstring>& j_iceParameters,
   const JavaParamRef<jstring>& j_iceCandidates,
   const JavaParamRef<jstring>& j_dtlsParameters,
+  const JavaParamRef<jstring>& j_sctpParameters,
   const JavaParamRef<jobject>& j_config,
   jlong j_peerConnection_factory,
   const JavaParamRef<jstring>& j_appData)
@@ -162,6 +183,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
 		auto iceParameters  = JavaToNativeString(env, j_iceParameters);
 		auto iceCandidates  = JavaToNativeString(env, j_iceCandidates);
 		auto dtlsParameters = JavaToNativeString(env, j_dtlsParameters);
+		auto sctpParameters = JavaToNativeString(env, j_sctpParameters);
 
 		PeerConnection::Options options;
 		JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
@@ -178,6 +200,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
 		  json::parse(iceParameters),
 		  json::parse(iceCandidates),
 		  json::parse(dtlsParameters),
+		  json::parse(sctpParameters),
 		  &options,
 		  appData);
 
