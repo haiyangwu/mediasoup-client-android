@@ -92,7 +92,10 @@ def getRepositoryPassword() {
 
 publishing {
     publications {
-        mavenJava(MavenPublication) {
+        aar(MavenPublication) {
+            afterEvaluate {
+                artifact bundleReleaseAar
+            }
             pom {
                 name = POM_NAME
                 version = POM_VERSION
