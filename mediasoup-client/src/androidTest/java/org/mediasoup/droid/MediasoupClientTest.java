@@ -27,7 +27,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mediasoup.droid.Utils.exceptionException;
 import static org.mediasoup.droid.data.Parameters.nativeGenTransportRemoteParameters;
 
-
 @RunWith(AndroidJUnit4.class)
 public class MediasoupClientTest extends BaseTest {
 

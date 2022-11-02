@@ -50,7 +50,7 @@ public class PeerConnectionTest extends BaseTest{
     PeerConnection.PrivateListener listener = new PeerConnection.PrivateListener();
 
     List<org.webrtc.PeerConnection.IceServer> iceServerUris = new ArrayList<>();
-    iceServerUris.add(new org.webrtc.PeerConnection.IceServer("Wrong URI"));
+    iceServerUris.add(org.webrtc.PeerConnection.IceServer.builder("Wrong URI").createIceServer());
     org.webrtc.PeerConnection.RTCConfiguration rtcConfiguration =
         new org.webrtc.PeerConnection.RTCConfiguration(iceServerUris);
 

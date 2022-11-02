@@ -36,7 +36,6 @@ public class DeviceTest extends BaseTest {
       mIceCandidates = transportRemoteParameters.getString("iceCandidates");
       mDtlsParameters = transportRemoteParameters.getString("dtlsParameters");
       mSctpParameters = transportRemoteParameters.getString("sctpParameters");
-
     } catch (JSONException e) {
       e.printStackTrace();
     }

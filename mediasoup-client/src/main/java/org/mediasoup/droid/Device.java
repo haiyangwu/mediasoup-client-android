@@ -103,11 +103,10 @@ public class Device {
       @NonNull String id,
       @NonNull String iceParameters,
       @NonNull String iceCandidates,
-      @NonNull String dtlsParameters,
-      @NonNull String sctpParameters)
+      @NonNull String dtlsParameters)
       throws MediasoupException {
     return createSendTransport(
-        listener, id, iceParameters, iceCandidates, dtlsParameters, sctpParameters, null, null);
+        listener, id, iceParameters, iceCandidates, dtlsParameters, null, null, null);
   }
 
   /**
@@ -120,6 +119,7 @@ public class Device {
    * @param iceParameters ICE parameters of the server side transport.
    * @param iceCandidates ICE candidates of the server side transport.
    * @param dtlsParameters DTLS parameters of the server side transport.
+   * @param sctpParameters SCTP parameters of teh server side transport.
    * @return {@link SendTransport}
    * @throws MediasoupException, if device not loaded
    */
@@ -129,7 +129,33 @@ public class Device {
       @NonNull String iceParameters,
       @NonNull String iceCandidates,
       @NonNull String dtlsParameters,
-      @NonNull String sctpParameters,
+      @Nullable String sctpParameters)
+      throws MediasoupException {
+    return createSendTransport(
+            listener, id, iceParameters, iceCandidates, dtlsParameters, sctpParameters, null, null);
+  }
+
+  /**
+   * Creates a new WebRTC transport to send media. The transport must be previously created in the
+   * mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   *
+   * @param listener The identifier of the server side transport.
+   * @param id The identifier of the server side transport.
+   * @param iceParameters ICE parameters of the server side transport.
+   * @param iceCandidates ICE candidates of the server side transport.
+   * @param dtlsParameters DTLS parameters of the server side transport.
+   * @param sctpParameters SCTP parameters of teh server side transport.
+   * @return {@link SendTransport}
+   * @throws MediasoupException, if device not loaded
+   */
+  public SendTransport createSendTransport(
+      @NonNull SendTransport.Listener listener,
+      @NonNull String id,
+      @NonNull String iceParameters,
+      @NonNull String iceCandidates,
+      @NonNull String dtlsParameters,
+      @Nullable String sctpParameters,
       @Nullable PeerConnection.Options options,
       @Nullable String appData)
       throws MediasoupException {
@@ -167,11 +193,10 @@ public class Device {
       @NonNull String id,
       @NonNull String iceParameters,
       @NonNull String iceCandidates,
-      @NonNull String dtlsParameters,
-      @NonNull String sctpParameters)
+      @NonNull String dtlsParameters)
       throws MediasoupException {
     return createRecvTransport(
-        listener, id, iceParameters, iceCandidates, dtlsParameters, sctpParameters, null, null);
+            listener, id, iceParameters, iceCandidates, dtlsParameters, null, null, null);
   }
 
   /**
@@ -184,6 +209,32 @@ public class Device {
    * @param iceParameters ICE parameters of the server side transport.
    * @param iceCandidates ICE candidates of the server side transport.
    * @param dtlsParameters DTLS parameters of the server side transport.
+   * @param sctpParameters SCTP parameters of teh server side transport.
+   * @return {@link RecvTransport}
+   * @throws MediasoupException , if device not loaded
+   */
+  public RecvTransport createRecvTransport(
+      @NonNull RecvTransport.Listener listener,
+      @NonNull String id,
+      @NonNull String iceParameters,
+      @NonNull String iceCandidates,
+      @NonNull String dtlsParameters,
+      @Nullable String sctpParameters)
+      throws MediasoupException {
+    return createRecvTransport(
+            listener, id, iceParameters, iceCandidates, dtlsParameters, sctpParameters, null, null);
+  }
+  /**
+   * Creates a new WebRTC transport to receive media. The transport must be previously created in
+   * the mediasoup router via <a
+   * href="https://mediasoup.org/documentation/v3/mediasoup/api/#router-createWebRtcTransport">router.createWebRtcTransport()</a>.
+   *
+   * @param listener The identifier of the server side transport.
+   * @param id The identifier of the server side transport.
+   * @param iceParameters ICE parameters of the server side transport.
+   * @param iceCandidates ICE candidates of the server side transport.
+   * @param dtlsParameters DTLS parameters of the server side transport.
+   * @param sctpParameters SCTP parameters of teh server side transport.
    * @param options PeerConnection options.
    * @param appData Custom application data.
    * @return {@link RecvTransport}
@@ -195,7 +246,7 @@ public class Device {
       @NonNull String iceParameters,
       @NonNull String iceCandidates,
       @NonNull String dtlsParameters,
-      @NonNull String sctpParameters,
+      @Nullable String sctpParameters,
       @Nullable PeerConnection.Options options,
       @Nullable String appData)
       throws MediasoupException {
