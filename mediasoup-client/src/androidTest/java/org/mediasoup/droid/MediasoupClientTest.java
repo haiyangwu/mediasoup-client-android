@@ -34,6 +34,7 @@ public class MediasoupClientTest extends BaseTest {
   private String mIceParameters;
   private String mIceCandidates;
   private String mDtlsParameters;
+  private String mSctpParameters;
 
   @Override
   @Before
@@ -45,6 +46,7 @@ public class MediasoupClientTest extends BaseTest {
       mIceParameters = transportRemoteParameters.getString("iceParameters");
       mIceCandidates = transportRemoteParameters.getString("iceCandidates");
       mDtlsParameters = transportRemoteParameters.getString("dtlsParameters");
+      mSctpParameters = transportRemoteParameters.getString("sctpParameters");
     } catch (JSONException e) {
       e.printStackTrace();
       throw new IllegalStateException(e.getMessage());
@@ -101,7 +103,7 @@ public class MediasoupClientTest extends BaseTest {
       exceptionException(
           () ->
               device.createRecvTransport(
-                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters));
     }
 
     // device->load() with invalid routerRtpCapabilities throws.
@@ -150,6 +152,7 @@ public class MediasoupClientTest extends BaseTest {
               mIceParameters,
               mIceCandidates,
               mDtlsParameters,
+              mSctpParameters,
               null,
               appData);
 
@@ -163,7 +166,7 @@ public class MediasoupClientTest extends BaseTest {
       recvTransportListener = new FakeTransportListener.FakeRecvTransportListener();
       recvTransport =
           device.createRecvTransport(
-              recvTransportListener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+              recvTransportListener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters);
 
       assertEquals(mId, recvTransport.getId());
       assertFalse(recvTransport.isClosed());
@@ -176,9 +179,9 @@ public class MediasoupClientTest extends BaseTest {
       String appData = "{\"baz\":\"BAZ\"}";
 
       List<RtpParameters.Encoding> encodings = new ArrayList<>();
-      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 0, 0, 0, 0, 1.0d, 1L));
-      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 0, 0, 0, 0, 1.0d, 2L));
-      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 0, 0, 0, 0, 1.0d, 3L));
+      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 1.0d, 1, 0, 0, 0, 0, 1.0d, 1L, false));
+      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 1.0d, 1, 0, 0, 0, 0, 1.0d, 2L, false));
+      encodings.add(RTCUtils.genRtpEncodingParameters(null, false, 1.0d, 1, 0, 0, 0, 0, 1.0d, 3L, false));
 
       audioTrack = PeerConnectionUtils.createAudioTrack(mContext, "audio-track-id");
       assertNotEquals(0, RTCUtils.getNativeMediaStreamTrack(audioTrack));
@@ -190,7 +193,7 @@ public class MediasoupClientTest extends BaseTest {
 
       String codecOptions = "{\"opusStereo\":true,\"opusDtx\":true}";
       audioProducer =
-          sendTransport.produce(producerListener, audioTrack, null, codecOptions, appData);
+          sendTransport.produce(producerListener, audioTrack, null, codecOptions, null, appData);
 
       assertEquals(
           ++sendTransportListener.mOnConnectExpectedTimesCalled,
@@ -279,7 +282,7 @@ public class MediasoupClientTest extends BaseTest {
 
     // transport.produce() without track throws.
     {
-      exceptionException(() -> sendTransport.produce(producerListener, null, null, null));
+      exceptionException(() -> sendTransport.produce(producerListener, null, null, null, null, null));
     }
 
     // transport.consume() succeeds.
@@ -630,7 +633,7 @@ public class MediasoupClientTest extends BaseTest {
 
     // transport.produce() throws if closed.
     {
-      exceptionException(() -> sendTransport.produce(producerListener, audioTrack, null, null));
+      exceptionException(() -> sendTransport.produce(producerListener, audioTrack, null, null, null));
     }
 
     // transport.consume() throws if closed.
@@ -679,6 +682,6 @@ public class MediasoupClientTest extends BaseTest {
 
   @Test
   public void version() {
-    assertEquals(MediasoupClient.version(), BuildConfig.VERSION_NAME);
+    assertEquals(MediasoupClient.version(), "3.4.0");
   }
 }

@@ -31,6 +31,14 @@ static ScopedJavaLocalRef<jstring> JNI_Consumer_GetNativeId(JNIEnv* env, jlong j
 	return NativeToJavaString(env, result);
 }
 
+static ScopedJavaLocalRef<jstring> JNI_Consumer_GetLocalId(JNIEnv* env, jlong j_consumer)
+{
+	MSC_TRACE();
+
+	auto result = reinterpret_cast<OwnedConsumer*>(j_consumer)->consumer()->GetLocalId();
+	return NativeToJavaString(env, result);
+}
+
 static ScopedJavaLocalRef<jstring> JNI_Consumer_GetProducerId(JNIEnv* env, jlong j_consumer)
 {
 	MSC_TRACE();

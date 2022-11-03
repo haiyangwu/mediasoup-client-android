@@ -23,6 +23,7 @@ public class DeviceTest extends BaseTest {
   private String mIceParameters;
   private String mIceCandidates;
   private String mDtlsParameters;
+  private String mSctpParameters;
   private Device mDevice;
 
   @Before
@@ -34,6 +35,7 @@ public class DeviceTest extends BaseTest {
       mIceParameters = transportRemoteParameters.getString("iceParameters");
       mIceCandidates = transportRemoteParameters.getString("iceCandidates");
       mDtlsParameters = transportRemoteParameters.getString("dtlsParameters");
+      mSctpParameters = transportRemoteParameters.getString("sctpParameters");
     } catch (JSONException e) {
       e.printStackTrace();
     }
@@ -70,7 +72,7 @@ public class DeviceTest extends BaseTest {
       exceptionException(
           () ->
               mDevice.createSendTransport(
-                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters));
     }
 
     // 'device->CreateRecvTransport()' fails if not loaded.
@@ -80,7 +82,7 @@ public class DeviceTest extends BaseTest {
       exceptionException(
           () ->
               mDevice.createRecvTransport(
-                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters));
+                  listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters));
     }
   }
 
@@ -116,7 +118,7 @@ public class DeviceTest extends BaseTest {
           new FakeTransportListener.FakeSendTransportListener();
       SendTransport transport =
           mDevice.createSendTransport(
-              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters);
       transport.dispose();
     }
 
@@ -126,7 +128,7 @@ public class DeviceTest extends BaseTest {
           new FakeTransportListener.FakeRecvTransportListener();
       RecvTransport transport =
           mDevice.createRecvTransport(
-              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters);
+              listener, mId, mIceParameters, mIceCandidates, mDtlsParameters, mSctpParameters);
       transport.dispose();
     }
   }

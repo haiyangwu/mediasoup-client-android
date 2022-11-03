@@ -68,6 +68,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_SendTransport_Produce(JNIE
     jlong track,
     const base::android::JavaParamRef<jobjectArray>& encodings,
     const base::android::JavaParamRef<jstring>& codecOptions,
+    const base::android::JavaParamRef<jstring>& codec,
     const base::android::JavaParamRef<jstring>& appData);
 
 JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_SendTransport_nativeProduce(
@@ -78,11 +79,13 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_SendTransport_nativeProduc
     jlong track,
     jobjectArray encodings,
     jstring codecOptions,
+    jstring codec,
     jstring appData) {
   return JNI_SendTransport_Produce(env, transport, base::android::JavaParamRef<jobject>(env,
       listener), track, base::android::JavaParamRef<jobjectArray>(env, encodings),
       base::android::JavaParamRef<jstring>(env, codecOptions),
-      base::android::JavaParamRef<jstring>(env, appData)).Release();
+      base::android::JavaParamRef<jstring>(env, codec), base::android::JavaParamRef<jstring>(env,
+      appData)).Release();
 }
 
 static void JNI_SendTransport_FreeTransport(JNIEnv* env, jlong transport);
@@ -118,6 +121,34 @@ static base::android::ScopedJavaLocalRef<jstring> Java_Listener_onProduce(JNIEnv
       static_cast<jstring>(env->CallObjectMethod(obj.obj(),
           call_context.base.method_id, transport.obj(), kind.obj(), rtpParameters.obj(),
               appData.obj()));
+  return base::android::ScopedJavaLocalRef<jstring>(env, ret);
+}
+
+static std::atomic<jmethodID>
+    g_org_mediasoup_droid_SendTransport_00024Listener_onProduceData(nullptr);
+static base::android::ScopedJavaLocalRef<jstring> Java_Listener_onProduceData(JNIEnv* env, const
+    base::android::JavaRef<jobject>& obj, const base::android::JavaRef<jobject>& transport,
+    const base::android::JavaRef<jstring>& sctpStreamParameters,
+    const base::android::JavaRef<jstring>& label,
+    const base::android::JavaRef<jstring>& protocol,
+    const base::android::JavaRef<jstring>& appData) {
+  jclass clazz = org_mediasoup_droid_SendTransport_00024Listener_clazz(env);
+  CHECK_CLAZZ(env, obj.obj(),
+      org_mediasoup_droid_SendTransport_00024Listener_clazz(env), NULL);
+
+  jni_generator::JniJavaCallContextChecked call_context;
+  call_context.Init<
+      base::android::MethodID::TYPE_INSTANCE>(
+          env,
+          clazz,
+          "onProduceData",
+"(Lorg/mediasoup/droid/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+          &g_org_mediasoup_droid_SendTransport_00024Listener_onProduceData);
+
+  jstring ret =
+      static_cast<jstring>(env->CallObjectMethod(obj.obj(),
+          call_context.base.method_id, transport.obj(), sctpStreamParameters.obj(), label.obj(),
+              protocol.obj(), appData.obj()));
   return base::android::ScopedJavaLocalRef<jstring>(env, ret);
 }
 

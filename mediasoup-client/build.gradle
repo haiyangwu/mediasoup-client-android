@@ -1,5 +1,7 @@
-apply plugin: 'com.android.library'
-apply plugin: 'maven'
+plugins {
+    id 'com.android.library'
+    id 'maven-publish'
+}
 
 // Source of webrtc.
 def WEBRTC_INC_PATH = "${projectDir}/deps/webrtc/src"
@@ -8,7 +10,7 @@ def WEBRTC_LIB_PATH = "${projectDir}/deps/webrtc/lib"
 
 android {
     compileSdkVersion 31
-    ndkVersion "22.0.7026061"
+    ndkVersion '22.0.7026061'
 
     defaultConfig {
         minSdkVersion 18
@@ -86,48 +88,52 @@ def getRepositoryPassword() {
     return hasProperty('NEXUS_PASSWORD') ? NEXUS_PASSWORD : ""
 }
 
-uploadArchives {
-    repositories {
-        mavenDeployer {
 
-            repository(url: getReleaseRepositoryUrl()) {
-                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+publishing {
+    publications {
+        aar(MavenPublication) {
+            afterEvaluate {
+                artifact bundleReleaseAar
             }
-
-            snapshotRepository(url: getSnapshotRepositoryUrl()) {
-                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
-            }
-
-            pom.project {
-                name POM_NAME
-                version POM_VERSION
-                groupId POM_GROUP
-                packaging POM_PACKAGING
-                artifactId POM_ARTIFACT_ID
-                description POM_DESCRIPTION
-                url POM_URL
+            pom {
+                name = POM_NAME
+                version = POM_VERSION
+                groupId = POM_GROUP
+                packaging = POM_PACKAGING
+                artifactId = POM_ARTIFACT_ID
+                description = POM_DESCRIPTION
+                url = POM_URL
 
                 scm {
-                    url POM_SCM_URL
-                    connection POM_SCM_CONNECTION
-                    developerConnection POM_SCM_DEV_CONNECTION
+                    url = POM_SCM_URL
+                    connection = POM_SCM_CONNECTION
+                    developerConnection = POM_SCM_DEV_CONNECTION
                 }
 
                 licenses {
                     license {
-                        name POM_LICENCE_NAME
-                        url POM_LICENCE_URL
-                        distribution POM_LICENCE_DIST
+                        name = POM_LICENCE_NAME
+                        url = POM_LICENCE_URL
+                        distribution = POM_LICENCE_DIST
                     }
                 }
 
                 developers {
                     developer {
-                        id POM_DEVELOPER_ID
-                        name POM_DEVELOPER_NAME
-                        email POM_DEVELOPER_EMAIL
+                        id = POM_DEVELOPER_ID
+                        name = POM_DEVELOPER_NAME
+                        email = POM_DEVELOPER_EMAIL
                     }
                 }
+            }
+        }
+    }
+    repositories {
+        maven {
+            url = POM_VERSION.endsWith("SNAPSHOT") ? getSnapshotRepositoryUrl() : getReleaseRepositoryUrl()
+            credentials {
+                username = getRepositoryUsername()
+                password = getRepositoryPassword()
             }
         }
     }
