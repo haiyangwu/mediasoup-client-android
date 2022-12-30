@@ -132,7 +132,6 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport(
 		auto iceParameters  = JavaToNativeString(env, j_iceParameters);
 		auto iceCandidates  = JavaToNativeString(env, j_iceCandidates);
 		auto dtlsParameters = JavaToNativeString(env, j_dtlsParameters);
-		auto sctpParameters = JavaToNativeString(env, j_sctpParameters);
 
 		PeerConnection::Options options;
 		JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
@@ -143,13 +142,19 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateSendTransport(
 			appData = json::parse(JavaToNativeString(env, j_appData));
 		}
 
+		json sctpParameters;
+		if (!j_sctpParameters.is_null())
+		{
+			sctpParameters = json::parse(JavaToNativeString(env, j_sctpParameters));
+		}
+
 		auto transport = reinterpret_cast<Device*>(j_device)->CreateSendTransport(
 		  listener,
 		  JavaToNativeString(env, j_id),
 		  json::parse(iceParameters),
 		  json::parse(iceCandidates),
 		  json::parse(dtlsParameters),
-		  json::parse(sctpParameters),
+		  sctpParameters,
 		  &options,
 		  appData);
 		return NativeToJavaSendTransport(env, transport, listener);
@@ -183,7 +188,6 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
 		auto iceParameters  = JavaToNativeString(env, j_iceParameters);
 		auto iceCandidates  = JavaToNativeString(env, j_iceCandidates);
 		auto dtlsParameters = JavaToNativeString(env, j_dtlsParameters);
-		auto sctpParameters = JavaToNativeString(env, j_sctpParameters);
 
 		PeerConnection::Options options;
 		JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
@@ -193,6 +197,11 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
 		{
 			appData = json::parse(JavaToNativeString(env, j_appData));
 		}
+		json sctpParameters;
+		if (!j_sctpParameters.is_null())
+		{
+			sctpParameters = json::parse(JavaToNativeString(env, j_sctpParameters));
+		}
 
 		auto transport = reinterpret_cast<Device*>(j_device)->CreateRecvTransport(
 		  listener,
@@ -200,7 +209,7 @@ static ScopedJavaLocalRef<jobject> JNI_Device_CreateRecvTransport(
 		  json::parse(iceParameters),
 		  json::parse(iceCandidates),
 		  json::parse(dtlsParameters),
-		  json::parse(sctpParameters),
+		  sctpParameters,
 		  &options,
 		  appData);
 
