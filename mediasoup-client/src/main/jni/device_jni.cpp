@@ -40,8 +40,8 @@ static void JNI_Device_Load(
 	try
 	{
 		auto capabilities = JavaToNativeString(env, j_routerRtpCapabilities);
-        PeerConnection::Options options;
-        JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
+		PeerConnection::Options options;
+		JavaToNativeOptions(env, j_config, j_peerConnection_factory, options);
 		reinterpret_cast<Device*>(j_device)->Load(json::parse(capabilities), &options);
 	}
 	catch (const std::exception& e)

@@ -23,7 +23,11 @@ public:
 	  SendTransport* transport, const std::string& kind, json rtpParameters, const json& appData) override;
 
 	std::future<std::string> OnProduceData(
-	  SendTransport* transport, const json& sctpStreamParameters, const std::string& label, const std::string& protocol, const json& appData) override;
+	  SendTransport* transport,
+	  const json& sctpStreamParameters,
+	  const std::string& label,
+	  const std::string& protocol,
+	  const json& appData) override;
 
 public:
 	void SetJTransport(JNIEnv* env, const JavaRef<jobject>& j_transport)

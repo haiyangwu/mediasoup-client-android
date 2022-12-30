@@ -42,6 +42,7 @@ namespace mediasoupclient
 		  const nlohmann::json& appData);
 
 	public:
+		virtual ~Transport() = default;
 		const std::string& GetId() const;
 		bool IsClosed() const;
 		const std::string& GetConnectionState() const;

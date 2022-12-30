@@ -16,7 +16,7 @@ public:
 	{
 		assert(!j_handler_interface_.is_null());
 	}
-    virtual ~LogHandlerInterfaceJNI() = default;
+	virtual ~LogHandlerInterfaceJNI() = default;
 
 public:
 	void OnLog(Logger::LogLevel level, char* payload, size_t len) override

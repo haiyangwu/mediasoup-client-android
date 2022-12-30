@@ -106,10 +106,7 @@ static ScopedJavaLocalRef<jstring> JNI_PeerConnection_CreateAnswer(
 }
 
 static void JNI_PeerConnection_SetLocalDescription(
-  JNIEnv* env,
-  const JavaParamRef<jobject>& j_pc,
-  jint j_type,
-  const JavaParamRef<jstring>& j_desc)
+  JNIEnv* env, const JavaParamRef<jobject>& j_pc, jint j_type, const JavaParamRef<jstring>& j_desc)
 {
 	MSC_TRACE();
 
@@ -128,10 +125,7 @@ static void JNI_PeerConnection_SetLocalDescription(
 }
 
 static void JNI_PeerConnection_SetRemoteDescription(
-  JNIEnv* env,
-  const JavaParamRef<jobject>& j_pc,
-  jint j_type,
-  const JavaParamRef<jstring>& j_desc)
+  JNIEnv* env, const JavaParamRef<jobject>& j_pc, jint j_type, const JavaParamRef<jstring>& j_desc)
 {
 	MSC_TRACE();
 

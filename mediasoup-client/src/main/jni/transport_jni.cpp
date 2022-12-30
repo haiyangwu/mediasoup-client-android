@@ -48,7 +48,11 @@ std::future<std::string> SendTransportListenerJni::OnProduce(
 }
 
 std::future<std::string> SendTransportListenerJni::OnProduceData(
-		SendTransport* transport, const json& sctpStreamParameters, const std::string& label, const std::string& protocol, const json& appData)
+  SendTransport* transport,
+  const json& sctpStreamParameters,
+  const std::string& label,
+  const std::string& protocol,
+  const json& appData)
 {
 	JNIEnv* env = webrtc::AttachCurrentThreadIfNeeded();
 	auto result = Java_Listener_onProduceData(
@@ -228,14 +232,14 @@ static ScopedJavaLocalRef<jobject> JNI_SendTransport_Produce(
 		if (!j_codecOptions.is_null())
 		{
 			codecOptionsJson = json::parse(JavaToNativeString(env, j_codecOptions));
-			codecOptions = &codecOptionsJson;
+			codecOptions     = &codecOptionsJson;
 		}
 		json* codec = nullptr;
 		json codecJson;
 		if (!j_codec.is_null())
 		{
 			codecJson = json::parse(JavaToNativeString(env, j_codec));
-			codec = &codecJson;
+			codec     = &codecJson;
 		}
 
 		json appData = json::object();
