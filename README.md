@@ -1,6 +1,6 @@
 # mediasoup-client-android
 
-[![Bintray][bintray-shield-mediasoup-client-android]][bintray-mediasoup-client-android]
+[![maven][shield-mediasoup-client-android]][maven-mediasoup-client-android]
 [![Codacy Badge][codacy-grade-shield-mediasoup-client-android]][codacy-grade-mediasoup-client-android]
 
 mediasoup android client side library https://mediasoup.org
@@ -12,7 +12,7 @@ mediasoup android client side library https://mediasoup.org
 Include `mediasoup-client-android`  into your project, for example, as a Gradle compile dependency:
 
 ```groovy
-implementation 'org.mediasoup.droid:mediasoup-client:3.0.8-beta-3'
+implementation 'io.github.haiyangwu:mediasoup-client:3.4.0-beta'
 ```
 ### Example
 
@@ -27,7 +27,7 @@ MediasoupClient.initialize(getApplicationContext());
 Device mMediasoupDevice = new Device();
 // ...
 // routerRtpCapabilities, the response of request `getRouterRtpCapabilities` from mediasoup-demo server
-mMediasoupDevice.load(routerRtpCapabilities)
+mMediasoupDevice.load(routerRtpCapabilities, null)
 ```
 
 * Create `SendTransport` and produce `MediaStreamTrack`
@@ -51,7 +51,7 @@ Producer mCamProducer =
   producer -> {
     Logger.e(TAG, "onTransportClose(), camProducer");
   },
-  mLocalVideoTrack, null, null);
+  mLocalVideoTrack, null, null, null);
 ```
 
 * Create `RecvTransport` and consume `MediaStreamTrack`
@@ -96,14 +96,6 @@ Consumer consumer =
 
 [mediasoup-demo-android][mediasoup-demo-android]
 
-## TODO
-* [X] sync to the latest version of [libmediasoupclient][libmediasoupclient] and adapter to `webrtc` m79
-* [ ] support `DataProducer` etc
-* [ ] add convenient `Gradle Tasks` for sync, compile and so on
-* [X] add script to use `generate-jni` to automatic generate `xxx-jni.h
-* [ ] add java MediaSoupClientException mapping to `MediaSoupClientErrors.hpp
-* [ ] document
-
 
 ## Bugs and Feedback
 
@@ -117,10 +109,8 @@ Haiyang Wu([@haiyangwu](https://github.com/haiyangwu/) at Github)
 
 
 
-
-
-[bintray-mediasoup-client-android]: https://mvnrepository.com/artifact/org.mediasoup.droid/mediasoup-client
-[bintray-shield-mediasoup-client-android]: https://img.shields.io/bintray/v/haiyangwu/maven/mediasoup-client
+[maven-mediasoup-client-android]: https://ossindex.sonatype.org/component/pkg:maven/io.github.haiyangwu/mediasoup-client
+[shield-mediasoup-client-android]: https://img.shields.io/maven-central/v/io.github.haiyangwu/mediasoup-client
 
 [codacy-grade-shield-mediasoup-client-android]: https://api.codacy.com/project/badge/Grade/506c48c5457b462a82afe786762956dc
 [codacy-grade-mediasoup-client-android]: https://app.codacy.com/manual/haiyangwu/mediasoup-client-android?utm_source=github.com&utm_medium=referral&utm_content=haiyangwu/mediasoup-client-android&utm_campaign=Badge_Grade_Dashboard
