@@ -34,7 +34,7 @@ class PitchBasedVad {
   //   p_combined: an array which contains the combined activity probabilities
   //               computed prior to the call of this function. The method,
   //               then, computes the voicing probabilities and combine them
-  //               with the given values. The result are returned in |p|.
+  //               with the given values. The result are returned in `p`.
   int VoicingProbability(const AudioFeatures& features, double* p_combined);
 
  private:
@@ -53,4 +53,5 @@ class PitchBasedVad {
 };
 
 }  // namespace webrtc
+
 #endif  // MODULES_AUDIO_PROCESSING_VAD_PITCH_BASED_VAD_H_

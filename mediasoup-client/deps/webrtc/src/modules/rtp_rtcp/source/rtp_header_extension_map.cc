@@ -13,6 +13,7 @@
 #include "modules/rtp_rtcp/source/rtp_dependency_descriptor_extension.h"
 #include "modules/rtp_rtcp/source/rtp_generic_frame_descriptor_extension.h"
 #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
+#include "modules/rtp_rtcp/source/rtp_video_layers_allocation_extension.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -33,6 +34,7 @@ constexpr ExtensionInfo CreateExtensionInfo() {
 constexpr ExtensionInfo kExtensions[] = {
     CreateExtensionInfo<TransmissionOffset>(),
     CreateExtensionInfo<AudioLevel>(),
+    CreateExtensionInfo<CsrcAudioLevel>(),
     CreateExtensionInfo<AbsoluteSendTime>(),
     CreateExtensionInfo<AbsoluteCaptureTimeExtension>(),
     CreateExtensionInfo<VideoOrientation>(),
@@ -40,15 +42,16 @@ constexpr ExtensionInfo kExtensions[] = {
     CreateExtensionInfo<TransportSequenceNumberV2>(),
     CreateExtensionInfo<PlayoutDelayLimits>(),
     CreateExtensionInfo<VideoContentTypeExtension>(),
+    CreateExtensionInfo<RtpVideoLayersAllocationExtension>(),
     CreateExtensionInfo<VideoTimingExtension>(),
-    CreateExtensionInfo<FrameMarkingExtension>(),
     CreateExtensionInfo<RtpStreamId>(),
     CreateExtensionInfo<RepairedRtpStreamId>(),
     CreateExtensionInfo<RtpMid>(),
     CreateExtensionInfo<RtpGenericFrameDescriptorExtension00>(),
-    CreateExtensionInfo<RtpGenericFrameDescriptorExtension01>(),
     CreateExtensionInfo<RtpDependencyDescriptorExtension>(),
     CreateExtensionInfo<ColorSpaceExtension>(),
+    CreateExtensionInfo<InbandComfortNoiseExtension>(),
+    CreateExtensionInfo<VideoFrameTrackingIdExtension>(),
 };
 
 // Because of kRtpExtensionNone, NumberOfExtension is 1 bigger than the actual
@@ -142,7 +145,7 @@ bool RtpHeaderExtensionMap::Register(int id,
   }
 
   if (registered_type !=
-      kInvalidType) {  // |id| used by another extension type.
+      kInvalidType) {  // `id` used by another extension type.
     RTC_LOG(LS_WARNING) << "Failed to register extension uri:'" << uri
                         << "', id:" << id
                         << ". Id already in use by extension type "

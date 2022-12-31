@@ -14,6 +14,7 @@
 #include <stddef.h>  // For size_t.
 #include <stdint.h>  // For integer types.
 
+#include "absl/base/attributes.h"
 #include "rtc_base/constructor_magic.h"
 
 namespace rtc {
@@ -38,18 +39,35 @@ class BitBuffer {
 
   // Reads byte-sized values from the buffer. Returns false if there isn't
   // enough data left for the specified type.
-  bool ReadUInt8(uint8_t* val);
-  bool ReadUInt16(uint16_t* val);
-  bool ReadUInt32(uint32_t* val);
+  bool ReadUInt8(uint8_t& val);
+  bool ReadUInt16(uint16_t& val);
+  bool ReadUInt32(uint32_t& val);
+  ABSL_DEPRECATED("") bool ReadUInt8(uint8_t* val) {
+    return val ? ReadUInt8(*val) : false;
+  }
+  ABSL_DEPRECATED("") bool ReadUInt16(uint16_t* val) {
+    return val ? ReadUInt16(*val) : false;
+  }
+  ABSL_DEPRECATED("") bool ReadUInt32(uint32_t* val) {
+    return val ? ReadUInt32(*val) : false;
+  }
 
   // Reads bit-sized values from the buffer. Returns false if there isn't enough
   // data left for the specified bit count.
-  bool ReadBits(uint32_t* val, size_t bit_count);
+  bool ReadBits(size_t bit_count, uint32_t& val);
+  bool ReadBits(size_t bit_count, uint64_t& val);
+  ABSL_DEPRECATED("") bool ReadBits(uint32_t* val, size_t bit_count) {
+    return val ? ReadBits(bit_count, *val) : false;
+  }
 
   // Peeks bit-sized values from the buffer. Returns false if there isn't enough
   // data left for the specified number of bits. Doesn't move the current
   // offset.
-  bool PeekBits(uint32_t* val, size_t bit_count);
+  bool PeekBits(size_t bit_count, uint32_t& val);
+  bool PeekBits(size_t bit_count, uint64_t& val);
+  ABSL_DEPRECATED("") bool PeekBits(uint32_t* val, size_t bit_count) {
+    return val ? PeekBits(bit_count, *val) : false;
+  }
 
   // Reads value in range [0, num_values - 1].
   // This encoding is similar to ReadBits(val, Ceil(Log2(num_values)),
@@ -61,7 +79,11 @@ class BitBuffer {
   // Value v in range [k, num_values - 1] is encoded as (v+k) in n bits.
   // https://aomediacodec.github.io/av1-spec/#nsn
   // Returns false if there isn't enough data left.
-  bool ReadNonSymmetric(uint32_t* val, uint32_t num_values);
+  bool ReadNonSymmetric(uint32_t num_values, uint32_t& val);
+  ABSL_DEPRECATED("")
+  bool ReadNonSymmetric(uint32_t* val, uint32_t num_values) {
+    return val ? ReadNonSymmetric(num_values, *val) : false;
+  }
 
   // Reads the exponential golomb encoded value at the current offset.
   // Exponential golomb values are encoded as:
@@ -71,16 +93,23 @@ class BitBuffer {
   // and increment the result by 1.
   // Returns false if there isn't enough data left for the specified type, or if
   // the value wouldn't fit in a uint32_t.
-  bool ReadExponentialGolomb(uint32_t* val);
+  bool ReadExponentialGolomb(uint32_t& val);
+  ABSL_DEPRECATED("") bool ReadExponentialGolomb(uint32_t* val) {
+    return val ? ReadExponentialGolomb(*val) : false;
+  }
+
   // Reads signed exponential golomb values at the current offset. Signed
   // exponential golomb values are just the unsigned values mapped to the
   // sequence 0, 1, -1, 2, -2, etc. in order.
-  bool ReadSignedExponentialGolomb(int32_t* val);
+  bool ReadSignedExponentialGolomb(int32_t& val);
+  ABSL_DEPRECATED("") bool ReadSignedExponentialGolomb(int32_t* val) {
+    return val ? ReadSignedExponentialGolomb(*val) : false;
+  }
 
-  // Moves current position |byte_count| bytes forward. Returns false if
+  // Moves current position `byte_count` bytes forward. Returns false if
   // there aren't enough bytes left in the buffer.
   bool ConsumeBytes(size_t byte_count);
-  // Moves current position |bit_count| bits forward. Returns false if
+  // Moves current position `bit_count` bits forward. Returns false if
   // there aren't enough bits left in the buffer.
   bool ConsumeBits(size_t bit_count);
 
@@ -90,9 +119,9 @@ class BitBuffer {
 
  protected:
   const uint8_t* const bytes_;
-  // The total size of |bytes_|.
+  // The total size of `bytes_`.
   size_t byte_count_;
-  // The current offset, in bytes, from the start of |bytes_|.
+  // The current offset, in bytes, from the start of `bytes_`.
   size_t byte_offset_;
   // The current offset, in bits, into the current byte.
   size_t bit_offset_;
@@ -105,7 +134,7 @@ class BitBuffer {
 // BitBuffer API, so both reading and writing will consume bytes/bits.
 class BitBufferWriter : public BitBuffer {
  public:
-  // Constructs a bit buffer for the writable buffer of |bytes|.
+  // Constructs a bit buffer for the writable buffer of `bytes`.
   BitBufferWriter(uint8_t* bytes, size_t byte_count);
 
   // Writes byte-sized values from the buffer. Returns false if there isn't
@@ -123,7 +152,7 @@ class BitBufferWriter : public BitBuffer {
   // Call SizeNonSymmetricBits to get number of bits needed to store the value.
   // Returns false if there isn't enough room left for the value.
   bool WriteNonSymmetric(uint32_t val, uint32_t num_values);
-  // Returns number of bits required to store |val| with NonSymmetric encoding.
+  // Returns number of bits required to store `val` with NonSymmetric encoding.
   static size_t SizeNonSymmetricBits(uint32_t val, uint32_t num_values);
 
   // Writes the exponential golomb encoded version of the supplied value.

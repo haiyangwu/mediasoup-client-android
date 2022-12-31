@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
  * as Objective-C doesn't support nested structures.
  */
 RTC_OBJC_EXPORT
-@interface RTCCryptoOptions : NSObject
+@interface RTC_OBJC_TYPE (RTCCryptoOptions) : NSObject
 
 /**
  * Enable GCM crypto suites from RFC 7714 for SRTP. GCM will only be used
@@ -28,7 +28,7 @@ RTC_OBJC_EXPORT
 @property(nonatomic, assign) BOOL srtpEnableGcmCryptoSuites;
 /**
  * If set to true, the (potentially insecure) crypto cipher
- * SRTP_AES128_CM_SHA1_32 will be included in the list of supported ciphers
+ * kSrtpAes128CmSha1_32 will be included in the list of supported ciphers
  * during negotiation. It will only be used if both peers support it and no
  * other ciphers get preferred.
  */

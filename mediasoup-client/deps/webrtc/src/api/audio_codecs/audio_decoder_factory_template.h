@@ -89,8 +89,8 @@ class AudioDecoderFactoryT : public AudioDecoderFactory {
 // Each decoder type is given as a template argument to the function; it should
 // be a struct with the following static member functions:
 //
-//   // Converts |audio_format| to a ConfigType instance. Returns an empty
-//   // optional if |audio_format| doesn't correctly specify an decoder of our
+//   // Converts `audio_format` to a ConfigType instance. Returns an empty
+//   // optional if `audio_format` doesn't correctly specify a decoder of our
 //   // type.
 //   absl::optional<ConfigType> SdpToConfig(const SdpAudioFormat& audio_format);
 //
@@ -123,9 +123,8 @@ rtc::scoped_refptr<AudioDecoderFactory> CreateAudioDecoderFactory() {
   static_assert(sizeof...(Ts) >= 1,
                 "Caller must give at least one template parameter");
 
-  return rtc::scoped_refptr<AudioDecoderFactory>(
-      new rtc::RefCountedObject<
-          audio_decoder_factory_template_impl::AudioDecoderFactoryT<Ts...>>());
+  return rtc::make_ref_counted<
+      audio_decoder_factory_template_impl::AudioDecoderFactoryT<Ts...>>();
 }
 
 }  // namespace webrtc

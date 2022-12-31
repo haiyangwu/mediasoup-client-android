@@ -13,6 +13,7 @@
 
 #include <utility>
 
+#include "api/function_view.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/system/rtc_export.h"
 
@@ -20,50 +21,27 @@ namespace rtc {
 
 struct Message;
 
-// Messages get dispatched to a MessageHandler
-
+// MessageQueue/Thread Messages get dispatched via the MessageHandler interface.
 class RTC_EXPORT MessageHandler {
  public:
-  virtual ~MessageHandler();
+  virtual ~MessageHandler() {}
   virtual void OnMessage(Message* msg) = 0;
+};
+
+// Warning: Provided for backwards compatibility.
+//
+// This class performs expensive cleanup in the dtor that will affect all
+// instances of Thread (and their pending message queues) and will block the
+// current thread as well as all other threads.
+class RTC_EXPORT MessageHandlerAutoCleanup : public MessageHandler {
+ public:
+  ~MessageHandlerAutoCleanup() override;
 
  protected:
-  MessageHandler() {}
+  MessageHandlerAutoCleanup();
 
  private:
-  RTC_DISALLOW_COPY_AND_ASSIGN(MessageHandler);
-};
-
-// Helper class to facilitate executing a functor on a thread.
-template <class ReturnT, class FunctorT>
-class FunctorMessageHandler : public MessageHandler {
- public:
-  explicit FunctorMessageHandler(FunctorT&& functor)
-      : functor_(std::forward<FunctorT>(functor)) {}
-  virtual void OnMessage(Message* msg) { result_ = functor_(); }
-  const ReturnT& result() const { return result_; }
-
-  // Returns moved result. Should not call result() or MoveResult() again
-  // after this.
-  ReturnT MoveResult() { return std::move(result_); }
-
- private:
-  FunctorT functor_;
-  ReturnT result_;
-};
-
-// Specialization for ReturnT of void.
-template <class FunctorT>
-class FunctorMessageHandler<void, FunctorT> : public MessageHandler {
- public:
-  explicit FunctorMessageHandler(FunctorT&& functor)
-      : functor_(std::forward<FunctorT>(functor)) {}
-  virtual void OnMessage(Message* msg) { functor_(); }
-  void result() const {}
-  void MoveResult() {}
-
- private:
-  FunctorT functor_;
+  RTC_DISALLOW_COPY_AND_ASSIGN(MessageHandlerAutoCleanup);
 };
 
 }  // namespace rtc

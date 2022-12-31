@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "p2p/base/stun.h"
+#include "api/transport/stun.h"
 #include "rtc_base/byte_order.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/network/sent_packet.h"
@@ -37,9 +37,9 @@ inline bool IsStunMessage(uint16_t msg_type) {
 }
 
 // AsyncStunTCPSocket
-// Binds and connects |socket| and creates AsyncTCPSocket for
-// it. Takes ownership of |socket|. Returns NULL if bind() or
-// connect() fail (|socket| is destroyed in that case).
+// Binds and connects `socket` and creates AsyncTCPSocket for
+// it. Takes ownership of `socket`. Returns NULL if bind() or
+// connect() fail (`socket` is destroyed in that case).
 AsyncStunTCPSocket* AsyncStunTCPSocket::Create(
     rtc::AsyncSocket* socket,
     const rtc::SocketAddress& bind_address,

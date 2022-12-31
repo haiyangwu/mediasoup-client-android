@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "api/sequence_checker.h"
 #include "modules/video_coding/decoder_database.h"
 #include "modules/video_coding/frame_buffer.h"
 #include "modules/video_coding/generic_decoder.h"
@@ -24,9 +25,8 @@
 #include "modules/video_coding/receiver.h"
 #include "modules/video_coding/timing.h"
 #include "rtc_base/one_time_event.h"
-#include "rtc_base/synchronization/sequence_checker.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/thread_checker.h"
 #include "system_wrappers/include/clock.h"
 
 namespace webrtc {
@@ -59,9 +59,9 @@ class VideoReceiver : public Module {
   VideoReceiver(Clock* clock, VCMTiming* timing);
   ~VideoReceiver() override;
 
-  int32_t RegisterReceiveCodec(const VideoCodec* receiveCodec,
-                               int32_t numberOfCores,
-                               bool requireKeyFrame);
+  int32_t RegisterReceiveCodec(uint8_t payload_type,
+                               const VideoCodec* receiveCodec,
+                               int32_t numberOfCores);
 
   void RegisterExternalDecoder(VideoDecoder* externalDecoder,
                                uint8_t payloadType);
@@ -96,11 +96,11 @@ class VideoReceiver : public Module {
   // In builds where DCHECKs aren't enabled, it will return true.
   bool IsDecoderThreadRunning();
 
-  rtc::ThreadChecker construction_thread_checker_;
-  rtc::ThreadChecker decoder_thread_checker_;
-  rtc::ThreadChecker module_thread_checker_;
+  SequenceChecker construction_thread_checker_;
+  SequenceChecker decoder_thread_checker_;
+  SequenceChecker module_thread_checker_;
   Clock* const clock_;
-  rtc::CriticalSection process_crit_;
+  Mutex process_mutex_;
   VCMTiming* _timing;
   VCMReceiver _receiver;
   VCMDecodedFrameCallback _decodedFrameCallback;
@@ -111,8 +111,8 @@ class VideoReceiver : public Module {
   VCMPacketRequestCallback* _packetRequestCallback;
 
   // Used on both the module and decoder thread.
-  bool _scheduleKeyRequest RTC_GUARDED_BY(process_crit_);
-  bool drop_frames_until_keyframe_ RTC_GUARDED_BY(process_crit_);
+  bool _scheduleKeyRequest RTC_GUARDED_BY(process_mutex_);
+  bool drop_frames_until_keyframe_ RTC_GUARDED_BY(process_mutex_);
 
   // Modified on the construction thread while not attached to the process
   // thread.  Once attached to the process thread, its value is only read
@@ -120,11 +120,10 @@ class VideoReceiver : public Module {
   size_t max_nack_list_size_;
 
   // Callbacks are set before the decoder thread starts.
-  // Once the decoder thread has been started, usage of |_codecDataBase| moves
+  // Once the decoder thread has been started, usage of `_codecDataBase` moves
   // over to the decoder thread.
   VCMDecoderDataBase _codecDataBase;
 
-  VCMProcessTimer _receiveStatsTimer RTC_GUARDED_BY(module_thread_checker_);
   VCMProcessTimer _retransmissionTimer RTC_GUARDED_BY(module_thread_checker_);
   VCMProcessTimer _keyRequestTimer RTC_GUARDED_BY(module_thread_checker_);
   ThreadUnsafeOneTimeEvent first_frame_received_

@@ -38,7 +38,6 @@
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
-#include "rtc_base/keep_ref_until_done.h"
 #include "rtc_base/ref_counted_object.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
@@ -91,9 +90,9 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
     for (int i = 0; i < 16; i++) {
       data[i] = i;
     }
-    rtc::scoped_refptr<AugmentedVideoFrameBuffer> augmented_video_frame_buffer =
-        new rtc::RefCountedObject<AugmentedVideoFrameBuffer>(
-            video_buffer, std::move(data), 16);
+    auto augmented_video_frame_buffer =
+        rtc::make_ref_counted<AugmentedVideoFrameBuffer>(video_buffer,
+                                                         std::move(data), 16);
     return std::make_unique<VideoFrame>(
         VideoFrame::Builder()
             .set_video_frame_buffer(augmented_video_frame_buffer)
@@ -105,14 +104,16 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
   }
 
   std::unique_ptr<VideoFrame> CreateI420AInputFrame() {
-    VideoFrame* input_frame = NextInputFrame();
+    VideoFrame input_frame = NextInputFrame();
     rtc::scoped_refptr<webrtc::I420BufferInterface> yuv_buffer =
-        input_frame->video_frame_buffer()->ToI420();
+        input_frame.video_frame_buffer()->ToI420();
     rtc::scoped_refptr<I420ABufferInterface> yuva_buffer = WrapI420ABuffer(
         yuv_buffer->width(), yuv_buffer->height(), yuv_buffer->DataY(),
         yuv_buffer->StrideY(), yuv_buffer->DataU(), yuv_buffer->StrideU(),
         yuv_buffer->DataV(), yuv_buffer->StrideV(), yuv_buffer->DataY(),
-        yuv_buffer->StrideY(), rtc::KeepRefUntilDone(yuv_buffer));
+        yuv_buffer->StrideY(),
+        // To keep reference alive.
+        [yuv_buffer] {});
     return std::make_unique<VideoFrame>(VideoFrame::Builder()
                                             .set_video_frame_buffer(yuva_buffer)
                                             .set_timestamp_rtp(123)
@@ -126,14 +127,14 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
     if (contains_alpha) {
       video_frame = CreateI420AInputFrame();
     } else {
-      VideoFrame* next_frame = NextInputFrame();
+      VideoFrame next_frame = NextInputFrame();
       video_frame = std::make_unique<VideoFrame>(
           VideoFrame::Builder()
-              .set_video_frame_buffer(next_frame->video_frame_buffer())
-              .set_timestamp_rtp(next_frame->timestamp())
-              .set_timestamp_ms(next_frame->render_time_ms())
-              .set_rotation(next_frame->rotation())
-              .set_id(next_frame->id())
+              .set_video_frame_buffer(next_frame.video_frame_buffer())
+              .set_timestamp_rtp(next_frame.timestamp())
+              .set_timestamp_ms(next_frame.render_time_ms())
+              .set_rotation(next_frame.rotation())
+              .set_id(next_frame.id())
               .build());
     }
     if (supports_augmenting_data_) {
@@ -168,8 +169,7 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
     rtc::scoped_refptr<I420BufferInterface> axx_buffer = WrapI420Buffer(
         yuva_buffer->width(), yuva_buffer->height(), yuva_buffer->DataA(),
         yuva_buffer->StrideA(), yuva_buffer->DataU(), yuva_buffer->StrideU(),
-        yuva_buffer->DataV(), yuva_buffer->StrideV(),
-        rtc::KeepRefUntilDone(video_frame_buffer));
+        yuva_buffer->DataV(), yuva_buffer->StrideV(), [video_frame_buffer] {});
     return std::make_unique<VideoFrame>(VideoFrame::Builder()
                                             .set_video_frame_buffer(axx_buffer)
                                             .set_timestamp_rtp(123)
@@ -180,21 +180,17 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
 
  private:
   void SetUp() override {
-    EXPECT_CALL(*decoder_factory_, Die());
+    EXPECT_CALL(*decoder_factory_, Die);
     // The decoders/encoders will be owned by the caller of
     // CreateVideoDecoder()/CreateVideoEncoder().
-    VideoDecoder* decoder1 = VP9Decoder::Create().release();
-    VideoDecoder* decoder2 = VP9Decoder::Create().release();
-    EXPECT_CALL(*decoder_factory_, CreateVideoDecoderProxy(_))
-        .WillOnce(Return(decoder1))
-        .WillOnce(Return(decoder2));
+    EXPECT_CALL(*decoder_factory_, CreateVideoDecoder)
+        .Times(2)
+        .WillRepeatedly([] { return VP9Decoder::Create(); });
 
-    EXPECT_CALL(*encoder_factory_, Die());
-    VideoEncoder* encoder1 = VP9Encoder::Create().release();
-    VideoEncoder* encoder2 = VP9Encoder::Create().release();
-    EXPECT_CALL(*encoder_factory_, CreateVideoEncoderProxy(_))
-        .WillOnce(Return(encoder1))
-        .WillOnce(Return(encoder2));
+    EXPECT_CALL(*encoder_factory_, Die);
+    EXPECT_CALL(*encoder_factory_, CreateVideoEncoder)
+        .Times(2)
+        .WillRepeatedly([] { return VP9Encoder::Create(); });
 
     VideoCodecUnitTest::SetUp();
   }
@@ -205,7 +201,7 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
 };
 
 // TODO(emircan): Currently VideoCodecUnitTest tests do a complete setup
-// step that goes beyond constructing |decoder_|. Simplify these tests to do
+// step that goes beyond constructing `decoder_`. Simplify these tests to do
 // less.
 TEST_P(TestMultiplexAdapter, ConstructAndDestructDecoder) {
   EXPECT_EQ(WEBRTC_VIDEO_CODEC_OK, decoder_->Release());

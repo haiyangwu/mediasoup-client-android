@@ -24,6 +24,7 @@
 #include "absl/types/optional.h"
 #include "api/audio_options.h"
 #include "api/scoped_refptr.h"
+#include "api/video/recordable_encoded_frame.h"
 #include "api/video/video_frame.h"
 #include "api/video/video_sink_interface.h"
 #include "api/video/video_source_interface.h"
@@ -135,6 +136,25 @@ class VideoTrackSourceInterface : public MediaSourceInterface,
   // Implementation should avoid blocking.
   virtual bool GetStats(Stats* stats) = 0;
 
+  // Returns true if encoded output can be enabled in the source.
+  virtual bool SupportsEncodedOutput() const = 0;
+
+  // Reliably cause a key frame to be generated in encoded output.
+  // TODO(bugs.webrtc.org/11115): find optimal naming.
+  virtual void GenerateKeyFrame() = 0;
+
+  // Add an encoded video sink to the source and additionally cause
+  // a key frame to be generated from the source. The sink will be
+  // invoked from a decoder queue.
+  // TODO(bugs.webrtc.org/11114): make pure virtual once downstream project
+  // adapts.
+  virtual void AddEncodedSink(
+      rtc::VideoSinkInterface<RecordableEncodedFrame>* sink) = 0;
+
+  // Removes an encoded video sink from the source.
+  virtual void RemoveEncodedSink(
+      rtc::VideoSinkInterface<RecordableEncodedFrame>* sink) = 0;
+
  protected:
   ~VideoTrackSourceInterface() override = default;
 };
@@ -176,7 +196,30 @@ class AudioTrackSinkInterface {
                       int bits_per_sample,
                       int sample_rate,
                       size_t number_of_channels,
-                      size_t number_of_frames) = 0;
+                      size_t number_of_frames) {
+    RTC_NOTREACHED() << "This method must be overridden, or not used.";
+  }
+
+  // In this method, `absolute_capture_timestamp_ms`, when available, is
+  // supposed to deliver the timestamp when this audio frame was originally
+  // captured. This timestamp MUST be based on the same clock as
+  // rtc::TimeMillis().
+  virtual void OnData(const void* audio_data,
+                      int bits_per_sample,
+                      int sample_rate,
+                      size_t number_of_channels,
+                      size_t number_of_frames,
+                      absl::optional<int64_t> absolute_capture_timestamp_ms) {
+    // TODO(bugs.webrtc.org/10739): Deprecate the old OnData and make this one
+    // pure virtual.
+    return OnData(audio_data, bits_per_sample, sample_rate, number_of_channels,
+                  number_of_frames);
+  }
+
+  // Returns the number of channels encoded by the sink. This can be less than
+  // the number_of_channels if down-mixing occur. A value of -1 means an unknown
+  // number.
+  virtual int NumPreferredChannels() const { return -1; }
 
  protected:
   virtual ~AudioTrackSinkInterface() {}
@@ -197,7 +240,7 @@ class RTC_EXPORT AudioSourceInterface : public MediaSourceInterface {
   // TODO(deadbeef): Makes all the interfaces pure virtual after they're
   // implemented in chromium.
 
-  // Sets the volume of the source. |volume| is in  the range of [0, 10].
+  // Sets the volume of the source. `volume` is in  the range of [0, 10].
   // TODO(tommi): This method should be on the track and ideally volume should
   // be applied in the track in a way that does not affect clones of the track.
   virtual void SetVolume(double volume) {}
@@ -225,7 +268,7 @@ class AudioProcessorInterface : public rtc::RefCountInterface {
     AudioProcessingStats apm_statistics;
   };
 
-  // Get audio processor statistics. The |has_remote_tracks| argument should be
+  // Get audio processor statistics. The `has_remote_tracks` argument should be
   // set if there are active remote tracks (this would usually be true during
   // a call). If there are no remote tracks some of the stats will not be set by
   // the AudioProcessor, because they only make sense if there is at least one

@@ -13,6 +13,7 @@
 
 #include "absl/types/optional.h"
 #include "api/transport/webrtc_key_value_config.h"
+#include "api/units/data_size.h"
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/video_encoder_config.h"
 #include "rtc_base/experiments/struct_parameters_parser.h"
@@ -23,6 +24,8 @@ struct CongestionWindowConfig {
   static constexpr char kKey[] = "WebRTC-CongestionWindow";
   absl::optional<int> queue_size_ms;
   absl::optional<int> min_bitrate_bps;
+  absl::optional<DataSize> initial_data_window;
+  bool drop_frame_only = false;
   std::unique_ptr<StructParametersParser> Parser();
   static CongestionWindowConfig Parse(absl::string_view config);
 };
@@ -33,17 +36,16 @@ struct VideoRateControlConfig {
   bool alr_probing = false;
   absl::optional<int> vp8_qp_max;
   absl::optional<int> vp8_min_pixels;
-  bool trust_vp8 = false;
-  bool trust_vp9 = false;
-  double video_hysteresis = 1.0;
+  bool trust_vp8 = true;
+  bool trust_vp9 = true;
+  double video_hysteresis = 1.2;
   // Default to 35% hysteresis for simulcast screenshare.
   double screenshare_hysteresis = 1.35;
   bool probe_max_allocation = true;
-  bool bitrate_adjuster = false;
-  bool adjuster_use_headroom = false;
-  bool vp8_s0_boost = true;
-  bool vp8_dynamic_rate = false;
-  bool vp9_dynamic_rate = false;
+  bool bitrate_adjuster = true;
+  bool adjuster_use_headroom = true;
+  bool vp8_s0_boost = false;
+  bool vp8_base_heavy_tl3_alloc = false;
 
   std::unique_ptr<StructParametersParser> Parser();
 };
@@ -63,7 +65,9 @@ class RateControlSettings final {
   bool UseCongestionWindow() const;
   int64_t GetCongestionWindowAdditionalTimeMs() const;
   bool UseCongestionWindowPushback() const;
+  bool UseCongestionWindowDropFrameOnly() const;
   uint32_t CongestionWindowMinPushbackTargetBitrateBps() const;
+  absl::optional<DataSize> CongestionWindowInitialDataWindow() const;
 
   absl::optional<double> GetPacingFactor() const;
   bool UseAlrProbing() const;
@@ -82,6 +86,8 @@ class RateControlSettings final {
   double GetSimulcastHysteresisFactor(
       VideoEncoderConfig::ContentType content_type) const;
 
+  bool Vp8BaseHeavyTl3RateAllocation() const;
+
   bool TriggerProbeOnMaxAllocatedBitrateChange() const;
   bool UseEncoderBitrateAdjuster() const;
   bool BitrateAdjusterCanUseNetworkHeadroom() const;
@@ -90,7 +96,7 @@ class RateControlSettings final {
   explicit RateControlSettings(
       const WebRtcKeyValueConfig* const key_value_config);
 
-  const CongestionWindowConfig congestion_window_config_;
+  CongestionWindowConfig congestion_window_config_;
   VideoRateControlConfig video_config_;
 };
 

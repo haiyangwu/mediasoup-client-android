@@ -69,6 +69,7 @@ struct EventCounts {
   size_t bwe_delay_events = 0;
   size_t dtls_transport_states = 0;
   size_t dtls_writable_states = 0;
+  size_t frame_decoded_events = 0;
   size_t probe_creations = 0;
   size_t probe_successes = 0;
   size_t probe_failures = 0;
@@ -85,9 +86,9 @@ struct EventCounts {
   size_t total_nonconfig_events() const {
     return alr_states + route_changes + audio_playouts + ana_configs +
            bwe_loss_events + bwe_delay_events + dtls_transport_states +
-           dtls_writable_states + probe_creations + probe_successes +
-           probe_failures + ice_configs + ice_events + incoming_rtp_packets +
-           outgoing_rtp_packets + incoming_rtcp_packets +
+           dtls_writable_states + frame_decoded_events + probe_creations +
+           probe_successes + probe_failures + ice_configs + ice_events +
+           incoming_rtp_packets + outgoing_rtp_packets + incoming_rtcp_packets +
            outgoing_rtcp_packets + generic_packets_sent +
            generic_packets_received + generic_acks_received;
   }
@@ -113,7 +114,7 @@ class RtcEventLogSession
         encoding_type_(std::get<2>(GetParam())),
         gen_(seed_ * 880001UL),
         verifier_(encoding_type_) {
-    clock_.SetTime(Timestamp::us(prng_.Rand<uint32_t>()));
+    clock_.SetTime(Timestamp::Micros(prng_.Rand<uint32_t>()));
     // Find the name of the current test, in order to use it as a temporary
     // filename.
     // TODO(terelius): Use a general utility function to generate a temp file.
@@ -124,7 +125,7 @@ class RtcEventLogSession
     temp_filename_ = test::OutputPath() + test_name;
   }
 
-  // Create and buffer the config events and |num_events_before_log_start|
+  // Create and buffer the config events and `num_events_before_log_start`
   // randomized non-config events. Then call StartLogging and finally create and
   // write the remaining non-config events.
   void WriteLog(EventCounts count, size_t num_events_before_log_start);
@@ -165,6 +166,8 @@ class RtcEventLogSession
       dtls_transport_state_list_;
   std::vector<std::unique_ptr<RtcEventDtlsWritableState>>
       dtls_writable_state_list_;
+  std::map<uint32_t, std::vector<std::unique_ptr<RtcEventFrameDecoded>>>
+      frame_decoded_event_map_;
   std::vector<std::unique_ptr<RtcEventGenericAckReceived>>
       generic_acks_received_;
   std::vector<std::unique_ptr<RtcEventGenericPacketReceived>>
@@ -217,7 +220,7 @@ void RtcEventLogSession::WriteAudioRecvConfigs(size_t audio_recv_streams,
   RTC_CHECK(event_log != nullptr);
   uint32_t ssrc;
   for (size_t i = 0; i < audio_recv_streams; i++) {
-    clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+    clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, incoming_extensions_));
@@ -234,7 +237,7 @@ void RtcEventLogSession::WriteAudioSendConfigs(size_t audio_send_streams,
   RTC_CHECK(event_log != nullptr);
   uint32_t ssrc;
   for (size_t i = 0; i < audio_send_streams; i++) {
-    clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+    clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, outgoing_extensions_));
@@ -256,14 +259,14 @@ void RtcEventLogSession::WriteVideoRecvConfigs(size_t video_recv_streams,
   RtpHeaderExtensionMap all_extensions =
       ParsedRtcEventLog::GetDefaultHeaderExtensionMap();
 
-  clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+  clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
   uint32_t ssrc = prng_.Rand<uint32_t>();
-  incoming_extensions_.emplace_back(prng_.Rand<uint32_t>(), all_extensions);
+  incoming_extensions_.emplace_back(ssrc, all_extensions);
   auto event = gen_.NewVideoReceiveStreamConfig(ssrc, all_extensions);
   event_log->Log(event->Copy());
   video_recv_config_list_.push_back(std::move(event));
   for (size_t i = 1; i < video_recv_streams; i++) {
-    clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+    clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, incoming_extensions_));
@@ -285,14 +288,14 @@ void RtcEventLogSession::WriteVideoSendConfigs(size_t video_send_streams,
   RtpHeaderExtensionMap all_extensions =
       ParsedRtcEventLog::GetDefaultHeaderExtensionMap();
 
-  clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+  clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
   uint32_t ssrc = prng_.Rand<uint32_t>();
-  outgoing_extensions_.emplace_back(prng_.Rand<uint32_t>(), all_extensions);
+  outgoing_extensions_.emplace_back(ssrc, all_extensions);
   auto event = gen_.NewVideoSendStreamConfig(ssrc, all_extensions);
   event_log->Log(event->Copy());
   video_send_config_list_.push_back(std::move(event));
   for (size_t i = 1; i < video_send_streams; i++) {
-    clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+    clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
     do {
       ssrc = prng_.Rand<uint32_t>();
     } while (SsrcUsed(ssrc, outgoing_extensions_));
@@ -329,7 +332,7 @@ void RtcEventLogSession::WriteLog(EventCounts count,
   size_t remaining_events_at_start = remaining_events - num_events_before_start;
   for (; remaining_events > 0; remaining_events--) {
     if (remaining_events == remaining_events_at_start) {
-      clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+      clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
       event_log->StartLogging(
           std::make_unique<RtcEventLogOutputFile>(temp_filename_, 10000000),
           output_period_ms_);
@@ -337,7 +340,7 @@ void RtcEventLogSession::WriteLog(EventCounts count,
       utc_start_time_us_ = rtc::TimeUTCMicros();
     }
 
-    clock_.AdvanceTime(TimeDelta::ms(prng_.Rand(20)));
+    clock_.AdvanceTime(TimeDelta::Millis(prng_.Rand(20)));
     size_t selection = prng_.Rand(remaining_events - 1);
     first_timestamp_ms_ = std::min(first_timestamp_ms_, rtc::TimeMillis());
     last_timestamp_ms_ = std::max(last_timestamp_ms_, rtc::TimeMillis());
@@ -444,6 +447,18 @@ void RtcEventLogSession::WriteLog(EventCounts count,
     }
     selection -= count.dtls_writable_states;
 
+    if (selection < count.frame_decoded_events) {
+      size_t stream = prng_.Rand(incoming_extensions_.size() - 1);
+      // This might be an audio SSRC, but that won't affect the parser.
+      uint32_t ssrc = incoming_extensions_[stream].first;
+      auto event = gen_.NewFrameDecodedEvent(ssrc);
+      event_log->Log(event->Copy());
+      frame_decoded_event_map_[ssrc].push_back(std::move(event));
+      count.frame_decoded_events--;
+      continue;
+    }
+    selection -= count.frame_decoded_events;
+
     if (selection < count.ice_configs) {
       auto event = gen_.NewIceCandidatePairConfig();
       event_log->Log(event->Copy());
@@ -545,7 +560,7 @@ void RtcEventLogSession::WriteLog(EventCounts count,
 void RtcEventLogSession::ReadAndVerifyLog() {
   // Read the generated file from disk.
   ParsedRtcEventLog parsed_log;
-  ASSERT_TRUE(parsed_log.ParseFile(temp_filename_));
+  ASSERT_TRUE(parsed_log.ParseFile(temp_filename_).ok());
 
   // Start and stop events.
   auto& parsed_start_log_events = parsed_log.start_log_events();
@@ -577,7 +592,7 @@ void RtcEventLogSession::ReadAndVerifyLog() {
     const auto& parsed_audio_playout_stream = kv.second;
     const auto& audio_playout_stream = audio_playout_map_[ssrc];
     ASSERT_EQ(parsed_audio_playout_stream.size(), audio_playout_stream.size());
-    for (size_t i = 0; i < parsed_audio_playout_map.size(); i++) {
+    for (size_t i = 0; i < audio_playout_stream.size(); i++) {
       verifier_.VerifyLoggedAudioPlayoutEvent(*audio_playout_stream[i],
                                               parsed_audio_playout_stream[i]);
     }
@@ -627,6 +642,35 @@ void RtcEventLogSession::ReadAndVerifyLog() {
   for (size_t i = 0; i < parsed_bwe_probe_success_events.size(); i++) {
     verifier_.VerifyLoggedBweProbeSuccessEvent(
         *probe_success_list_[i], parsed_bwe_probe_success_events[i]);
+  }
+
+  auto& parsed_dtls_transport_states = parsed_log.dtls_transport_states();
+  ASSERT_EQ(parsed_dtls_transport_states.size(),
+            dtls_transport_state_list_.size());
+  for (size_t i = 0; i < parsed_dtls_transport_states.size(); i++) {
+    verifier_.VerifyLoggedDtlsTransportState(*dtls_transport_state_list_[i],
+                                             parsed_dtls_transport_states[i]);
+  }
+
+  auto& parsed_dtls_writable_states = parsed_log.dtls_writable_states();
+  ASSERT_EQ(parsed_dtls_writable_states.size(),
+            dtls_writable_state_list_.size());
+  for (size_t i = 0; i < parsed_dtls_writable_states.size(); i++) {
+    verifier_.VerifyLoggedDtlsWritableState(*dtls_writable_state_list_[i],
+                                            parsed_dtls_writable_states[i]);
+  }
+
+  const auto& parsed_frame_decoded_map = parsed_log.decoded_frames();
+  ASSERT_EQ(parsed_frame_decoded_map.size(), frame_decoded_event_map_.size());
+  for (const auto& kv : parsed_frame_decoded_map) {
+    uint32_t ssrc = kv.first;
+    const auto& parsed_decoded_frames = kv.second;
+    const auto& decoded_frames = frame_decoded_event_map_[ssrc];
+    ASSERT_EQ(parsed_decoded_frames.size(), decoded_frames.size());
+    for (size_t i = 0; i < decoded_frames.size(); i++) {
+      verifier_.VerifyLoggedFrameDecoded(*decoded_frames[i],
+                                         parsed_decoded_frames[i]);
+    }
   }
 
   auto& parsed_ice_candidate_pair_configs =
@@ -739,6 +783,11 @@ void RtcEventLogSession::ReadAndVerifyLog() {
   EXPECT_EQ(first_timestamp_ms_, parsed_log.first_timestamp() / 1000);
   EXPECT_EQ(last_timestamp_ms_, parsed_log.last_timestamp() / 1000);
 
+  EXPECT_EQ(parsed_log.first_log_segment().start_time_ms(),
+            std::min(start_time_us_ / 1000, first_timestamp_ms_));
+  EXPECT_EQ(parsed_log.first_log_segment().stop_time_ms(),
+            stop_time_us_ / 1000);
+
   // Clean up temporary file - can be pretty slow.
   remove(temp_filename_.c_str());
 }
@@ -756,8 +805,6 @@ TEST_P(RtcEventLogSession, StartLoggingFromBeginning) {
   count.ana_configs = 3;
   count.bwe_loss_events = 20;
   count.bwe_delay_events = 20;
-  count.dtls_transport_states = 4;
-  count.dtls_writable_states = 2;
   count.probe_creations = 4;
   count.probe_successes = 2;
   count.probe_failures = 2;
@@ -768,10 +815,13 @@ TEST_P(RtcEventLogSession, StartLoggingFromBeginning) {
   count.incoming_rtcp_packets = 20;
   count.outgoing_rtcp_packets = 20;
   if (IsNewFormat()) {
-    count.route_changes = 4;
+    count.dtls_transport_states = 4;
+    count.dtls_writable_states = 2;
+    count.frame_decoded_events = 50;
     count.generic_packets_sent = 100;
     count.generic_packets_received = 100;
     count.generic_acks_received = 20;
+    count.route_changes = 4;
   }
 
   WriteLog(count, 0);
@@ -789,8 +839,6 @@ TEST_P(RtcEventLogSession, StartLoggingInTheMiddle) {
   count.ana_configs = 10;
   count.bwe_loss_events = 50;
   count.bwe_delay_events = 50;
-  count.dtls_transport_states = 4;
-  count.dtls_writable_states = 5;
   count.probe_creations = 10;
   count.probe_successes = 5;
   count.probe_failures = 5;
@@ -801,10 +849,13 @@ TEST_P(RtcEventLogSession, StartLoggingInTheMiddle) {
   count.incoming_rtcp_packets = 50;
   count.outgoing_rtcp_packets = 50;
   if (IsNewFormat()) {
-    count.route_changes = 10;
+    count.dtls_transport_states = 4;
+    count.dtls_writable_states = 5;
+    count.frame_decoded_events = 250;
     count.generic_packets_sent = 500;
     count.generic_packets_received = 500;
     count.generic_acks_received = 50;
+    count.route_changes = 10;
   }
 
   WriteLog(count, 500);
@@ -844,13 +895,13 @@ TEST_P(RtcEventLogCircularBufferTest, KeepsMostRecentEvents) {
 
   std::unique_ptr<rtc::ScopedFakeClock> fake_clock =
       std::make_unique<rtc::ScopedFakeClock>();
-  fake_clock->SetTime(Timestamp::seconds(kStartTimeSeconds));
+  fake_clock->SetTime(Timestamp::Seconds(kStartTimeSeconds));
 
   auto task_queue_factory = CreateDefaultTaskQueueFactory();
   RtcEventLogFactory rtc_event_log_factory(task_queue_factory.get());
-  // When log_dumper goes out of scope, it causes the log file to be flushed
+  // When `log` goes out of scope, it causes the log file to be flushed
   // to disk.
-  std::unique_ptr<RtcEventLog> log_dumper =
+  std::unique_ptr<RtcEventLog> log =
       rtc_event_log_factory.CreateRtcEventLog(encoding_type_);
 
   for (size_t i = 0; i < kNumEvents; i++) {
@@ -860,22 +911,22 @@ TEST_P(RtcEventLogCircularBufferTest, KeepsMostRecentEvents) {
     // simplicity.
     // We base the various values on the index. We use this for some basic
     // consistency checks when we read back.
-    log_dumper->Log(std::make_unique<RtcEventProbeResultSuccess>(
+    log->Log(std::make_unique<RtcEventProbeResultSuccess>(
         i, kStartBitrate + i * 1000));
-    fake_clock->AdvanceTime(TimeDelta::ms(10));
+    fake_clock->AdvanceTime(TimeDelta::Millis(10));
   }
   int64_t start_time_us = rtc::TimeMicros();
   int64_t utc_start_time_us = rtc::TimeUTCMicros();
-  log_dumper->StartLogging(
+  log->StartLogging(
       std::make_unique<RtcEventLogOutputFile>(temp_filename, 10000000),
       RtcEventLog::kImmediateOutput);
-  fake_clock->AdvanceTime(TimeDelta::ms(10));
+  fake_clock->AdvanceTime(TimeDelta::Millis(10));
   int64_t stop_time_us = rtc::TimeMicros();
-  log_dumper->StopLogging();
+  log->StopLogging();
 
   // Read the generated file from disk.
   ParsedRtcEventLog parsed_log;
-  ASSERT_TRUE(parsed_log.ParseFile(temp_filename));
+  ASSERT_TRUE(parsed_log.ParseFile(temp_filename).ok());
 
   const auto& start_log_events = parsed_log.start_log_events();
   ASSERT_EQ(start_log_events.size(), 1u);
@@ -893,7 +944,7 @@ TEST_P(RtcEventLogCircularBufferTest, KeepsMostRecentEvents) {
   EXPECT_LT(probe_success_events.size(), kNumEvents);
 
   ASSERT_GT(probe_success_events.size(), 1u);
-  int64_t first_timestamp_us = probe_success_events[0].timestamp_us;
+  int64_t first_timestamp_ms = probe_success_events[0].timestamp.ms();
   uint32_t first_id = probe_success_events[0].id;
   int32_t first_bitrate_bps = probe_success_events[0].bitrate_bps;
   // We want to reset the time to what we used when generating the events, but
@@ -902,13 +953,16 @@ TEST_P(RtcEventLogCircularBufferTest, KeepsMostRecentEvents) {
   // destroyed before the new one is created, so we have to reset() first.
   fake_clock.reset();
   fake_clock = std::make_unique<rtc::ScopedFakeClock>();
-  fake_clock->SetTime(Timestamp::us(first_timestamp_us));
+  fake_clock->SetTime(Timestamp::Millis(first_timestamp_ms));
   for (size_t i = 1; i < probe_success_events.size(); i++) {
-    fake_clock->AdvanceTime(TimeDelta::ms(10));
+    fake_clock->AdvanceTime(TimeDelta::Millis(10));
     verifier_.VerifyLoggedBweProbeSuccessEvent(
         RtcEventProbeResultSuccess(first_id + i, first_bitrate_bps + i * 1000),
         probe_success_events[i]);
   }
+
+  // Clean up temporary file - can be pretty slow.
+  remove(temp_filename.c_str());
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -919,5 +973,65 @@ INSTANTIATE_TEST_SUITE_P(
 
 // TODO(terelius): Verify parser behavior if the timestamps are not
 // monotonically increasing in the log.
+
+TEST(DereferencingVectorTest, NonConstVector) {
+  std::vector<int> v{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  DereferencingVector<int> even;
+  EXPECT_TRUE(even.empty());
+  EXPECT_EQ(even.size(), 0u);
+  EXPECT_EQ(even.begin(), even.end());
+  for (size_t i = 0; i < v.size(); i += 2) {
+    even.push_back(&v[i]);
+  }
+  EXPECT_FALSE(even.empty());
+  EXPECT_EQ(even.size(), 5u);
+  EXPECT_NE(even.begin(), even.end());
+
+  // Test direct access.
+  for (size_t i = 0; i < even.size(); i++) {
+    EXPECT_EQ(even[i], 2 * static_cast<int>(i));
+  }
+
+  // Test iterator.
+  for (int val : even) {
+    EXPECT_EQ(val % 2, 0);
+  }
+
+  // Test modification through iterator.
+  for (int& val : even) {
+    val = val * 2;
+    EXPECT_EQ(val % 2, 0);
+  }
+
+  // Backing vector should have been modified.
+  std::vector<int> expected{0, 1, 4, 3, 8, 5, 12, 7, 16, 9};
+  for (size_t i = 0; i < v.size(); i++) {
+    EXPECT_EQ(v[i], expected[i]);
+  }
+}
+
+TEST(DereferencingVectorTest, ConstVector) {
+  std::vector<int> v{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  DereferencingVector<const int> odd;
+  EXPECT_TRUE(odd.empty());
+  EXPECT_EQ(odd.size(), 0u);
+  EXPECT_EQ(odd.begin(), odd.end());
+  for (size_t i = 1; i < v.size(); i += 2) {
+    odd.push_back(&v[i]);
+  }
+  EXPECT_FALSE(odd.empty());
+  EXPECT_EQ(odd.size(), 5u);
+  EXPECT_NE(odd.begin(), odd.end());
+
+  // Test direct access.
+  for (size_t i = 0; i < odd.size(); i++) {
+    EXPECT_EQ(odd[i], 2 * static_cast<int>(i) + 1);
+  }
+
+  // Test iterator.
+  for (int val : odd) {
+    EXPECT_EQ(val % 2, 1);
+  }
+}
 
 }  // namespace webrtc

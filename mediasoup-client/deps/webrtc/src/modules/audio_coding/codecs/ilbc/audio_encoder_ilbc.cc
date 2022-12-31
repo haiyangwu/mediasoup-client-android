@@ -34,7 +34,7 @@ int GetIlbcBitrate(int ptime) {
       // 50 bytes per frame of 30 ms => (approx) 13333 bits/s.
       return 13333;
     default:
-      FATAL();
+      RTC_CHECK_NOTREACHED();
   }
 }
 
@@ -127,6 +127,12 @@ void AudioEncoderIlbcImpl::Reset() {
   num_10ms_frames_buffered_ = 0;
 }
 
+absl::optional<std::pair<TimeDelta, TimeDelta>>
+AudioEncoderIlbcImpl::GetFrameLengthRange() const {
+  return {{TimeDelta::Millis(num_10ms_frames_per_packet_ * 10),
+           TimeDelta::Millis(num_10ms_frames_per_packet_ * 10)}};
+}
+
 size_t AudioEncoderIlbcImpl::RequiredOutputSizeBytes() const {
   switch (num_10ms_frames_per_packet_) {
     case 2:
@@ -138,7 +144,7 @@ size_t AudioEncoderIlbcImpl::RequiredOutputSizeBytes() const {
     case 6:
       return 2 * 50;
     default:
-      FATAL();
+      RTC_CHECK_NOTREACHED();
   }
 }
 

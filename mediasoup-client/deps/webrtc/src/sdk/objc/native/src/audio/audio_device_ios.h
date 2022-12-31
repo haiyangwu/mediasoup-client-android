@@ -13,12 +13,12 @@
 
 #include <memory>
 
+#include "api/sequence_checker.h"
 #include "audio_session_observer.h"
 #include "modules/audio_device/audio_device_generic.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/thread_checker.h"
 #include "sdk/objc/base/RTCMacros.h"
 #include "voice_processing_audio_unit.h"
 
@@ -48,7 +48,7 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
                        public VoiceProcessingAudioUnitObserver,
                        public rtc::MessageHandler {
  public:
-  AudioDeviceIOS();
+  explicit AudioDeviceIOS(bool bypass_voice_processing);
   ~AudioDeviceIOS() override;
 
   void AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) override;
@@ -81,6 +81,10 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   // A/V-sync is not supported on iOS. However, we avoid adding error messages
   // the log by using these dummy implementations instead.
   int32_t PlayoutDelay(uint16_t& delayMS) const override;
+
+  // No implementation for playout underrun on iOS. We override it to avoid a
+  // periodic log that it isn't available from the base class.
+  int32_t GetPlayoutUnderrunCount() const override { return -1; }
 
   // Native audio parameters stored during construction.
   // These methods are unique for the iOS implementation.
@@ -160,7 +164,7 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   bool IsInterrupted();
 
  private:
-  // Called by the relevant AudioSessionObserver methods on |thread_|.
+  // Called by the relevant AudioSessionObserver methods on `thread_`.
   void HandleInterruptionBegin();
   void HandleInterruptionEnd();
   void HandleValidRouteChange();
@@ -169,7 +173,7 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   void HandlePlayoutGlitchDetected();
   void HandleOutputVolumeChange();
 
-  // Uses current |playout_parameters_| and |record_parameters_| to inform the
+  // Uses current `playout_parameters_` and `record_parameters_` to inform the
   // audio device buffer (ADB) about our internal audio parameters.
   void UpdateAudioDeviceBuffer();
 
@@ -177,7 +181,7 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   // values may be different once the AVAudioSession has been activated.
   // This method asks for the current hardware parameters and takes actions
   // if they should differ from what we have asked for initially. It also
-  // defines |playout_parameters_| and |record_parameters_|.
+  // defines `playout_parameters_` and `record_parameters_`.
   void SetupAudioBuffersForActiveAudioSession();
 
   // Creates the audio unit.
@@ -188,6 +192,10 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
 
   // Configures the audio session for WebRTC.
   bool ConfigureAudioSession();
+
+  // Like above, but requires caller to already hold session lock.
+  bool ConfigureAudioSessionLocked();
+
   // Unconfigures the audio session.
   void UnconfigureAudioSession();
 
@@ -201,12 +209,15 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   // Resets thread-checkers before a call is restarted.
   void PrepareForNewStart();
 
+  // Determines whether voice processing should be enabled or disabled.
+  const bool bypass_voice_processing_;
+
   // Ensures that methods are called from the same thread as this object is
   // created on.
-  rtc::ThreadChecker thread_checker_;
+  SequenceChecker thread_checker_;
 
   // Native I/O audio thread checker.
-  rtc::ThreadChecker io_thread_checker_;
+  SequenceChecker io_thread_checker_;
 
   // Thread that this object is created on.
   rtc::Thread* thread_;

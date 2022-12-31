@@ -10,6 +10,7 @@
 #ifndef RTC_TOOLS_RTC_EVENT_LOG_VISUALIZER_PLOT_PYTHON_H_
 #define RTC_TOOLS_RTC_EVENT_LOG_VISUALIZER_PLOT_PYTHON_H_
 
+#include "absl/base/attributes.h"
 #include "rtc_tools/rtc_event_log_visualizer/plot_base.h"
 
 namespace webrtc {
@@ -21,7 +22,8 @@ class PythonPlot final : public Plot {
   void Draw() override;
 };
 
-class PythonPlotCollection final : public PlotCollection {
+class ABSL_DEPRECATED("Use PlotCollection and PrintPythonCode() instead.")
+    PythonPlotCollection final : public PlotCollection {
  public:
   explicit PythonPlotCollection(bool shared_xaxis = false);
   ~PythonPlotCollection() override;

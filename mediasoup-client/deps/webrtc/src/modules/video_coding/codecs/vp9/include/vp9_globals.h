@@ -14,10 +14,10 @@
 #ifndef MODULES_VIDEO_CODING_CODECS_VP9_INCLUDE_VP9_GLOBALS_H_
 #define MODULES_VIDEO_CODING_CODECS_VP9_INCLUDE_VP9_GLOBALS_H_
 
-#include <assert.h>
 #include <stdint.h>
 
 #include "modules/video_coding/codecs/interface/common_constants.h"
+#include "rtc_base/checks.h"
 
 namespace webrtc {
 
@@ -30,8 +30,8 @@ const size_t kMaxVp9RefPics = 3;
 const size_t kMaxVp9FramesInGof = 0xFF;  // 8 bits
 const size_t kMaxVp9NumberOfSpatialLayers = 8;
 
-const size_t kMinVp9SpatialLayerWidth = 320;
-const size_t kMinVp9SpatialLayerHeight = 180;
+const size_t kMinVp9SpatialLayerWidth = 240;
+const size_t kMinVp9SpatialLayerHeight = 135;
 
 enum TemporalStructureMode {
   kTemporalStructureMode1,  // 1 temporal layer structure - i.e., IPPP...
@@ -131,7 +131,7 @@ struct GofInfoVP9 {
         pid_diff[7][1] = 2;
         break;
       default:
-        assert(false);
+        RTC_NOTREACHED();
     }
   }
 
@@ -173,6 +173,7 @@ struct RTPVideoHeaderVP9 {
     gof_idx = kNoGofIdx;
     num_ref_pics = 0;
     num_spatial_layers = 1;
+    first_active_layer = 0;
     end_of_picture = true;
   }
 
@@ -208,6 +209,7 @@ struct RTPVideoHeaderVP9 {
 
   // SS data.
   size_t num_spatial_layers;  // Always populated.
+  size_t first_active_layer;  // Not sent on wire, used to adjust ss data.
   bool spatial_layer_resolution_present;
   uint16_t width[kMaxVp9NumberOfSpatialLayers];
   uint16_t height[kMaxVp9NumberOfSpatialLayers];

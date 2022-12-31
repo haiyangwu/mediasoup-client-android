@@ -11,23 +11,30 @@
 #ifndef P2P_BASE_CONNECTION_H_
 #define P2P_BASE_CONNECTION_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "api/candidate.h"
+#include "api/transport/stun.h"
 #include "logging/rtc_event_log/ice_logger.h"
 #include "p2p/base/candidate_pair_interface.h"
 #include "p2p/base/connection_info.h"
-#include "p2p/base/stun.h"
+#include "p2p/base/p2p_transport_channel_ice_field_trials.h"
 #include "p2p/base/stun_request.h"
 #include "p2p/base/transport_description.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/message_handler.h"
+#include "rtc_base/network.h"
+#include "rtc_base/numerics/event_based_exponential_moving_average.h"
 #include "rtc_base/rate_tracker.h"
-#include "rtc_base/third_party/sigslot/sigslot.h"
 
 namespace cricket {
+
+// Version number for GOOG_PING, this is added to have the option of
+// adding other flavors in the future.
+constexpr int kGoogPingVersion = 1;
 
 // Connection and Port has circular dependencies.
 // So we use forward declaration rather than include.
@@ -58,13 +65,13 @@ class ConnectionRequest : public StunRequest {
   int resend_delay() override;
 
  private:
-  Connection* connection_;
+  Connection* const connection_;
 };
 
 // Represents a communication link between a port on the local client and a
 // port on the remote client.
 class Connection : public CandidatePairInterface,
-                   public rtc::MessageHandler,
+                   public rtc::MessageHandlerAutoCleanup,
                    public sigslot::has_slots<> {
  public:
   struct SentPing {
@@ -79,11 +86,7 @@ class Connection : public CandidatePairInterface,
   ~Connection() override;
 
   // A unique ID assigned when the connection is created.
-  uint32_t id() { return id_; }
-
-  // The local port where this connection sends and receives packets.
-  Port* port() { return port_; }
-  const Port* port() const { return port_; }
+  uint32_t id() const { return id_; }
 
   // Implementation of virtual methods in CandidatePairInterface.
   // Returns the description of the local port
@@ -91,8 +94,13 @@ class Connection : public CandidatePairInterface,
   // Returns the description of the remote port to which we communicate.
   const Candidate& remote_candidate() const override;
 
+  // Return local network for this connection.
+  virtual const rtc::Network* network() const;
+  // Return generation for this connection.
+  virtual int generation() const;
+
   // Returns the pair priority.
-  uint64_t priority() const;
+  virtual uint64_t priority() const;
 
   enum WriteState {
     STATE_WRITABLE = 0,          // we have received ping responses recently
@@ -130,7 +138,7 @@ class Connection : public CandidatePairInterface,
     inactive_timeout_ = value;
   }
 
-  // Gets the |ConnectionInfo| stats, where |best_connection| has not been
+  // Gets the `ConnectionInfo` stats, where `best_connection` has not been
   // populated (default value false).
   ConnectionInfo stats();
 
@@ -175,19 +183,12 @@ class Connection : public CandidatePairInterface,
   uint32_t remote_nomination() const { return remote_nomination_; }
   // One or several pairs may be nominated based on if Regular or Aggressive
   // Nomination is used. https://tools.ietf.org/html/rfc5245#section-8
-  // |nominated| is defined both for the controlling or controlled agent based
+  // `nominated` is defined both for the controlling or controlled agent based
   // on if a nomination has been pinged or acknowledged. The controlled agent
-  // gets its |remote_nomination_| set when pinged by the controlling agent with
-  // a nomination value. The controlling agent gets its |acked_nomination_| set
+  // gets its `remote_nomination_` set when pinged by the controlling agent with
+  // a nomination value. The controlling agent gets its `acked_nomination_` set
   // when receiving a response to a nominating ping.
   bool nominated() const { return acked_nomination_ || remote_nomination_; }
-  // Public for unit tests.
-  void set_remote_nomination(uint32_t remote_nomination) {
-    remote_nomination_ = remote_nomination;
-  }
-  // Public for unit tests.
-  uint32_t acked_nomination() const { return acked_nomination_; }
-
   void set_remote_ice_mode(IceMode mode) { remote_ice_mode_ = mode; }
 
   int receiving_timeout() const;
@@ -231,11 +232,13 @@ class Connection : public CandidatePairInterface,
   void ReceivedPing(
       const absl::optional<std::string>& request_id = absl::nullopt);
   // Handles the binding request; sends a response if this is a valid request.
-  void HandleBindingRequest(IceMessage* msg);
+  void HandleStunBindingOrGoogPingRequest(IceMessage* msg);
   // Handles the piggyback acknowledgement of the lastest connectivity check
   // that the remote peer has received, if it is indicated in the incoming
   // connectivity check from the peer.
   void HandlePiggybackCheckAcknowledgementIfAny(StunMessage* msg);
+  // Timestamp when data was last sent (or attempted to be sent).
+  int64_t last_send_data() const { return last_send_data_; }
   int64_t last_data_received() const { return last_data_received_; }
 
   // Debugging description of this connection
@@ -274,14 +277,14 @@ class Connection : public CandidatePairInterface,
   uint32_t ComputeNetworkCost() const;
 
   // Update the ICE password and/or generation of the remote candidate if the
-  // ufrag in |params| matches the candidate's ufrag, and the
+  // ufrag in `params` matches the candidate's ufrag, and the
   // candidate's password and/or ufrag has not been set.
   void MaybeSetRemoteIceParametersAndGeneration(const IceParameters& params,
                                                 int generation);
 
-  // If |remote_candidate_| is peer reflexive and is equivalent to
-  // |new_candidate| except the type, update |remote_candidate_| to
-  // |new_candidate|.
+  // If `remote_candidate_` is peer reflexive and is equivalent to
+  // `new_candidate` except the type, update `remote_candidate_` to
+  // `new_candidate`.
   void MaybeUpdatePeerReflexiveCandidate(const Candidate& new_candidate);
 
   // Returns the last received time of any data, stun request, or stun
@@ -294,8 +297,43 @@ class Connection : public CandidatePairInterface,
 
   bool stable(int64_t now) const;
 
-  // Check if we sent |val| pings without receving a response.
+  // Check if we sent `val` pings without receving a response.
   bool TooManyOutstandingPings(const absl::optional<int>& val) const;
+
+  void SetIceFieldTrials(const IceFieldTrials* field_trials);
+  const rtc::EventBasedExponentialMovingAverage& GetRttEstimate() const {
+    return rtt_estimate_;
+  }
+
+  // Reset the connection to a state of a newly connected.
+  // - STATE_WRITE_INIT
+  // - receving = false
+  // - throw away all pending request
+  // - reset RttEstimate
+  //
+  // Keep the following unchanged:
+  // - connected
+  // - remote_candidate
+  // - statistics
+  //
+  // Does not trigger SignalStateChange
+  void ForgetLearnedState();
+
+  void SendStunBindingResponse(const StunMessage* request);
+  void SendGoogPingResponse(const StunMessage* request);
+  void SendResponseMessage(const StunMessage& response);
+
+  // An accessor for unit tests.
+  Port* PortForTest() { return port_; }
+  const Port* PortForTest() const { return port_; }
+
+  // Public for unit tests.
+  uint32_t acked_nomination() const { return acked_nomination_; }
+
+  // Public for unit tests.
+  void set_remote_nomination(uint32_t remote_nomination) {
+    remote_nomination_ = remote_nomination;
+  }
 
  protected:
   enum { MSG_DELETE = 0, MSG_FIRST_AVAILABLE };
@@ -330,6 +368,10 @@ class Connection : public CandidatePairInterface,
 
   void OnMessage(rtc::Message* pmsg) override;
 
+  // The local port where this connection sends and receives packets.
+  Port* port() { return port_; }
+  const Port* port() const { return port_; }
+
   uint32_t id_;
   Port* port_;
   size_t local_candidate_index_;
@@ -338,6 +380,7 @@ class Connection : public CandidatePairInterface,
   ConnectionInfo stats_;
   rtc::RateTracker recv_rate_tracker_;
   rtc::RateTracker send_rate_tracker_;
+  int64_t last_send_data_ = 0;
 
  private:
   // Update the local candidate based on the mapped address attribute.
@@ -349,12 +392,16 @@ class Connection : public CandidatePairInterface,
   void LogCandidatePairEvent(webrtc::IceCandidatePairEventType type,
                              uint32_t transaction_id);
 
+  // Check if this IceMessage is identical
+  // to last message ack:ed STUN_BINDING_REQUEST.
+  bool ShouldSendGoogPing(const StunMessage* message);
+
   WriteState write_state_;
   bool receiving_;
   bool connected_;
   bool pruned_;
   bool selected_ = false;
-  // By default |use_candidate_attr_| flag will be true,
+  // By default `use_candidate_attr_` flag will be true,
   // as we will be using aggressive nomination.
   // But when peer is ice-lite, this flag "must" be initialized to false and
   // turn on when connection becomes "best connection".
@@ -405,8 +452,19 @@ class Connection : public CandidatePairInterface,
   absl::optional<webrtc::IceCandidatePairDescription> log_description_;
   webrtc::IceEventLog* ice_event_log_ = nullptr;
 
+  // GOOG_PING_REQUEST is sent in place of STUN_BINDING_REQUEST
+  // if configured via field trial, the remote peer supports it (signaled
+  // in STUN_BINDING) and if the last STUN BINDING is identical to the one
+  // that is about to be sent.
+  absl::optional<bool> remote_support_goog_ping_;
+  std::unique_ptr<StunMessage> cached_stun_binding_;
+
+  const IceFieldTrials* field_trials_;
+  rtc::EventBasedExponentialMovingAverage rtt_estimate_;
+
   friend class Port;
   friend class ConnectionRequest;
+  friend class P2PTransportChannel;
 };
 
 // ProxyConnection defers all the interesting work to the port.

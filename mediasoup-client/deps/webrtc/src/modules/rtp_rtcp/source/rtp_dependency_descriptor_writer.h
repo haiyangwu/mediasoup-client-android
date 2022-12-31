@@ -10,29 +10,31 @@
 #ifndef MODULES_RTP_RTCP_SOURCE_RTP_DEPENDENCY_DESCRIPTOR_WRITER_H_
 #define MODULES_RTP_RTCP_SOURCE_RTP_DEPENDENCY_DESCRIPTOR_WRITER_H_
 
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
 #include "api/array_view.h"
-#include "common_video/generic_frame_descriptor/generic_frame_info.h"
+#include "api/transport/rtp/dependency_descriptor.h"
 #include "rtc_base/bit_buffer.h"
 
 namespace webrtc {
 class RtpDependencyDescriptorWriter {
  public:
-  // Assumes |structure| and |descriptor| are valid and
-  // |descriptor| matches the |structure|.
+  // Assumes `structure` and `descriptor` are valid and
+  // `descriptor` matches the `structure`.
   RtpDependencyDescriptorWriter(rtc::ArrayView<uint8_t> data,
                                 const FrameDependencyStructure& structure,
+                                std::bitset<32> active_chains,
                                 const DependencyDescriptor& descriptor);
 
   // Serializes DependencyDescriptor rtp header extension.
-  // Returns false if |data| is too small to serialize the |descriptor|.
+  // Returns false if `data` is too small to serialize the `descriptor`.
   bool Write();
 
   // Returns minimum number of bits needed to serialize descriptor with respect
-  // to the |structure|. Returns 0 if |descriptor| can't be serialized.
+  // to the `structure`. Returns 0 if `descriptor` can't be serialized.
   int ValueSizeBits() const;
 
  private:
@@ -50,6 +52,7 @@ class RtpDependencyDescriptorWriter {
   int StructureSizeBits() const;
   TemplateMatch CalculateMatch(TemplateIterator frame_template) const;
   void FindBestTemplate();
+  bool ShouldWriteActiveDecodeTargetsBitmask() const;
   bool HasExtendedFields() const;
   uint64_t TemplateId() const;
 
@@ -76,6 +79,7 @@ class RtpDependencyDescriptorWriter {
   bool build_failed_ = false;
   const DependencyDescriptor& descriptor_;
   const FrameDependencyStructure& structure_;
+  std::bitset<32> active_chains_;
   rtc::BitBufferWriter bit_writer_;
   TemplateMatch best_template_;
 };

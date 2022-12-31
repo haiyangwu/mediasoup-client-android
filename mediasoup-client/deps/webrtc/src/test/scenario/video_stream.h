@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "test/fake_encoder.h"
 #include "test/fake_videorenderer.h"
 #include "test/frame_generator_capturer.h"
@@ -40,6 +41,8 @@ class SendVideoStream {
   void Stop();
   void UpdateConfig(std::function<void(VideoStreamConfig*)> modifier);
   void UpdateActiveLayers(std::vector<bool> active_layers);
+  bool UsingSsrc(uint32_t ssrc) const;
+  bool UsingRtxSsrc(uint32_t ssrc) const;
 
  private:
   friend class Scenario;
@@ -51,14 +54,14 @@ class SendVideoStream {
                   Transport* send_transport,
                   VideoFrameMatcher* matcher);
 
-  rtc::CriticalSection crit_;
+  Mutex mutex_;
   std::vector<uint32_t> ssrcs_;
   std::vector<uint32_t> rtx_ssrcs_;
   VideoSendStream* send_stream_ = nullptr;
   CallClient* const sender_;
-  VideoStreamConfig config_ RTC_GUARDED_BY(crit_);
+  VideoStreamConfig config_ RTC_GUARDED_BY(mutex_);
   std::unique_ptr<VideoEncoderFactory> encoder_factory_;
-  std::vector<test::FakeEncoder*> fake_encoders_ RTC_GUARDED_BY(crit_);
+  std::vector<test::FakeEncoder*> fake_encoders_ RTC_GUARDED_BY(mutex_);
   std::unique_ptr<VideoBitrateAllocatorFactory> bitrate_allocator_factory_;
   std::unique_ptr<FrameGeneratorCapturer> video_capturer_;
   std::unique_ptr<ForwardingCapturedFrameTap> frame_tap_;

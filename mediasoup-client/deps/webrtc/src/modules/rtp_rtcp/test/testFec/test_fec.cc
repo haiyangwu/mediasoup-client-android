@@ -99,7 +99,7 @@ void RunTest(bool use_flexfec) {
       sizeof(kPacketMaskBurstyTbl) / sizeof(*kPacketMaskBurstyTbl)};
 
   ASSERT_EQ(12, kMaxMediaPackets[1]) << "Max media packets for bursty mode not "
-                                     << "equal to 12.";
+                                        "equal to 12.";
 
   ForwardErrorCorrection::PacketList media_packet_list;
   std::list<ForwardErrorCorrection::Packet*> fec_packet_list;
@@ -254,7 +254,7 @@ void RunTest(bool use_flexfec) {
                   random.Rand(kMinPacketSize, kMaxPacketSize);
               media_packet->data.SetSize(packet_length);
 
-              uint8_t* data = media_packet->data.data();
+              uint8_t* data = media_packet->data.MutableData();
               // Generate random values for the first 2 bytes.
               data[0] = random.Rand<uint8_t>();
               data[1] = random.Rand<uint8_t>();
@@ -285,7 +285,7 @@ void RunTest(bool use_flexfec) {
               media_packet_list.push_back(std::move(media_packet));
               seq_num++;
             }
-            media_packet_list.back()->data[1] |= 0x80;
+            media_packet_list.back()->data.MutableData()[1] |= 0x80;
 
             ASSERT_EQ(0, fec->EncodeFec(media_packet_list, protection_factor,
                                         num_imp_packets, kUseUnequalProtection,
@@ -293,8 +293,10 @@ void RunTest(bool use_flexfec) {
                 << "EncodeFec() failed";
 
             ASSERT_EQ(num_fec_packets, fec_packet_list.size())
-                << "We requested " << num_fec_packets << " FEC packets, but "
-                << "EncodeFec() produced " << fec_packet_list.size();
+                << "We requested " << num_fec_packets
+                << " FEC packets, but "
+                   "EncodeFec() produced "
+                << fec_packet_list.size();
 
             memset(media_loss_mask, 0, sizeof(media_loss_mask));
             uint32_t media_packet_idx = 0;
@@ -310,8 +312,8 @@ void RunTest(bool use_flexfec) {
                 received_packet->pkt = new ForwardErrorCorrection::Packet();
                 received_packet->pkt->data = media_packet->data;
                 received_packet->ssrc = media_ssrc;
-                received_packet->seq_num =
-                    ByteReader<uint16_t>::ReadBigEndian(&media_packet->data[2]);
+                received_packet->seq_num = ByteReader<uint16_t>::ReadBigEndian(
+                    media_packet->data.data() + 2);
                 received_packet->is_fec = false;
                 received_packet_list.push_back(std::move(received_packet));
               }
@@ -419,12 +421,12 @@ void RunTest(bool use_flexfec) {
                 ASSERT_EQ(recovered_packet->pkt->data.size(),
                           media_packet->data.size())
                     << "Recovered packet length not identical to original "
-                    << "media packet";
+                       "media packet";
                 ASSERT_EQ(0, memcmp(recovered_packet->pkt->data.cdata(),
                                     media_packet->data.cdata(),
                                     media_packet->data.size()))
                     << "Recovered packet payload not identical to original "
-                    << "media packet";
+                       "media packet";
                 recovered_packet_list.pop_front();
               }
               ++media_packet_idx;

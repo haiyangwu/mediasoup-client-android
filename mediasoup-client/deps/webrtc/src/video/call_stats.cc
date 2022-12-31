@@ -64,7 +64,7 @@ int64_t GetNewAvgRttMs(const std::list<CallStats::RttTime>& reports,
 // This class is used to de-register a Module from a ProcessThread to satisfy
 // threading requirements of the Module (CallStats).
 // The guarantee offered by TemporaryDeregistration is that while its in scope,
-// no calls to |TimeUntilNextProcess| or |Process()| will occur and therefore
+// no calls to `TimeUntilNextProcess` or `Process()` will occur and therefore
 // synchronization with those methods, is not necessary.
 class TemporaryDeregistration {
  public:
@@ -122,14 +122,14 @@ void CallStats::Process() {
   int64_t now = clock_->TimeInMilliseconds();
   last_process_time_ = now;
 
-  // |avg_rtt_ms_| is allowed to be read on the process thread since that's the
+  // `avg_rtt_ms_` is allowed to be read on the process thread since that's the
   // only thread that modifies the value.
   int64_t avg_rtt_ms = avg_rtt_ms_;
   RemoveOldReports(now, &reports_);
   max_rtt_ms_ = GetMaxRttMs(reports_);
   avg_rtt_ms = GetNewAvgRttMs(reports_, avg_rtt_ms);
   {
-    rtc::CritScope lock(&avg_rtt_ms_lock_);
+    MutexLock lock(&avg_rtt_ms_lock_);
     avg_rtt_ms_ = avg_rtt_ms;
   }
 
@@ -150,7 +150,7 @@ void CallStats::ProcessThreadAttached(ProcessThread* process_thread) {
   process_thread_running_ = process_thread != nullptr;
 
   // Whether we just got attached or detached, we clear the
-  // |process_thread_checker_| so that it can be used to protect variables
+  // `process_thread_checker_` so that it can be used to protect variables
   // in either the process thread when it starts again, or UpdateHistograms()
   // (mutually exclusive).
   process_thread_checker_.Detach();
@@ -178,7 +178,7 @@ int64_t CallStats::LastProcessedRtt() const {
   // allow only reading this from the process thread (or TQ once we get there)
   // so that the lock isn't necessary.
 
-  rtc::CritScope cs(&avg_rtt_ms_lock_);
+  MutexLock lock(&avg_rtt_ms_lock_);
   return avg_rtt_ms_;
 }
 

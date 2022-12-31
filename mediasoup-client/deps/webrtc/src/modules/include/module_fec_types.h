@@ -13,8 +13,8 @@
 
 namespace webrtc {
 
-// Types for the FEC packet masks. The type |kFecMaskRandom| is based on a
-// random loss model. The type |kFecMaskBursty| is based on a bursty/consecutive
+// Types for the FEC packet masks. The type `kFecMaskRandom` is based on a
+// random loss model. The type `kFecMaskBursty` is based on a bursty/consecutive
 // loss model. The packet masks are defined in
 // modules/rtp_rtcp/fec_private_tables_random(bursty).h
 enum FecMaskType {
@@ -24,9 +24,9 @@ enum FecMaskType {
 
 // Struct containing forward error correction settings.
 struct FecProtectionParams {
-  int fec_rate;
-  int max_fec_frames;
-  FecMaskType fec_mask_type;
+  int fec_rate = 0;
+  int max_fec_frames = 0;
+  FecMaskType fec_mask_type = FecMaskType::kFecMaskRandom;
 };
 
 }  // namespace webrtc

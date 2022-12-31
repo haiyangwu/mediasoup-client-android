@@ -27,7 +27,7 @@ group("sdk") {
   }
 }
 
-rtc_source_set("media_constraints") {
+rtc_library("media_constraints") {
   sources = [
     "media_constraints.cc",
     "media_constraints.h",
@@ -35,15 +35,13 @@ rtc_source_set("media_constraints") {
   deps = [
     "../api:audio_options_api",
     "../api:libjingle_peerconnection_api",
-    "//third_party/abseil-cpp/absl/types:optional",
   ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
-rtc_source_set("sdk_tests") {
+rtc_library("sdk_tests") {
   testonly = true
-  sources = [
-    "media_constraints_unittest.cc",
-  ]
+  sources = [ "media_constraints_unittest.cc" ]
   deps = [
     ":media_constraints",
     "../test:test_support",
@@ -58,9 +56,6 @@ if (is_ios || is_mac) {
       # This is needed so that framework headers can include base headers
       # without pathname (so it works from within the framework module).
       "objc/base",
-
-      # This is here for backward compatiblity reasons.
-      "objc/Framework/Headers",  # TODO(bugs.webrtc.org/9627): Remove this.
     ]
     cflags = [
       "-Wimplicit-retain-self",
@@ -81,12 +76,10 @@ if (is_ios || is_mac) {
 
   # TODO(bugs.webrtc.org/9627): Remove this when unused. Targets should depend on base_objc
   # or helpers_objc directly instead.
-  rtc_static_library("common_objc") {
+  rtc_library("common_objc") {
     visibility = [ "*" ]
 
-    sources = [
-      "objc/helpers/noop.mm",
-    ]
+    sources = [ "objc/helpers/noop.mm" ]
 
     public_configs = [ ":common_config_objc" ]
 
@@ -96,7 +89,7 @@ if (is_ios || is_mac) {
     ]
   }
 
-  rtc_static_library("base_objc") {
+  rtc_library("base_objc") {
     visibility = [ "*" ]
     sources = [
       "objc/base/RTCCodecSpecificInfo.h",
@@ -108,8 +101,6 @@ if (is_ios || is_mac) {
       "objc/base/RTCMacros.h",
       "objc/base/RTCMutableI420Buffer.h",
       "objc/base/RTCMutableYUVPlanarBuffer.h",
-      "objc/base/RTCRtpFragmentationHeader.h",
-      "objc/base/RTCRtpFragmentationHeader.m",
       "objc/base/RTCVideoCapturer.h",
       "objc/base/RTCVideoCapturer.m",
       "objc/base/RTCVideoCodecInfo.h",
@@ -141,7 +132,7 @@ if (is_ios || is_mac) {
     public_configs = [ ":common_config_objc" ]
   }
 
-  rtc_static_library("helpers_objc") {
+  rtc_library("helpers_objc") {
     sources = [
       "objc/helpers/AVCaptureSession+DevicePosition.h",
       "objc/helpers/AVCaptureSession+DevicePosition.mm",
@@ -158,7 +149,7 @@ if (is_ios || is_mac) {
       "../rtc_base:checks",
     ]
 
-    libs = [
+    frameworks = [
       "AVFoundation.framework",
       "CoreMedia.framework",
     ]
@@ -181,7 +172,7 @@ if (is_ios || is_mac) {
   }
 
   if (!build_with_chromium) {
-    rtc_static_library("callback_logger_objc") {
+    rtc_library("callback_logger_objc") {
       sources = [
         "objc/api/logging/RTCCallbackLogger.h",
         "objc/api/logging/RTCCallbackLogger.mm",
@@ -200,7 +191,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("file_logger_objc") {
+    rtc_library("file_logger_objc") {
       sources = [
         "objc/api/peerconnection/RTCFileLogger.h",
         "objc/api/peerconnection/RTCFileLogger.mm",
@@ -222,7 +213,7 @@ if (is_ios || is_mac) {
 
   if (!build_with_chromium) {
     if (is_ios) {
-      rtc_static_library("native_api_audio_device_module") {
+      rtc_library("native_api_audio_device_module") {
         visibility = [ "*" ]
 
         sources = [
@@ -243,16 +234,15 @@ if (is_ios || is_mac) {
       rtc_source_set("audio_session_observer") {
         visibility = [ ":*" ]
 
-        sources = [
-          "objc/native/src/audio/audio_session_observer.h",
-        ]
+        sources = [ "objc/native/src/audio/audio_session_observer.h" ]
 
         deps = [
           "../rtc_base",
+          "../rtc_base:threading",
         ]
       }
 
-      rtc_static_library("audio_device") {
+      rtc_library("audio_device") {
         visibility = [ "*" ]
 
         sources = [
@@ -278,25 +268,31 @@ if (is_ios || is_mac) {
           "../modules/audio_device:audio_device_generic",
           "../rtc_base",
           "../rtc_base:checks",
-          "../rtc_base/system:fallthrough",
+          "../rtc_base:threading",
           "../system_wrappers:field_trial",
           "../system_wrappers:metrics",
         ]
+        absl_deps = [ "//third_party/abseil-cpp/absl/base:core_headers" ]
 
-        libs = [ "AudioToolbox.framework" ]
+        frameworks = [ "AudioToolbox.framework" ]
       }
 
-      rtc_static_library("audio_objc") {
+      # This target exists to expose :audio_session_objc and
+      # :audio_session_delegate_adapter_objc for backward compatibility,
+      # and should be deprecated.
+      group("audio_objc") {
+        public_deps = [  # no-presubmit-check TODO(webrtc:11238)
+          ":audio_session_delegate_adapter_objc",
+          ":audio_session_objc",
+        ]
+      }
+
+      rtc_library("audio_session_delegate_adapter_objc") {
         sources = [
-          "objc/components/audio/RTCAudioSession+Configuration.mm",
-          "objc/components/audio/RTCAudioSession+Private.h",
-          "objc/components/audio/RTCAudioSession.h",
-          "objc/components/audio/RTCAudioSession.mm",
-          "objc/components/audio/RTCAudioSessionConfiguration.h",
-          "objc/components/audio/RTCAudioSessionConfiguration.m",
           "objc/components/audio/RTCNativeAudioSessionDelegateAdapter.h",
           "objc/components/audio/RTCNativeAudioSessionDelegateAdapter.mm",
         ]
+
         configs += [
           "..:common_objc",
           ":used_from_extension",
@@ -304,20 +300,79 @@ if (is_ios || is_mac) {
 
         public_configs = [ ":common_config_objc" ]
 
-        libs = [ "AVFoundation.framework" ]
+        deps = [
+          ":audio_session_objc",
+          ":audio_session_observer",
+          ":base_objc",
+        ]
+      }
+
+      rtc_library("audio_session_objc") {
+        visibility = [ "*" ]
+
+        sources = [
+          "objc/components/audio/RTCAudioSession+Configuration.mm",
+          "objc/components/audio/RTCAudioSession+Private.h",
+          "objc/components/audio/RTCAudioSession.h",
+          "objc/components/audio/RTCAudioSession.mm",
+          "objc/components/audio/RTCAudioSessionConfiguration.h",
+          "objc/components/audio/RTCAudioSessionConfiguration.m",
+        ]
+
+        configs += [
+          "..:common_objc",
+          ":used_from_extension",
+        ]
+
+        public_configs = [ ":common_config_objc" ]
+
+        frameworks = [ "AVFoundation.framework" ]
 
         deps = [
-          ":audio_session_observer",
           ":base_objc",
           ":helpers_objc",
           "../rtc_base",
           "../rtc_base:checks",
           "../rtc_base:rtc_base_approved",
+          "../rtc_base/synchronization:mutex",
+        ]
+      }
+
+      rtc_source_set("network_monitor_observer") {
+        visibility = [ ":*" ]
+
+        sources = [ "objc/native/src/network_monitor_observer.h" ]
+
+        deps = [
+          "../rtc_base",
+          "../rtc_base:network_constants",
+          "../rtc_base:threading",
+        ]
+      }
+
+      rtc_library("network_monitor_objc") {
+        visibility = [ "*" ]
+
+        sources = [
+          "objc/components/network/RTCNetworkMonitor+Private.h",
+          "objc/components/network/RTCNetworkMonitor.h",
+          "objc/components/network/RTCNetworkMonitor.mm",
+        ]
+
+        configs += [ ":used_from_extension" ]
+
+        frameworks = [ "Network.framework" ]
+
+        deps = [
+          ":base_objc",
+          ":helpers_objc",
+          ":network_monitor_observer",
+          "../rtc_base/system:gcd_helpers",
         ]
       }
     }
 
-    rtc_static_library("videosource_objc") {
+    rtc_library("videosource_objc") {
       sources = [
         "objc/api/peerconnection/RTCVideoSource+Private.h",
         "objc/api/peerconnection/RTCVideoSource.h",
@@ -332,12 +387,13 @@ if (is_ios || is_mac) {
         "../api:libjingle_peerconnection_api",
         "../api:media_stream_interface",
         "../api/video:video_frame",
-        "../api/video:video_frame_i420",
         "../api/video:video_rtp_headers",
         "../common_video",
         "../media:rtc_media_base",
+        "../pc:rtc_pc_base",
         "../rtc_base",
         "../rtc_base:checks",
+        "../rtc_base:threading",
         "//third_party/libyuv",
       ]
 
@@ -347,7 +403,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("videoframebuffer_objc") {
+    rtc_library("videoframebuffer_objc") {
       visibility = [ "*" ]
       sources = [
         "objc/api/video_frame_buffer/RTCNativeI420Buffer+Private.h",
@@ -361,7 +417,6 @@ if (is_ios || is_mac) {
       deps = [
         ":base_objc",
         "//api/video:video_frame",
-        "//api/video:video_frame_i420",
         "//api/video:video_rtp_headers",
         "//common_video",
         "//rtc_base:checks",
@@ -372,14 +427,14 @@ if (is_ios || is_mac) {
         "..:common_objc",
         ":used_from_extension",
       ]
-      libs = [
+      frameworks = [
         "VideoToolbox.framework",
         "CoreGraphics.framework",
         "CoreVideo.framework",
       ]
     }
 
-    rtc_static_library("video_objc") {
+    rtc_library("opengl_objc") {
       sources = [
         "objc/components/renderer/opengl/RTCDefaultShader.h",
         "objc/components/renderer/opengl/RTCDefaultShader.mm",
@@ -390,23 +445,27 @@ if (is_ios || is_mac) {
         "objc/components/renderer/opengl/RTCShader.mm",
         "objc/components/renderer/opengl/RTCVideoViewShading.h",
       ]
-      libs = [ "CoreVideo.framework" ]
+      frameworks = [ "CoreVideo.framework" ]
       if (is_ios) {
         sources += [
           "objc/components/renderer/opengl/RTCNV12TextureCache.h",
           "objc/components/renderer/opengl/RTCNV12TextureCache.m",
         ]
-        libs += [
+        frameworks += [
           "GLKit.framework",
           "OpenGLES.framework",
           "QuartzCore.framework",
         ]
       } else if (is_mac) {
-        libs += [
+        frameworks += [
           "CoreMedia.framework",
           "OpenGL.framework",
         ]
       }
+
+      # TODO(bugs.webrtc.org/12937): Remove OpenGL deprecation warning
+      # workaround.
+      defines = [ "GLES_SILENCE_DEPRECATION" ]
 
       deps = [
         ":base_objc",
@@ -422,8 +481,8 @@ if (is_ios || is_mac) {
         "../media:rtc_media_base",
         "../rtc_base",
         "../rtc_base:checks",
-        "//third_party/abseil-cpp/absl/types:optional",
       ]
+      absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 
       configs += [
         "..:common_objc",
@@ -431,9 +490,12 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("ui_objc") {
+    rtc_library("opengl_ui_objc") {
       visibility = [ "*" ]
-      allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
+      allow_poison = [
+        "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
+        "default_task_queue",
+      ]
       if (is_ios) {
         sources = [
           "objc/components/renderer/opengl/RTCDisplayLinkTimer.h",
@@ -441,6 +503,10 @@ if (is_ios || is_mac) {
           "objc/components/renderer/opengl/RTCEAGLVideoView.h",
           "objc/components/renderer/opengl/RTCEAGLVideoView.m",
         ]
+
+        # TODO(bugs.webrtc.org/12937): Remove OpenGL deprecation warning
+        # workaround.
+        defines = [ "GLES_SILENCE_DEPRECATION" ]
       }
       if (is_mac) {
         sources = [
@@ -452,69 +518,65 @@ if (is_ios || is_mac) {
       deps = [
         ":base_objc",
         ":helpers_objc",
-        ":video_objc",
+        ":metal_objc",
+        ":opengl_objc",
         ":videocapture_objc",
         ":videoframebuffer_objc",
       ]
     }
 
-    if (rtc_use_metal_rendering) {
-      rtc_static_library("metal_objc") {
-        visibility = [ "*" ]
-        allow_poison = [
-          "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
-          "default_task_queue",
+    rtc_library("metal_objc") {
+      visibility = [ "*" ]
+      allow_poison = [
+        "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
+        "default_task_queue",
+      ]
+      sources = [
+        "objc/components/renderer/metal/RTCMTLI420Renderer.h",
+        "objc/components/renderer/metal/RTCMTLI420Renderer.mm",
+        "objc/components/renderer/metal/RTCMTLNV12Renderer.h",
+        "objc/components/renderer/metal/RTCMTLNV12Renderer.mm",
+        "objc/components/renderer/metal/RTCMTLRGBRenderer.h",
+        "objc/components/renderer/metal/RTCMTLRGBRenderer.mm",
+        "objc/components/renderer/metal/RTCMTLRenderer+Private.h",
+        "objc/components/renderer/metal/RTCMTLRenderer.h",
+        "objc/components/renderer/metal/RTCMTLRenderer.mm",
+      ]
+      frameworks = [
+        "CoreVideo.framework",
+        "Metal.framework",
+        "MetalKit.framework",
+      ]
+      if (is_ios) {
+        sources += [
+          "objc/components/renderer/metal/RTCMTLVideoView.h",
+          "objc/components/renderer/metal/RTCMTLVideoView.m",
         ]
-        sources = [
-          "objc/components/renderer/metal/RTCMTLI420Renderer.h",
-          "objc/components/renderer/metal/RTCMTLI420Renderer.mm",
-          "objc/components/renderer/metal/RTCMTLRenderer+Private.h",
-          "objc/components/renderer/metal/RTCMTLRenderer.h",
-          "objc/components/renderer/metal/RTCMTLRenderer.mm",
-        ]
-        if (is_ios) {
-          sources += [
-            "objc/components/renderer/metal/RTCMTLNV12Renderer.h",
-            "objc/components/renderer/metal/RTCMTLNV12Renderer.mm",
-            "objc/components/renderer/metal/RTCMTLRGBRenderer.h",
-            "objc/components/renderer/metal/RTCMTLRGBRenderer.mm",
-            "objc/components/renderer/metal/RTCMTLVideoView.h",
-            "objc/components/renderer/metal/RTCMTLVideoView.m",
-          ]
-        }
-        libs = [
-          "CoreVideo.framework",
-          "Metal.framework",
-          "MetalKit.framework",
-        ]
-        if (is_mac) {
-          sources += [
-            "objc/components/renderer/metal/RTCMTLNSVideoView.h",
-            "objc/components/renderer/metal/RTCMTLNSVideoView.m",
-          ]
-          libs += [ "AppKit.framework" ]
-        }
-        deps = [
-          ":base_objc",
-          ":peerconnectionfactory_base_objc",
-          ":video_objc",
-          ":videoframebuffer_objc",
-          "../api/video:video_frame",
-          "../api/video:video_rtp_headers",
-          "../rtc_base:checks",
-          "../rtc_base:rtc_base_approved",
-        ]
-        configs += [ "..:common_objc" ]
-        public_configs = [ ":common_config_objc" ]
       }
+      if (is_mac) {
+        sources += [
+          "objc/components/renderer/metal/RTCMTLNSVideoView.h",
+          "objc/components/renderer/metal/RTCMTLNSVideoView.m",
+        ]
+        frameworks += [ "AppKit.framework" ]
+      }
+      deps = [
+        ":base_objc",
+        ":peerconnectionfactory_base_objc",
+        ":videoframebuffer_objc",
+        "../api/video:video_frame",
+        "../api/video:video_rtp_headers",
+        "../rtc_base:checks",
+        "../rtc_base:rtc_base_approved",
+      ]
+      configs += [ "..:common_objc" ]
+      public_configs = [ ":common_config_objc" ]
     }
 
     # TODO(bugs.webrtc.org/9627): Remove this target.
-    rtc_static_library("videocapturebase_objc") {
+    rtc_library("videocapturebase_objc") {
       visibility = [ "*" ]
-      sources = [
-        "objc/helpers/noop.mm",
-      ]
+      sources = [ "objc/helpers/noop.mm" ]
 
       configs += [ "..:common_objc" ]
 
@@ -526,22 +588,19 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("videocapture_objc") {
+    rtc_library("videocapture_objc") {
       visibility = [ "*" ]
       allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
       sources = [
         "objc/components/capturer/RTCCameraVideoCapturer.h",
         "objc/components/capturer/RTCCameraVideoCapturer.m",
+        "objc/components/capturer/RTCFileVideoCapturer.h",
+        "objc/components/capturer/RTCFileVideoCapturer.m",
       ]
-      if (is_ios) {
-        sources += [
-          "objc/components/capturer/RTCFileVideoCapturer.h",
-          "objc/components/capturer/RTCFileVideoCapturer.m",
-        ]
-      }
-      libs = [
+      frameworks = [
         "AVFoundation.framework",
         "CoreVideo.framework",
+        "QuartzCore.framework",
       ]
 
       configs += [ "..:common_objc" ]
@@ -551,12 +610,12 @@ if (is_ios || is_mac) {
       deps = [
         ":base_objc",
         ":helpers_objc",
-        ":video_objc",
         ":videoframebuffer_objc",
+        "../rtc_base/system:gcd_helpers",
       ]
     }
 
-    rtc_static_library("videocodec_objc") {
+    rtc_library("videocodec_objc") {
       visibility = [ "*" ]
       configs += [ "..:no_global_constructors" ]
       sources = [
@@ -581,14 +640,13 @@ if (is_ios || is_mac) {
         "../common_video",
         "../media:rtc_h264_profile_id",
         "../media:rtc_media_base",
-        "../modules:module_api",
         "../modules/video_coding:video_codec_interface",
         "../rtc_base:checks",
         "../rtc_base:rtc_base_approved",
       ]
     }
 
-    rtc_static_library("default_codec_factory_objc") {
+    rtc_library("default_codec_factory_objc") {
       sources = [
         "objc/components/video_codec/RTCDefaultVideoDecoderFactory.h",
         "objc/components/video_codec/RTCDefaultVideoDecoderFactory.m",
@@ -597,6 +655,7 @@ if (is_ios || is_mac) {
       ]
 
       deps = [
+        ":av1",
         ":base_objc",
         ":native_video",
         ":videocodec_objc",
@@ -607,7 +666,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("vpx_codec_constants") {
+    rtc_library("vpx_codec_constants") {
       configs += [ "..:no_global_constructors" ]
       sources = [
         "objc/api/video_codec/RTCVideoCodecConstants.h",
@@ -620,7 +679,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("vp8") {
+    rtc_library("vp8") {
       visibility = [ "*" ]
       allow_poison = [ "software_video_codecs" ]
       sources = [
@@ -637,7 +696,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("vp9") {
+    rtc_library("vp9") {
       visibility = [ "*" ]
       allow_poison = [ "software_video_codecs" ]
       sources = [
@@ -655,6 +714,25 @@ if (is_ios || is_mac) {
       ]
     }
 
+    rtc_library("av1") {
+      visibility = [ "*" ]
+      allow_poison = [ "software_video_codecs" ]
+      sources = [
+        "objc/api/video_codec/RTCVideoDecoderAV1.h",
+        "objc/api/video_codec/RTCVideoDecoderAV1.mm",
+        "objc/api/video_codec/RTCVideoEncoderAV1.h",
+        "objc/api/video_codec/RTCVideoEncoderAV1.mm",
+      ]
+
+      deps = [
+        ":base_objc",
+        ":wrapped_native_codec_objc",
+        "../media:rtc_media_base",
+        "../modules/video_coding/codecs/av1:libaom_av1_decoder",
+        "../modules/video_coding/codecs/av1:libaom_av1_encoder",
+      ]
+    }
+
     # Build the PeerConnectionFactory without audio/video support.
     # This target depends on the objc_peeerconnectionfactory_base which still
     # includes some audio/video related objects such as RTCAudioSource because
@@ -662,7 +740,7 @@ if (is_ios || is_mac) {
     # when implementing webrtc::PeerConnectionFactoryInterface and
     # webrtc::PeerConnectionInterface.
     # The applications which only use WebRTC DataChannel can depend on this.
-    rtc_static_library("peerconnectionfactory_no_media_objc") {
+    rtc_library("peerconnectionfactory_no_media_objc") {
       visibility = [ "*" ]
       allow_poison = [
         "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
@@ -670,9 +748,7 @@ if (is_ios || is_mac) {
       ]
       defines = [ "HAVE_NO_MEDIA" ]
 
-      sources = [
-        "objc/helpers/noop.mm",
-      ]
+      sources = [ "objc/helpers/noop.mm" ]
 
       public_configs = [ ":common_config_objc" ]
 
@@ -685,7 +761,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("mediaconstraints_objc") {
+    rtc_library("mediaconstraints_objc") {
       configs += [ "..:no_global_constructors" ]
       sources = [
         "objc/api/peerconnection/RTCMediaConstraints+Private.h",
@@ -702,21 +778,17 @@ if (is_ios || is_mac) {
     }
 
     # TODO(bugs.webrtc.org/9627): Remove, targets should depend on base_objc.
-    rtc_source_set("videorenderer_objc") {
+    rtc_library("videorenderer_objc") {
       visibility = [ "*" ]
-      sources = [
-        "objc/helpers/noop.mm",
-      ]
+      sources = [ "objc/helpers/noop.mm" ]
 
       configs += [ "..:common_objc" ]
       public_configs = [ ":common_config_objc" ]
 
-      deps = [
-        ":base_objc",
-      ]
+      deps = [ ":base_objc" ]
     }
 
-    rtc_static_library("videorendereradapter_objc") {
+    rtc_library("videorendereradapter_objc") {
       visibility = [ "*" ]
       allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
       sources = [
@@ -737,7 +809,7 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("mediasource_objc") {
+    rtc_library("mediasource_objc") {
       sources = [
         "objc/api/peerconnection/RTCMediaSource+Private.h",
         "objc/api/peerconnection/RTCMediaSource.h",
@@ -757,12 +829,10 @@ if (is_ios || is_mac) {
       ]
     }
 
-    rtc_static_library("base_native_additions_objc") {
+    rtc_library("base_native_additions_objc") {
       sources = [
         "objc/api/peerconnection/RTCEncodedImage+Private.h",
         "objc/api/peerconnection/RTCEncodedImage+Private.mm",
-        "objc/api/peerconnection/RTCRtpFragmentationHeader+Private.h",
-        "objc/api/peerconnection/RTCRtpFragmentationHeader+Private.mm",
         "objc/api/peerconnection/RTCVideoCodecInfo+Private.h",
         "objc/api/peerconnection/RTCVideoCodecInfo+Private.mm",
         "objc/api/peerconnection/RTCVideoEncoderSettings+Private.h",
@@ -778,13 +848,12 @@ if (is_ios || is_mac) {
         ":helpers_objc",
         "../api/video:encoded_image",
         "../api/video_codecs:video_codecs_api",
-        "../modules:module_api",
         "../modules/video_coding:video_codec_interface",
         "../rtc_base",
       ]
     }
 
-    rtc_static_library("peerconnectionfactory_base_objc") {
+    rtc_library("peerconnectionfactory_base_objc") {
       visibility = [ "*" ]
       allow_poison = [
         "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
@@ -826,9 +895,6 @@ if (is_ios || is_mac) {
         "objc/api/peerconnection/RTCIceServer+Private.h",
         "objc/api/peerconnection/RTCIceServer.h",
         "objc/api/peerconnection/RTCIceServer.mm",
-        "objc/api/peerconnection/RTCIntervalRange+Private.h",
-        "objc/api/peerconnection/RTCIntervalRange.h",
-        "objc/api/peerconnection/RTCIntervalRange.mm",
         "objc/api/peerconnection/RTCLegacyStatsReport+Private.h",
         "objc/api/peerconnection/RTCLegacyStatsReport.h",
         "objc/api/peerconnection/RTCLegacyStatsReport.mm",
@@ -911,12 +977,10 @@ if (is_ios || is_mac) {
         ":base_objc",
         ":file_logger_objc",
         ":helpers_objc",
-        ":legacy_header_paths",
         ":mediaconstraints_objc",
         ":mediasource_objc",
         ":native_api",
         ":native_video",
-        ":video_objc",
         ":videoframebuffer_objc",
         ":videorendereradapter_objc",
         ":videosource_objc",
@@ -934,13 +998,12 @@ if (is_ios || is_mac) {
         "../api/crypto:frame_encryptor_interface",
         "../api/rtc_event_log:rtc_event_log_factory",
         "../api/task_queue:default_task_queue_factory",
-        "../api/transport/media:media_transport_interface",
+        "../api/transport:field_trial_based_config",
         "../api/video:video_frame",
         "../api/video:video_rtp_headers",
         "../api/video_codecs:video_codecs_api",
         "../common_video",
         "../media:rtc_media_base",
-        "../modules:module_api",
         "../modules/audio_device:audio_device_api",
         "../modules/audio_processing",
         "../modules/audio_processing:api",
@@ -948,6 +1011,7 @@ if (is_ios || is_mac) {
         "../pc:peerconnection",
         "../rtc_base",
         "../rtc_base:checks",
+        "../rtc_base:network_constants",
         "../system_wrappers:field_trial",
         "../system_wrappers:metrics",
       ]
@@ -957,95 +1021,9 @@ if (is_ios || is_mac) {
       }
     }
 
-    # TODO(bugs.webrtc.org/9627): Remove this target.
-    rtc_source_set("legacy_header_paths") {
-      sources = [
-        "objc/Framework/Classes/Common/NSString+StdString.h",
-        "objc/Framework/Classes/Common/scoped_cftyperef.h",
-        "objc/Framework/Classes/PeerConnection/RTCConfiguration+Native.h",
-        "objc/Framework/Classes/PeerConnection/RTCPeerConnectionFactory+Native.h",
-        "objc/Framework/Classes/PeerConnection/RTCVideoCodec+Private.h",
-        "objc/Framework/Classes/Video/RTCDefaultShader.h",
-        "objc/Framework/Classes/Video/RTCNV12TextureCache.h",
-        "objc/Framework/Classes/VideoToolbox/nalu_rewriter.h",
-        "objc/Framework/Headers/WebRTC/RTCAudioSession.h",
-        "objc/Framework/Headers/WebRTC/RTCAudioSessionConfiguration.h",
-        "objc/Framework/Headers/WebRTC/RTCAudioSource.h",
-        "objc/Framework/Headers/WebRTC/RTCAudioTrack.h",
-        "objc/Framework/Headers/WebRTC/RTCCVPixelBuffer.h",
-        "objc/Framework/Headers/WebRTC/RTCCallbackLogger.h",
-        "objc/Framework/Headers/WebRTC/RTCCameraPreviewView.h",
-        "objc/Framework/Headers/WebRTC/RTCCameraVideoCapturer.h",
-        "objc/Framework/Headers/WebRTC/RTCCertificate.h",
-        "objc/Framework/Headers/WebRTC/RTCConfiguration.h",
-        "objc/Framework/Headers/WebRTC/RTCDataChannel.h",
-        "objc/Framework/Headers/WebRTC/RTCDataChannelConfiguration.h",
-        "objc/Framework/Headers/WebRTC/RTCDefaultVideoDecoderFactory.h",
-        "objc/Framework/Headers/WebRTC/RTCDefaultVideoEncoderFactory.h",
-        "objc/Framework/Headers/WebRTC/RTCDispatcher.h",
-        "objc/Framework/Headers/WebRTC/RTCDtmfSender.h",
-        "objc/Framework/Headers/WebRTC/RTCEAGLVideoView.h",
-        "objc/Framework/Headers/WebRTC/RTCFieldTrials.h",
-        "objc/Framework/Headers/WebRTC/RTCFileLogger.h",
-        "objc/Framework/Headers/WebRTC/RTCFileVideoCapturer.h",
-        "objc/Framework/Headers/WebRTC/RTCH264ProfileLevelId.h",
-        "objc/Framework/Headers/WebRTC/RTCIceCandidate.h",
-        "objc/Framework/Headers/WebRTC/RTCIceServer.h",
-        "objc/Framework/Headers/WebRTC/RTCIntervalRange.h",
-        "objc/Framework/Headers/WebRTC/RTCLegacyStatsReport.h",
-        "objc/Framework/Headers/WebRTC/RTCLogging.h",
-        "objc/Framework/Headers/WebRTC/RTCMTLNSVideoView.h",
-        "objc/Framework/Headers/WebRTC/RTCMTLVideoView.h",
-        "objc/Framework/Headers/WebRTC/RTCMacros.h",
-        "objc/Framework/Headers/WebRTC/RTCMediaConstraints.h",
-        "objc/Framework/Headers/WebRTC/RTCMediaSource.h",
-        "objc/Framework/Headers/WebRTC/RTCMediaStream.h",
-        "objc/Framework/Headers/WebRTC/RTCMediaStreamTrack.h",
-        "objc/Framework/Headers/WebRTC/RTCMetrics.h",
-        "objc/Framework/Headers/WebRTC/RTCMetricsSampleInfo.h",
-        "objc/Framework/Headers/WebRTC/RTCNSGLVideoView.h",
-        "objc/Framework/Headers/WebRTC/RTCPeerConnection.h",
-        "objc/Framework/Headers/WebRTC/RTCPeerConnectionFactory.h",
-        "objc/Framework/Headers/WebRTC/RTCPeerConnectionFactoryOptions.h",
-        "objc/Framework/Headers/WebRTC/RTCRtcpParameters.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpCodecParameters.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpEncodingParameters.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpHeaderExtension.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpParameters.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpReceiver.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpSender.h",
-        "objc/Framework/Headers/WebRTC/RTCRtpTransceiver.h",
-        "objc/Framework/Headers/WebRTC/RTCSSLAdapter.h",
-        "objc/Framework/Headers/WebRTC/RTCSessionDescription.h",
-        "objc/Framework/Headers/WebRTC/RTCTracing.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoCapturer.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoCodec.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoCodecFactory.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoCodecH264.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoCodecInfo.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoDecoderVP8.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoDecoderVP9.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoEncoderVP8.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoEncoderVP9.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoFrame.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoFrameBuffer.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoRenderer.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoSource.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoTrack.h",
-        "objc/Framework/Headers/WebRTC/RTCVideoViewShading.h",
-        "objc/Framework/Headers/WebRTC/UIDevice+RTCDevice.h",
-        "objc/Framework/Native/api/audio_device_module.h",
-        "objc/Framework/Native/api/video_decoder_factory.h",
-        "objc/Framework/Native/api/video_encoder_factory.h",
-        "objc/Framework/Native/api/video_frame_buffer.h",
-        "objc/Framework/Native/src/objc_video_decoder_factory.h",
-        "objc/Framework/Native/src/objc_video_encoder_factory.h",
-      ]
-    }
-
     if (rtc_include_tests) {
       if (is_ios) {
-        rtc_source_set("sdk_unittests_sources") {
+        rtc_library("sdk_unittests_sources") {
           testonly = true
           include_dirs = [ "objc/" ]
 
@@ -1053,8 +1031,10 @@ if (is_ios || is_mac) {
             "objc/unittests/ObjCVideoTrackSource_xctest.mm",
             "objc/unittests/RTCCVPixelBuffer_xctest.mm",
             "objc/unittests/RTCCallbackLogger_xctest.m",
+            "objc/unittests/RTCEncodedImage_xctest.mm",
             "objc/unittests/RTCFileVideoCapturer_xctest.mm",
             "objc/unittests/RTCH264ProfileLevelId_xctest.m",
+            "objc/unittests/RTCMTLVideoView_xctest.m",
             "objc/unittests/RTCNV12TextureCache_xctest.m",
             "objc/unittests/RTCPeerConnectionFactory_xctest.m",
             "objc/unittests/frame_buffer_helpers.h",
@@ -1062,9 +1042,13 @@ if (is_ios || is_mac) {
             "objc/unittests/nalu_rewriter_xctest.mm",
           ]
 
+          # TODO(bugs.webrtc.org/12937): Remove OpenGL deprecation warning
+          # workaround.
+          defines = [ "GLES_SILENCE_DEPRECATION" ]
+
           # TODO(peterhanspers): Reenable these tests on simulator.
           # See bugs.webrtc.org/7812
-          if (!use_ios_simulator) {
+          if (target_environment != "simulator") {
             sources += [
               "objc/unittests/RTCAudioDeviceModule_xctest.mm",
               "objc/unittests/RTCAudioDevice_xctest.mm",
@@ -1073,16 +1057,17 @@ if (is_ios || is_mac) {
 
           deps = [
             ":audio_device",
-            ":audio_objc",
+            ":audio_session_objc",
+            ":base_native_additions_objc",
             ":base_objc",
             ":callback_logger_objc",
             ":framework_objc",
             ":mediaconstraints_objc",
+            ":metal_objc",
             ":native_api",
             ":native_api_audio_device_module",
             ":native_video",
             ":peerconnectionfactory_base_objc",
-            ":video_objc",
             ":video_toolbox_cc",
             ":videocapture_objc",
             ":videocodec_objc",
@@ -1091,20 +1076,18 @@ if (is_ios || is_mac) {
             ":videotoolbox_objc",
             "../api:scoped_refptr",
             "../api/task_queue:default_task_queue_factory",
-            "../api/video:video_frame_i420",
+            "../api/video:video_frame",
             "../common_video",
             "../media:rtc_media_base",
             "../media:rtc_media_tests_utils",
-            "../modules:module_api",
             "../rtc_base",
             "../rtc_base:gunit_helpers",
             "../system_wrappers",
             "//third_party/libyuv",
           ]
 
-          if (rtc_use_metal_rendering) {
-            sources += [ "objc/unittests/RTCMTLVideoView_xctest.m" ]
-            deps += [ ":metal_objc" ]
+          if (rtc_ios_macos_use_opengl_rendering) {
+            deps += [ ":opengl_objc" ]
           }
 
           public_deps = [
@@ -1122,17 +1105,14 @@ if (is_ios || is_mac) {
             # Sample video taken from https://media.xiph.org/video/derf/
             "objc/unittests/foreman.mp4",
           ]
-          outputs = [
-            "{{bundle_resources_dir}}/{{source_file_part}}",
-          ]
+          outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
         }
 
         # These tests use static linking.
-        rtc_ios_xctest_test("sdk_unittests") {
+        rtc_test("sdk_unittests") {
+          is_xctest = true
           info_plist = "//test/ios/Info.plist"
-          sources = [
-            "objc/unittests/main.mm",
-          ]
+          sources = [ "objc/unittests/main.mm" ]
 
           extra_substitutions = [ "GTEST_BUNDLE_ID_SUFFIX=generic-unit-test" ]
           deps = [
@@ -1140,13 +1120,15 @@ if (is_ios || is_mac) {
             ":sdk_unittests_bundle_data",
             ":sdk_unittests_sources",
             "../rtc_base",
+            "../rtc_base:threading",
             "//test:test_support",
           ]
           ldflags = [ "-all_load" ]
         }
 
         # These tests link to the framework.
-        rtc_ios_xctest_test("sdk_framework_unittests") {
+        rtc_test("sdk_framework_unittests") {
+          is_xctest = true
           info_plist = "//test/ios/Info.plist"
           sources = [
             "objc/unittests/RTCDoNotPutCPlusPlusInFrameworkHeaders_xctest.m",
@@ -1158,13 +1140,14 @@ if (is_ios || is_mac) {
             ":framework_objc+link",
             ":ios_framework_bundle",
             "../rtc_base",
+            "../rtc_base:threading",
             "//test:test_support",
           ]
         }
       }
 
       # TODO(denicija): once all tests are migrated to xctest remove this source set.
-      rtc_source_set("rtc_unittests_objc") {
+      rtc_library("rtc_unittests_objc") {
         testonly = true
 
         sources = [
@@ -1173,7 +1156,6 @@ if (is_ios || is_mac) {
           "objc/unittests/RTCDataChannelConfigurationTest.mm",
           "objc/unittests/RTCIceCandidateTest.mm",
           "objc/unittests/RTCIceServerTest.mm",
-          "objc/unittests/RTCIntervalRangeTests.mm",
           "objc/unittests/RTCMediaConstraintsTest.mm",
           "objc/unittests/RTCPeerConnectionFactoryBuilderTest.mm",
           "objc/unittests/RTCPeerConnectionTest.mm",
@@ -1199,7 +1181,6 @@ if (is_ios || is_mac) {
           ":native_api",
           ":native_video",
           ":peerconnectionfactory_base_objc",
-          ":video_objc",
           ":videocapture_objc",
           ":videocodec_objc",
           ":videoframebuffer_objc",
@@ -1209,10 +1190,8 @@ if (is_ios || is_mac) {
           "../api/audio_codecs:audio_codecs_api",
           "../api/audio_codecs:builtin_audio_decoder_factory",
           "../api/audio_codecs:builtin_audio_encoder_factory",
-          "../api/transport/media:media_transport_interface",
           "../api/video_codecs:video_codecs_api",
           "../media:rtc_media_base",
-          "../modules:module_api",
           "../modules/audio_device:audio_device_api",
           "../modules/audio_processing",
           "../modules/audio_processing:api",
@@ -1225,7 +1204,7 @@ if (is_ios || is_mac) {
 
         if (is_ios) {
           sources += [ "objc/unittests/RTCAudioSessionTest.mm" ]
-          deps += [ ":audio_objc" ]
+          deps += [ ":audio_session_objc" ]
         }
       }
     }
@@ -1243,7 +1222,6 @@ if (is_ios || is_mac) {
           "objc/base/RTCMacros.h",
           "objc/base/RTCMutableI420Buffer.h",
           "objc/base/RTCMutableYUVPlanarBuffer.h",
-          "objc/base/RTCRtpFragmentationHeader.h",
           "objc/base/RTCVideoCapturer.h",
           "objc/base/RTCVideoCodecInfo.h",
           "objc/base/RTCVideoDecoder.h",
@@ -1260,6 +1238,7 @@ if (is_ios || is_mac) {
           "objc/components/audio/RTCAudioSessionConfiguration.h",
           "objc/components/capturer/RTCCameraVideoCapturer.h",
           "objc/components/capturer/RTCFileVideoCapturer.h",
+          "objc/components/network/RTCNetworkMonitor.h",
           "objc/components/renderer/metal/RTCMTLVideoView.h",
           "objc/components/renderer/opengl/RTCEAGLVideoView.h",
           "objc/components/renderer/opengl/RTCVideoViewShading.h",
@@ -1283,7 +1262,6 @@ if (is_ios || is_mac) {
           "objc/api/peerconnection/RTCFieldTrials.h",
           "objc/api/peerconnection/RTCIceCandidate.h",
           "objc/api/peerconnection/RTCIceServer.h",
-          "objc/api/peerconnection/RTCIntervalRange.h",
           "objc/api/peerconnection/RTCLegacyStatsReport.h",
           "objc/api/peerconnection/RTCMediaConstraints.h",
           "objc/api/peerconnection/RTCMediaSource.h",
@@ -1305,6 +1283,7 @@ if (is_ios || is_mac) {
           "objc/api/peerconnection/RTCDtmfSender.h",
           "objc/api/peerconnection/RTCSSLAdapter.h",
           "objc/api/peerconnection/RTCSessionDescription.h",
+          "objc/api/peerconnection/RTCStatisticsReport.h",
           "objc/api/peerconnection/RTCTracing.h",
           "objc/api/peerconnection/RTCCertificate.h",
           "objc/api/peerconnection/RTCCryptoOptions.h",
@@ -1313,8 +1292,10 @@ if (is_ios || is_mac) {
           "objc/api/video_codec/RTCVideoCodecConstants.h",
           "objc/api/video_codec/RTCVideoDecoderVP8.h",
           "objc/api/video_codec/RTCVideoDecoderVP9.h",
+          "objc/api/video_codec/RTCVideoDecoderAV1.h",
           "objc/api/video_codec/RTCVideoEncoderVP8.h",
           "objc/api/video_codec/RTCVideoEncoderVP9.h",
+          "objc/api/video_codec/RTCVideoEncoderAV1.h",
           "objc/api/video_frame_buffer/RTCNativeI420Buffer.h",
           "objc/api/video_frame_buffer/RTCNativeMutableI420Buffer.h",
         ]
@@ -1342,14 +1323,13 @@ if (is_ios || is_mac) {
           ":native_api",
           ":native_video",
           ":peerconnectionfactory_base_objc",
-          ":ui_objc",
           ":videocapture_objc",
           ":videocodec_objc",
           ":videotoolbox_objc",
           "../rtc_base:rtc_base_approved",
         ]
-        if (rtc_use_metal_rendering) {
-          deps += [ ":metal_objc" ]
+        if (rtc_ios_macos_use_opengl_rendering) {
+          deps += [ ":opengl_ui_objc" ]
         }
         if (!build_with_chromium) {
           deps += [
@@ -1358,11 +1338,10 @@ if (is_ios || is_mac) {
           ]
         }
 
-        libs = [
+        frameworks = [
           "AVFoundation.framework",
           "CoreGraphics.framework",
           "CoreMedia.framework",
-          "GLKit.framework",
         ]
 
         configs += [
@@ -1374,15 +1353,9 @@ if (is_ios || is_mac) {
       }
 
       bundle_data("ios_framework_bundle") {
-        deps = [
-          "../sdk:framework_objc",
-        ]
-        sources = [
-          "$root_build_dir/WebRTC.framework",
-        ]
-        outputs = [
-          "{{bundle_resources_dir}}/Frameworks/{{source_file_part}}",
-        ]
+        deps = [ "../sdk:framework_objc" ]
+        sources = [ "$root_build_dir/WebRTC.framework" ]
+        outputs = [ "{{bundle_resources_dir}}/Frameworks/{{source_file_part}}" ]
       }
     }
 
@@ -1403,7 +1376,6 @@ if (is_ios || is_mac) {
           "objc/api/peerconnection/RTCFieldTrials.h",
           "objc/api/peerconnection/RTCIceCandidate.h",
           "objc/api/peerconnection/RTCIceServer.h",
-          "objc/api/peerconnection/RTCIntervalRange.h",
           "objc/api/peerconnection/RTCLegacyStatsReport.h",
           "objc/api/peerconnection/RTCMediaConstraints.h",
           "objc/api/peerconnection/RTCMediaSource.h",
@@ -1424,11 +1396,14 @@ if (is_ios || is_mac) {
           "objc/api/peerconnection/RTCRtpTransceiver.h",
           "objc/api/peerconnection/RTCSSLAdapter.h",
           "objc/api/peerconnection/RTCSessionDescription.h",
+          "objc/api/peerconnection/RTCStatisticsReport.h",
           "objc/api/peerconnection/RTCTracing.h",
           "objc/api/peerconnection/RTCVideoSource.h",
           "objc/api/peerconnection/RTCVideoTrack.h",
+          "objc/api/video_codec/RTCVideoDecoderAV1.h",
           "objc/api/video_codec/RTCVideoDecoderVP8.h",
           "objc/api/video_codec/RTCVideoDecoderVP9.h",
+          "objc/api/video_codec/RTCVideoEncoderAV1.h",
           "objc/api/video_codec/RTCVideoEncoderVP8.h",
           "objc/api/video_codec/RTCVideoEncoderVP9.h",
           "objc/api/video_frame_buffer/RTCNativeI420Buffer.h",
@@ -1440,7 +1415,6 @@ if (is_ios || is_mac) {
           "objc/base/RTCMacros.h",
           "objc/base/RTCMutableI420Buffer.h",
           "objc/base/RTCMutableYUVPlanarBuffer.h",
-          "objc/base/RTCRtpFragmentationHeader.h",
           "objc/base/RTCVideoCapturer.h",
           "objc/base/RTCVideoCodecInfo.h",
           "objc/base/RTCVideoDecoder.h",
@@ -1481,16 +1455,13 @@ if (is_ios || is_mac) {
           ":default_codec_factory_objc",
           ":native_api",
           ":native_video",
+          ":opengl_ui_objc",
           ":peerconnectionfactory_base_objc",
-          ":ui_objc",
           ":videocapture_objc",
           ":videocodec_objc",
           ":videotoolbox_objc",
           "../rtc_base:rtc_base_approved",
         ]
-        if (rtc_use_metal_rendering) {
-          deps += [ ":metal_objc" ]
-        }
         if (!build_with_chromium) {
           deps += [
             ":callback_logger_objc",
@@ -1498,7 +1469,7 @@ if (is_ios || is_mac) {
           ]
         }
 
-        libs = [
+        frameworks = [
           "AVFoundation.framework",
           "CoreGraphics.framework",
           "CoreMedia.framework",
@@ -1511,19 +1482,13 @@ if (is_ios || is_mac) {
       }
 
       bundle_data("mac_framework_bundle") {
-        deps = [
-          "../sdk:mac_framework_objc",
-        ]
-        sources = [
-          "$root_build_dir/WebRTC.framework",
-        ]
-        outputs = [
-          "{{bundle_contents_dir}}/Frameworks/{{source_file_part}}",
-        ]
+        deps = [ "../sdk:mac_framework_objc" ]
+        sources = [ "$root_build_dir/WebRTC.framework" ]
+        outputs = [ "{{bundle_contents_dir}}/Frameworks/{{source_file_part}}" ]
       }
     }
 
-    rtc_static_library("wrapped_native_codec_objc") {
+    rtc_library("wrapped_native_codec_objc") {
       sources = [
         "objc/api/video_codec/RTCWrappedNativeVideoDecoder.h",
         "objc/api/video_codec/RTCWrappedNativeVideoDecoder.mm",
@@ -1543,10 +1508,12 @@ if (is_ios || is_mac) {
     }
 
     # The native API is currently experimental and may change without notice.
-    rtc_static_library("native_api") {
+    rtc_library("native_api") {
       visibility = [ "*" ]
       allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
       sources = [
+        "objc/native/api/network_monitor_factory.h",
+        "objc/native/api/network_monitor_factory.mm",
         "objc/native/api/video_capturer.h",
         "objc/native/api/video_capturer.mm",
         "objc/native/api/video_decoder_factory.h",
@@ -1577,11 +1544,36 @@ if (is_ios || is_mac) {
         "../api/video_codecs:video_codecs_api",
         "../common_video",
         "../rtc_base",
-        "//third_party/abseil-cpp/absl/memory",
+        "../rtc_base:threading",
       ]
+      if (is_ios) {
+        deps += [ ":native_network_monitor" ]
+      }
+      absl_deps = [ "//third_party/abseil-cpp/absl/memory" ]
     }
 
-    rtc_static_library("native_video") {
+    if (is_ios) {
+      rtc_library("native_network_monitor") {
+        visibility = [ "*" ]
+
+        sources = [
+          "objc/native/src/objc_network_monitor.h",
+          "objc/native/src/objc_network_monitor.mm",
+        ]
+
+        deps = [
+          ":network_monitor_objc",
+          ":network_monitor_observer",
+          "../api:sequence_checker",
+          "../rtc_base",
+          "../rtc_base:threading",
+          "../rtc_base/task_utils:pending_task_safety_flag",
+          "../rtc_base/task_utils:to_queued_task",
+        ]
+      }
+    }
+
+    rtc_library("native_video") {
       sources = [
         "objc/native/src/objc_frame_buffer.h",
         "objc/native/src/objc_frame_buffer.mm",
@@ -1610,23 +1602,21 @@ if (is_ios || is_mac) {
         ":vpx_codec_constants",
         ":wrapped_native_codec_objc",
         "../api/video:video_frame",
-        "../api/video:video_frame_i420",
         "../api/video:video_rtp_headers",
         "../api/video_codecs:video_codecs_api",
         "../common_video",
         "../media:rtc_audio_video",
         "../media:rtc_media_base",
-        "../modules:module_api",
         "../modules/video_coding:video_codec_interface",
         "../rtc_base",
         "../rtc_base:checks",
       ]
     }
 
-    rtc_static_library("video_toolbox_cc") {
+    rtc_library("video_toolbox_cc") {
       visibility = [
-        ":videotoolbox_objc",
         ":sdk_unittests_sources",
+        ":videotoolbox_objc",
       ]
       sources = [
         "objc/components/video_codec/helpers.cc",
@@ -1636,14 +1626,13 @@ if (is_ios || is_mac) {
       ]
       deps = [
         "../common_video",
-        "../modules:module_api",
         "../modules/video_coding:webrtc_h264",
         "../rtc_base:checks",
         "../rtc_base:rtc_base_approved",
       ]
     }
 
-    rtc_static_library("videotoolbox_objc") {
+    rtc_library("videotoolbox_objc") {
       visibility = [ "*" ]
       allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
       sources = [
@@ -1673,15 +1662,15 @@ if (is_ios || is_mac) {
         ":video_toolbox_cc",
         ":videocodec_objc",
         ":videoframebuffer_objc",
+        "../api/video_codecs:video_codecs_api",
         "../common_video",
-        "../modules:module_api",
         "../modules/video_coding:video_codec_interface",
         "../rtc_base:checks",
         "../rtc_base:rtc_base_approved",
         "//third_party/libyuv",
       ]
 
-      libs = [
+      frameworks = [
         "CoreFoundation.framework",
         "CoreMedia.framework",
         "CoreVideo.framework",

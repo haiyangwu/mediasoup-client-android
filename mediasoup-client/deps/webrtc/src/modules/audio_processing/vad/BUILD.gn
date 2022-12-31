@@ -7,7 +7,7 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 import("../../../webrtc.gni")
-rtc_static_library("vad") {
+rtc_library("vad") {
   visibility = [
     "../*",
     "../../../rtc_tools:*",
@@ -38,14 +38,14 @@ rtc_static_library("vad") {
     "../../../audio/utility:audio_frame_operations",
     "../../../common_audio",
     "../../../common_audio:common_audio_c",
-    "../../../common_audio/third_party/fft4g",
+    "../../../common_audio/third_party/ooura:fft_size_256",
     "../../../rtc_base:checks",
     "../../audio_coding:isac_vad",
   ]
 }
 
 if (rtc_include_tests) {
-  rtc_static_library("vad_unittests") {
+  rtc_library("vad_unittests") {
     testonly = true
     sources = [
       "gmm_unittest.cc",

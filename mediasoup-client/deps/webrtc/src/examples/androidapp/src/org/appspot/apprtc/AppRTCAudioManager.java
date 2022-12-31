@@ -77,7 +77,7 @@ public class AppRTCAudioManager {
   // This device is changed automatically using a certain scheme where e.g.
   // a wired headset "wins" over speaker phone. It is also possible for a
   // user to explicitly select a device (and overrid any predefined scheme).
-  // See |userSelectedAudioDevice| for details.
+  // See `userSelectedAudioDevice` for details.
   private AudioDevice selectedAudioDevice;
 
   // Contains the user-selected audio device which overrides the predefined
@@ -87,7 +87,7 @@ public class AppRTCAudioManager {
   private AudioDevice userSelectedAudioDevice;
 
   // Contains speakerphone setting: auto, true or false
-  private final String useSpeakerphone;
+  @Nullable private final String useSpeakerphone;
 
   // Proximity sensor object. It measures the proximity of an object in cm
   // relative to the view screen of a device and can therefore be used to
@@ -185,8 +185,8 @@ public class AppRTCAudioManager {
     // Note that, the sensor will not be active until start() has been called.
     proximitySensor = AppRTCProximitySensor.create(context,
         // This method will be called each time a state change is detected.
-        // Example: user holds his hand over the device (closer than ~5 cm),
-        // or removes his hand from the device.
+        // Example: user holds their hand over the device (closer than ~5 cm),
+        // or removes their hand from the device.
         this ::onProximitySensorChangedState);
 
     Log.d(TAG, "defaultAudioDevice: " + defaultAudioDevice);
@@ -216,7 +216,7 @@ public class AppRTCAudioManager {
     // Create an AudioManager.OnAudioFocusChangeListener instance.
     audioFocusChangeListener = new AudioManager.OnAudioFocusChangeListener() {
       // Called on the listener to notify if the audio focus for this listener has been changed.
-      // The |focusChange| value indicates whether the focus was gained, whether the focus was lost,
+      // The `focusChange` value indicates whether the focus was gained, whether the focus was lost,
       // and whether that loss is transient, or whether the new focus holder will hold it for an
       // unknown amount of time.
       // TODO(henrika): possibly extend support of handling audio-focus changes. Only contains
@@ -573,7 +573,7 @@ public class AppRTCAudioManager {
     } else {
       // No wired headset and no Bluetooth, hence the audio-device list can contain speaker
       // phone (on a tablet), or speaker phone and earpiece (on mobile phone).
-      // |defaultAudioDevice| contains either AudioDevice.SPEAKER_PHONE or AudioDevice.EARPIECE
+      // `defaultAudioDevice` contains either AudioDevice.SPEAKER_PHONE or AudioDevice.EARPIECE
       // depending on the user's selection.
       newAudioDevice = defaultAudioDevice;
     }

@@ -16,12 +16,18 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
+#include "api/test/network_emulation_manager.h"
 #include "api/test/simulated_network.h"
 #include "call/simulated_network.h"
 #include "rtc_base/event.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/network_constants.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/network/network_emulation_manager.h"
+#include "test/network/traffic_route.h"
+#include "test/time_controller/simulated_time_controller.h"
 
 namespace webrtc {
 namespace test {
@@ -43,15 +49,20 @@ struct TrafficCounterFixture {
   SimulatedClock clock{0};
   CountingReceiver counter;
   TaskQueueForTest task_queue_;
-  EmulatedEndpoint endpoint{/*id=*/1, rtc::IPAddress(kTestIpAddress),
-                            /*is_enabled=*/true, &task_queue_, &clock};
+  EmulatedEndpointImpl endpoint{EmulatedEndpointImpl::Options{
+                                    /*id=*/1,
+                                    rtc::IPAddress(kTestIpAddress),
+                                    EmulatedEndpointConfig(),
+                                },
+                                /*is_enabled=*/true, &task_queue_, &clock};
 };
 
 }  // namespace
 
 TEST(CrossTrafficTest, TriggerPacketBurst) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
   traffic.TriggerPacketBurst(100, 1000);
 
   EXPECT_EQ(fixture.counter.packets_count_, 100);
@@ -60,18 +71,19 @@ TEST(CrossTrafficTest, TriggerPacketBurst) {
 
 TEST(CrossTrafficTest, PulsedPeaksCrossTraffic) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
 
   PulsedPeaksConfig config;
-  config.peak_rate = DataRate::kbps(1000);
-  config.min_packet_size = DataSize::bytes(1);
-  config.min_packet_interval = TimeDelta::ms(25);
-  config.send_duration = TimeDelta::ms(500);
-  config.hold_duration = TimeDelta::ms(250);
+  config.peak_rate = DataRate::KilobitsPerSec(1000);
+  config.min_packet_size = DataSize::Bytes(1);
+  config.min_packet_interval = TimeDelta::Millis(25);
+  config.send_duration = TimeDelta::Millis(500);
+  config.hold_duration = TimeDelta::Millis(250);
   PulsedPeaksCrossTraffic pulsed_peaks(config, &traffic);
-  const auto kRunTime = TimeDelta::seconds(1);
+  const auto kRunTime = TimeDelta::Seconds(1);
   while (fixture.clock.TimeInMilliseconds() < kRunTime.ms()) {
-    pulsed_peaks.Process(Timestamp::ms(fixture.clock.TimeInMilliseconds()));
+    pulsed_peaks.Process(Timestamp::Millis(fixture.clock.TimeInMilliseconds()));
     fixture.clock.AdvanceTimeMilliseconds(1);
   }
 
@@ -85,20 +97,21 @@ TEST(CrossTrafficTest, PulsedPeaksCrossTraffic) {
 
 TEST(CrossTrafficTest, RandomWalkCrossTraffic) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
 
   RandomWalkConfig config;
-  config.peak_rate = DataRate::kbps(1000);
-  config.min_packet_size = DataSize::bytes(1);
-  config.min_packet_interval = TimeDelta::ms(25);
-  config.update_interval = TimeDelta::ms(500);
+  config.peak_rate = DataRate::KilobitsPerSec(1000);
+  config.min_packet_size = DataSize::Bytes(1);
+  config.min_packet_interval = TimeDelta::Millis(25);
+  config.update_interval = TimeDelta::Millis(500);
   config.variance = 0.0;
   config.bias = 1.0;
 
   RandomWalkCrossTraffic random_walk(config, &traffic);
-  const auto kRunTime = TimeDelta::seconds(1);
+  const auto kRunTime = TimeDelta::Seconds(1);
   while (fixture.clock.TimeInMilliseconds() < kRunTime.ms()) {
-    random_walk.Process(Timestamp::ms(fixture.clock.TimeInMilliseconds()));
+    random_walk.Process(Timestamp::Millis(fixture.clock.TimeInMilliseconds()));
     fixture.clock.AdvanceTimeMilliseconds(1);
   }
 
@@ -108,6 +121,40 @@ TEST(CrossTrafficTest, RandomWalkCrossTraffic) {
   const auto kExpectedDataSent = kRunTime * config.peak_rate;
   EXPECT_NEAR(fixture.counter.total_packets_size_, kExpectedDataSent.bytes(),
               kExpectedDataSent.bytes() * 0.1);
+}
+
+TEST(TcpMessageRouteTest, DeliveredOnLossyNetwork) {
+  NetworkEmulationManagerImpl net(TimeMode::kSimulated);
+  BuiltInNetworkBehaviorConfig send;
+  // 800 kbps means that the 100 kB message would be delivered in ca 1 second
+  // under ideal conditions and no overhead.
+  send.link_capacity_kbps = 100 * 8;
+  send.loss_percent = 50;
+  send.queue_delay_ms = 100;
+  send.delay_standard_deviation_ms = 20;
+  send.allow_reordering = true;
+  auto ret = send;
+  ret.loss_percent = 10;
+
+  auto* tcp_route =
+      net.CreateTcpRoute(net.CreateRoute({net.CreateEmulatedNode(send)}),
+                         net.CreateRoute({net.CreateEmulatedNode(ret)}));
+  int deliver_count = 0;
+  // 100 kB is more than what fits into a single packet.
+  constexpr size_t kMessageSize = 100000;
+
+  tcp_route->SendMessage(kMessageSize, [&] {
+    RTC_LOG(LS_INFO) << "Received at " << ToString(net.Now());
+    deliver_count++;
+  });
+
+  // If there was no loss, we would have delivered the message in ca 1 second,
+  // with 50% it should take much longer.
+  net.time_controller()->AdvanceTime(TimeDelta::Seconds(5));
+  ASSERT_EQ(deliver_count, 0);
+  // But given enough time the messsage will be delivered, but only once.
+  net.time_controller()->AdvanceTime(TimeDelta::Seconds(60));
+  EXPECT_EQ(deliver_count, 1);
 }
 
 }  // namespace test

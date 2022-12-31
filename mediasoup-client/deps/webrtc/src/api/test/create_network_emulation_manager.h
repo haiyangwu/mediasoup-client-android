@@ -1,4 +1,3 @@
-
 /*
  *  Copyright (c) 2019 The WebRTC project authors. All Rights Reserved.
  *
@@ -18,7 +17,9 @@
 
 namespace webrtc {
 
-std::unique_ptr<NetworkEmulationManager> CreateNetworkEmulationManager();
+// Returns a non-null NetworkEmulationManager instance.
+std::unique_ptr<NetworkEmulationManager> CreateNetworkEmulationManager(
+    TimeMode mode = TimeMode::kRealTime);
 
 }  // namespace webrtc
 

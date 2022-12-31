@@ -19,7 +19,6 @@
 #include "api/rtp_parameters.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/deprecation.h"
 
 namespace webrtc {
 
@@ -51,10 +50,6 @@ class RtpHeaderExtensionMap {
     return ids_[type];
   }
 
-  // TODO(danilchap): Remove use of the functions below.
-  RTC_DEPRECATED int32_t Register(RTPExtensionType type, int id) {
-    return RegisterByType(id, type) ? 0 : -1;
-  }
   int32_t Deregister(RTPExtensionType type);
   void Deregister(absl::string_view uri);
 

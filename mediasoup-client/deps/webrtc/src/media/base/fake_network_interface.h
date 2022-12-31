@@ -17,19 +17,20 @@
 
 #include "media/base/media_channel.h"
 #include "media/base/rtp_utils.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 #include "rtc_base/byte_order.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/copy_on_write_buffer.h"
-#include "rtc_base/critical_section.h"
 #include "rtc_base/dscp.h"
 #include "rtc_base/message_handler.h"
-#include "rtc_base/message_queue.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread.h"
 
 namespace cricket {
 
 // Fake NetworkInterface that sends/receives RTP/RTCP packets.
 class FakeNetworkInterface : public MediaChannel::NetworkInterface,
-                             public rtc::MessageHandler {
+                             public rtc::MessageHandlerAutoCleanup {
  public:
   FakeNetworkInterface()
       : thread_(rtc::Thread::Current()),
@@ -44,14 +45,15 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
   // Conference mode is a mode where instead of simply forwarding the packets,
   // the transport will send multiple copies of the packet with the specified
   // SSRCs. This allows us to simulate receiving media from multiple sources.
-  void SetConferenceMode(bool conf, const std::vector<uint32_t>& ssrcs) {
-    rtc::CritScope cs(&crit_);
+  void SetConferenceMode(bool conf, const std::vector<uint32_t>& ssrcs)
+      RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     conf_ = conf;
     conf_sent_ssrcs_ = ssrcs;
   }
 
-  int NumRtpBytes() {
-    rtc::CritScope cs(&crit_);
+  int NumRtpBytes() RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     int bytes = 0;
     for (size_t i = 0; i < rtp_packets_.size(); ++i) {
       bytes += static_cast<int>(rtp_packets_[i].size());
@@ -59,48 +61,48 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
     return bytes;
   }
 
-  int NumRtpBytes(uint32_t ssrc) {
-    rtc::CritScope cs(&crit_);
+  int NumRtpBytes(uint32_t ssrc) RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     int bytes = 0;
     GetNumRtpBytesAndPackets(ssrc, &bytes, NULL);
     return bytes;
   }
 
-  int NumRtpPackets() {
-    rtc::CritScope cs(&crit_);
+  int NumRtpPackets() RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     return static_cast<int>(rtp_packets_.size());
   }
 
-  int NumRtpPackets(uint32_t ssrc) {
-    rtc::CritScope cs(&crit_);
+  int NumRtpPackets(uint32_t ssrc) RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     int packets = 0;
     GetNumRtpBytesAndPackets(ssrc, NULL, &packets);
     return packets;
   }
 
-  int NumSentSsrcs() {
-    rtc::CritScope cs(&crit_);
+  int NumSentSsrcs() RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     return static_cast<int>(sent_ssrcs_.size());
   }
 
-  // Note: callers are responsible for deleting the returned buffer.
-  const rtc::CopyOnWriteBuffer* GetRtpPacket(int index) {
-    rtc::CritScope cs(&crit_);
-    if (index >= NumRtpPackets()) {
-      return NULL;
+  rtc::CopyOnWriteBuffer GetRtpPacket(int index) RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
+    if (index >= static_cast<int>(rtp_packets_.size())) {
+      return {};
     }
-    return new rtc::CopyOnWriteBuffer(rtp_packets_[index]);
+    return rtp_packets_[index];
   }
 
-  int NumRtcpPackets() {
-    rtc::CritScope cs(&crit_);
+  int NumRtcpPackets() RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     return static_cast<int>(rtcp_packets_.size());
   }
 
   // Note: callers are responsible for deleting the returned buffer.
-  const rtc::CopyOnWriteBuffer* GetRtcpPacket(int index) {
-    rtc::CritScope cs(&crit_);
-    if (index >= NumRtcpPackets()) {
+  const rtc::CopyOnWriteBuffer* GetRtcpPacket(int index)
+      RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
+    if (index >= static_cast<int>(rtcp_packets_.size())) {
       return NULL;
     }
     return new rtc::CopyOnWriteBuffer(rtcp_packets_[index]);
@@ -113,22 +115,20 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
 
  protected:
   virtual bool SendPacket(rtc::CopyOnWriteBuffer* packet,
-                          const rtc::PacketOptions& options) {
-    rtc::CritScope cs(&crit_);
-
-    uint32_t cur_ssrc = 0;
-    if (!GetRtpSsrc(packet->data(), packet->size(), &cur_ssrc)) {
+                          const rtc::PacketOptions& options)
+      RTC_LOCKS_EXCLUDED(mutex_) {
+    if (!webrtc::IsRtpPacket(*packet)) {
       return false;
     }
-    sent_ssrcs_[cur_ssrc]++;
+
+    webrtc::MutexLock lock(&mutex_);
+    sent_ssrcs_[webrtc::ParseRtpSsrc(*packet)]++;
     options_ = options;
 
     rtp_packets_.push_back(*packet);
     if (conf_) {
       for (size_t i = 0; i < conf_sent_ssrcs_.size(); ++i) {
-        if (!SetRtpSsrc(packet->data(), packet->size(), conf_sent_ssrcs_[i])) {
-          return false;
-        }
+        SetRtpSsrc(conf_sent_ssrcs_[i], *packet);
         PostMessage(ST_RTP, *packet);
       }
     } else {
@@ -138,8 +138,9 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
   }
 
   virtual bool SendRtcp(rtc::CopyOnWriteBuffer* packet,
-                        const rtc::PacketOptions& options) {
-    rtc::CritScope cs(&crit_);
+                        const rtc::PacketOptions& options)
+      RTC_LOCKS_EXCLUDED(mutex_) {
+    webrtc::MutexLock lock(&mutex_);
     rtcp_packets_.push_back(*packet);
     options_ = options;
     if (!conf_) {
@@ -179,6 +180,11 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
   }
 
  private:
+  void SetRtpSsrc(uint32_t ssrc, rtc::CopyOnWriteBuffer& buffer) {
+    RTC_CHECK_GE(buffer.size(), 12);
+    rtc::SetBE32(buffer.MutableData() + 8, ssrc);
+  }
+
   void GetNumRtpBytesAndPackets(uint32_t ssrc, int* bytes, int* packets) {
     if (bytes) {
       *bytes = 0;
@@ -186,13 +192,8 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
     if (packets) {
       *packets = 0;
     }
-    uint32_t cur_ssrc = 0;
     for (size_t i = 0; i < rtp_packets_.size(); ++i) {
-      if (!GetRtpSsrc(rtp_packets_[i].data(), rtp_packets_[i].size(),
-                      &cur_ssrc)) {
-        return;
-      }
-      if (ssrc == cur_ssrc) {
+      if (ssrc == webrtc::ParseRtpSsrc(rtp_packets_[i])) {
         if (bytes) {
           *bytes += static_cast<int>(rtp_packets_[i].size());
         }
@@ -213,7 +214,7 @@ class FakeNetworkInterface : public MediaChannel::NetworkInterface,
   std::map<uint32_t, uint32_t> sent_ssrcs_;
   // Map to track packet-number that needs to be dropped per ssrc.
   std::map<uint32_t, std::set<uint32_t> > drop_map_;
-  rtc::CriticalSection crit_;
+  webrtc::Mutex mutex_;
   std::vector<rtc::CopyOnWriteBuffer> rtp_packets_;
   std::vector<rtc::CopyOnWriteBuffer> rtcp_packets_;
   int sendbuf_size_;

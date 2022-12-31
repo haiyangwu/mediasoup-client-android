@@ -41,6 +41,16 @@ public class FakeTransportListener {
       }
     }
 
+    @Override
+    public String onProduceData(
+        Transport transport, String sctpStreamParameters, String label, String protocol, String appData
+    ) {
+      Logger.v(TAG, "onProduceData() " + sctpStreamParameters + "," + label + "," + protocol + "," + appData);
+      mOnProduceDataTimesCalled++;
+      mAppData = appData;
+      return mId;
+    }
+
     public String mId;
     public String mDtlsParameters;
 
@@ -51,6 +61,7 @@ public class FakeTransportListener {
     public String mAppData;
 
     public int mOnProduceTimesCalled = 0;
+    public int mOnProduceDataTimesCalled = 0;
     public int mOnConnectTimesCalled = 0;
     public int mOnConnectionStateChangeTimesCalled = 0;
 

@@ -98,7 +98,7 @@ void AudioManager::SetActiveAudioLayer(
   // The delay estimate can take one of two fixed values depending on if the
   // device supports low-latency output or not. However, it is also possible
   // that the user explicitly selects the high-latency audio path, hence we use
-  // the selected |audio_layer| here to set the delay estimate.
+  // the selected `audio_layer` here to set the delay estimate.
   delay_estimate_in_milliseconds_ =
       (audio_layer == AudioDeviceModule::kAndroidJavaAudio)
           ? kHighLatencyModeDelayEstimateInMilliseconds
@@ -275,7 +275,8 @@ void AudioManager::OnCacheAudioParameters(JNIEnv* env,
                                           jint input_buffer_size) {
   RTC_LOG(INFO)
       << "OnCacheAudioParameters: "
-      << "hardware_aec: " << static_cast<bool>(hardware_aec)
+         "hardware_aec: "
+      << static_cast<bool>(hardware_aec)
       << ", hardware_agc: " << static_cast<bool>(hardware_agc)
       << ", hardware_ns: " << static_cast<bool>(hardware_ns)
       << ", low_latency_output: " << static_cast<bool>(low_latency_output)

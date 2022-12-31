@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <iostream>
 
+#include "modules/audio_coding/neteq/default_neteq_factory.h"
 #include "modules/rtp_rtcp/source/byte_io.h"
 #include "system_wrappers/include/clock.h"
 
@@ -20,21 +21,28 @@ namespace webrtc {
 namespace test {
 namespace {
 
-absl::optional<Operations> ActionToOperations(
+absl::optional<NetEq::Operation> ActionToOperations(
     absl::optional<NetEqSimulator::Action> a) {
   if (!a) {
     return absl::nullopt;
   }
   switch (*a) {
     case NetEqSimulator::Action::kAccelerate:
-      return absl::make_optional(kAccelerate);
+      return absl::make_optional(NetEq::Operation::kAccelerate);
     case NetEqSimulator::Action::kExpand:
-      return absl::make_optional(kExpand);
+      return absl::make_optional(NetEq::Operation::kExpand);
     case NetEqSimulator::Action::kNormal:
-      return absl::make_optional(kNormal);
+      return absl::make_optional(NetEq::Operation::kNormal);
     case NetEqSimulator::Action::kPreemptiveExpand:
-      return absl::make_optional(kPreemptiveExpand);
+      return absl::make_optional(NetEq::Operation::kPreemptiveExpand);
   }
+}
+
+std::unique_ptr<NetEq> CreateNetEq(
+    const NetEq::Config& config,
+    Clock* clock,
+    const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory) {
+  return DefaultNetEqFactory().CreateNetEq(config, decoder_factory, clock);
 }
 
 }  // namespace
@@ -43,23 +51,26 @@ void DefaultNetEqTestErrorCallback::OnInsertPacketError(
     const NetEqInput::PacketData& packet) {
   std::cerr << "InsertPacket returned an error." << std::endl;
   std::cerr << "Packet data: " << packet.ToString() << std::endl;
-  FATAL();
+  RTC_FATAL();
 }
 
 void DefaultNetEqTestErrorCallback::OnGetAudioError() {
   std::cerr << "GetAudio returned an error." << std::endl;
-  FATAL();
+  RTC_FATAL();
 }
 
 NetEqTest::NetEqTest(const NetEq::Config& config,
                      rtc::scoped_refptr<AudioDecoderFactory> decoder_factory,
                      const DecoderMap& codecs,
                      std::unique_ptr<std::ofstream> text_log,
+                     NetEqFactory* neteq_factory,
                      std::unique_ptr<NetEqInput> input,
                      std::unique_ptr<AudioSink> output,
                      Callbacks callbacks)
     : clock_(0),
-      neteq_(NetEq::Create(config, &clock_, decoder_factory)),
+      neteq_(neteq_factory
+                 ? neteq_factory->CreateNetEq(config, decoder_factory, &clock_)
+                 : CreateNetEq(config, &clock_, decoder_factory)),
       input_(std::move(input)),
       output_(std::move(output)),
       callbacks_(callbacks),
@@ -80,7 +91,8 @@ int64_t NetEqTest::Run() {
     simulation_time += step_result.simulation_step_ms;
   } while (!step_result.is_simulation_finished);
   if (callbacks_.simulation_ended_callback) {
-    callbacks_.simulation_ended_callback->SimulationEnded(simulation_time);
+    callbacks_.simulation_ended_callback->SimulationEnded(simulation_time,
+                                                          neteq_.get());
   }
   return simulation_time;
 }
@@ -160,7 +172,7 @@ NetEqTest::SimulationStepResult NetEqTest::RunToNextGetAudio() {
       }
       AudioFrame out_frame;
       bool muted;
-      int error = neteq_->GetAudio(&out_frame, &muted,
+      int error = neteq_->GetAudio(&out_frame, &muted, nullptr,
                                    ActionToOperations(next_action_));
       next_action_ = absl::nullopt;
       RTC_CHECK(!muted) << "The code does not handle enable_muted_state";
@@ -255,8 +267,17 @@ NetEqTest::SimulationStepResult NetEqTest::RunToNextGetAudio() {
       prev_lifetime_stats_ = lifetime_stats;
       const bool no_more_packets_to_decode =
           !input_->NextPacketTime() && !operations_state.next_packet_available;
-      result.is_simulation_finished =
-          no_more_packets_to_decode || input_->ended();
+      // End the simulation if the gap is too large. This indicates an issue
+      // with the event log file.
+      const bool simulation_step_too_large = result.simulation_step_ms > 1000;
+      if (simulation_step_too_large) {
+        // If we don't reset the step time, the large gap will be included in
+        // the simulation time, which can be a large distortion.
+        result.simulation_step_ms = 10;
+      }
+      result.is_simulation_finished = simulation_step_too_large ||
+                                      no_more_packets_to_decode ||
+                                      input_->ended();
       prev_ops_state_ = operations_state;
       return result;
     }

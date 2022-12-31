@@ -10,7 +10,7 @@
 
 #import "ARDStatsView.h"
 
-#import <WebRTC/RTCLegacyStatsReport.h>
+#import "sdk/objc/api/peerconnection/RTCLegacyStatsReport.h"
 
 #import "ARDStatsBuilder.h"
 
@@ -34,10 +34,8 @@
   return self;
 }
 
-- (void)setStats:(NSArray *)stats {
-  for (RTCLegacyStatsReport *report in stats) {
-    [_statsBuilder parseStatsReport:report];
-  }
+- (void)setStats:(RTC_OBJC_TYPE(RTCStatisticsReport) *)stats {
+  _statsBuilder.stats = stats;
   _statsLabel.text = _statsBuilder.statsString;
 }
 

@@ -15,7 +15,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 RTC_OBJC_EXPORT
-@interface RTCRtcpParameters : NSObject
+@interface RTC_OBJC_TYPE (RTCRtcpParameters) : NSObject
 
 /** The Canonical Name used by RTCP. */
 @property(nonatomic, readonly, copy) NSString *cname;
@@ -23,7 +23,7 @@ RTC_OBJC_EXPORT
 /** Whether reduced size RTCP is configured or compound RTCP. */
 @property(nonatomic, assign) BOOL isReducedSize;
 
-- (instancetype)init NS_DESIGNATED_INITIALIZER;
+- (instancetype)init;
 
 @end
 

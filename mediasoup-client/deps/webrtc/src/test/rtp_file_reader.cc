@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-#include "modules/rtp_rtcp/source/rtp_utility.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/constructor_magic.h"
 #include "rtc_base/format_macros.h"
@@ -81,15 +81,15 @@ class InterleavedRtpFileReader : public RtpFileReaderImpl {
   }
 
   bool NextPacket(RtpPacket* packet) override {
-    assert(file_ != nullptr);
+    RTC_DCHECK(file_);
     packet->length = RtpPacket::kMaxPacketBufferSize;
     uint32_t len = 0;
     TRY(ReadUint32(&len, file_));
     if (packet->length < len) {
-      FATAL() << "Packet is too large to fit: " << len << " bytes vs "
-              << packet->length
-              << " bytes allocated. Consider increasing the buffer "
-                 "size";
+      RTC_FATAL() << "Packet is too large to fit: " << len << " bytes vs "
+                  << packet->length
+                  << " bytes allocated. Consider increasing the buffer "
+                  << "size";
     }
     if (fread(packet->data, 1, len, file_) != len)
       return false;
@@ -274,7 +274,7 @@ class PcapReader : public RtpFileReaderImpl {
       if (result == kResultFail) {
         break;
       } else if (result == kResultSuccess && packets_.size() == 1) {
-        assert(stream_start_ms == 0);
+        RTC_DCHECK_EQ(stream_start_ms, 0);
         PacketIterator it = packets_.begin();
         stream_start_ms = it->time_offset_ms;
         it->time_offset_ms = 0;
@@ -293,7 +293,7 @@ class PcapReader : public RtpFileReaderImpl {
          mit != packets_by_ssrc_.end(); ++mit) {
       uint32_t ssrc = mit->first;
       const std::vector<uint32_t>& packet_indices = mit->second;
-      uint8_t pt = packets_[packet_indices[0]].rtp_header.payloadType;
+      int pt = packets_[packet_indices[0]].payload_type;
       printf("SSRC: %08x, %" RTC_PRIuS " packets, pt=%d\n", ssrc,
              packet_indices.size(), pt);
     }
@@ -328,9 +328,9 @@ class PcapReader : public RtpFileReaderImpl {
   }
 
   virtual int NextPcap(uint8_t* data, uint32_t* length, uint32_t* time_ms) {
-    assert(data);
-    assert(length);
-    assert(time_ms);
+    RTC_DCHECK(data);
+    RTC_DCHECK(length);
+    RTC_DCHECK(time_ms);
 
     if (next_packet_it_ == packets_.end()) {
       return -1;
@@ -356,7 +356,9 @@ class PcapReader : public RtpFileReaderImpl {
     uint32_t dest_ip;
     uint16_t source_port;
     uint16_t dest_port;
-    RTPHeader rtp_header;
+    // Payload type of the RTP packet,
+    // or RTCP packet type of the first RTCP packet in a compound RTCP packet.
+    int payload_type;
     int32_t pos_in_file;  // Byte offset of payload from start of file.
     uint32_t payload_length;
   };
@@ -407,7 +409,7 @@ class PcapReader : public RtpFileReaderImpl {
                  uint32_t stream_start_ms,
                  uint32_t number,
                  const std::set<uint32_t>& ssrc_filter) {
-    assert(next_packet_pos);
+    RTC_DCHECK(next_packet_pos);
 
     uint32_t ts_sec;    // Timestamp seconds.
     uint32_t ts_usec;   // Timestamp microseconds.
@@ -432,17 +434,13 @@ class PcapReader : public RtpFileReaderImpl {
     }
     TRY_PCAP(Read(read_buffer_, marker.payload_length));
 
-    RtpUtility::RtpHeaderParser rtp_parser(read_buffer_, marker.payload_length);
-    if (rtp_parser.RTCP()) {
-      rtp_parser.ParseRtcp(&marker.rtp_header);
+    rtc::ArrayView<const uint8_t> packet(read_buffer_, marker.payload_length);
+    if (IsRtcpPacket(packet)) {
+      marker.payload_type = packet[1];
       packets_.push_back(marker);
-    } else {
-      if (!rtp_parser.Parse(&marker.rtp_header, nullptr)) {
-        RTC_LOG(LS_INFO) << "Not recognized as RTP/RTCP";
-        return kResultSkip;
-      }
-
-      uint32_t ssrc = marker.rtp_header.ssrc;
+    } else if (IsRtpPacket(packet)) {
+      uint32_t ssrc = ParseRtpSsrc(packet);
+      marker.payload_type = ParseRtpPayloadType(packet);
       if (ssrc_filter.empty() || ssrc_filter.find(ssrc) != ssrc_filter.end()) {
         packets_by_ssrc_[ssrc].push_back(
             static_cast<uint32_t>(packets_.size()));
@@ -450,6 +448,9 @@ class PcapReader : public RtpFileReaderImpl {
       } else {
         return kResultSkip;
       }
+    } else {
+      RTC_LOG(LS_INFO) << "Not recognized as RTP/RTCP";
+      return kResultSkip;
     }
 
     return kResultSuccess;
@@ -502,7 +503,7 @@ class PcapReader : public RtpFileReaderImpl {
   }
 
   int ReadXxpIpHeader(RtpPacketMarker* marker) {
-    assert(marker);
+    RTC_DCHECK(marker);
 
     uint16_t version;
     uint16_t length;
@@ -532,7 +533,7 @@ class PcapReader : public RtpFileReaderImpl {
 
     // Skip remaining fields of IP header.
     uint16_t header_length = (version & 0x0f00) >> (8 - 2);
-    assert(header_length >= kMinIpHeaderLength);
+    RTC_DCHECK_GE(header_length, kMinIpHeaderLength);
     TRY_PCAP(Skip(header_length - kMinIpHeaderLength));
 
     protocol = protocol & 0x00ff;

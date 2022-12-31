@@ -16,9 +16,52 @@
 
 #include "common_audio/real_fourier.h"
 #include "modules/audio_coding/codecs/opus/test/blocker.h"
-#include "rtc_base/memory/aligned_array.h"
+#include "rtc_base/memory/aligned_malloc.h"
 
 namespace webrtc {
+
+// Wrapper class for aligned arrays. Every row (and the first dimension) are
+// aligned to the given byte alignment.
+template <typename T>
+class AlignedArray {
+ public:
+  AlignedArray(size_t rows, size_t cols, size_t alignment)
+      : rows_(rows), cols_(cols) {
+    RTC_CHECK_GT(alignment, 0);
+    head_row_ =
+        static_cast<T**>(AlignedMalloc(rows_ * sizeof(*head_row_), alignment));
+    for (size_t i = 0; i < rows_; ++i) {
+      head_row_[i] = static_cast<T*>(
+          AlignedMalloc(cols_ * sizeof(**head_row_), alignment));
+    }
+  }
+
+  ~AlignedArray() {
+    for (size_t i = 0; i < rows_; ++i) {
+      AlignedFree(head_row_[i]);
+    }
+    AlignedFree(head_row_);
+  }
+
+  T* const* Array() { return head_row_; }
+
+  const T* const* Array() const { return head_row_; }
+
+  T* Row(size_t row) {
+    RTC_CHECK_LE(row, rows_);
+    return head_row_[row];
+  }
+
+  const T* Row(size_t row) const {
+    RTC_CHECK_LE(row, rows_);
+    return head_row_[row];
+  }
+
+ private:
+  size_t rows_;
+  size_t cols_;
+  T** head_row_;
+};
 
 // Helper class for audio processing modules which operate on frequency domain
 // input derived from the windowed time domain audio stream.
@@ -41,11 +84,11 @@ class LappedTransform {
                                    std::complex<float>* const* out_block) = 0;
   };
 
-  // Construct a transform instance. |chunk_length| is the number of samples in
-  // each channel. |window| defines the window, owned by the caller (a copy is
-  // made internally); |window| should have length equal to |block_length|.
-  // |block_length| defines the length of a block, in samples.
-  // |shift_amount| is in samples. |callback| is the caller-owned audio
+  // Construct a transform instance. `chunk_length` is the number of samples in
+  // each channel. `window` defines the window, owned by the caller (a copy is
+  // made internally); `window` should have length equal to `block_length`.
+  // `block_length` defines the length of a block, in samples.
+  // `shift_amount` is in samples. `callback` is the caller-owned audio
   // processing function called for each block of the input chunk.
   LappedTransform(size_t num_in_channels,
                   size_t num_out_channels,
@@ -56,10 +99,10 @@ class LappedTransform {
                   Callback* callback);
   ~LappedTransform();
 
-  // Main audio processing helper method. Internally slices |in_chunk| into
+  // Main audio processing helper method. Internally slices `in_chunk` into
   // blocks, transforms them to frequency domain, calls the callback for each
   // block and returns a de-blocked time domain chunk of audio through
-  // |out_chunk|. Both buffers are caller-owned.
+  // `out_chunk`. Both buffers are caller-owned.
   void ProcessChunk(const float* const* in_chunk, float* const* out_chunk);
 
   // Get the chunk length.
@@ -89,8 +132,8 @@ class LappedTransform {
 
   // Returns the initial delay.
   //
-  // This is the delay introduced by the |blocker_| to be able to get and return
-  // chunks of |chunk_length|, but process blocks of |block_length|.
+  // This is the delay introduced by the `blocker_` to be able to get and return
+  // chunks of `chunk_length`, but process blocks of `block_length`.
   size_t initial_delay() const { return blocker_.initial_delay(); }
 
  private:

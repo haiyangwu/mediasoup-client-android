@@ -16,15 +16,26 @@
 
 #include <vector>
 
+#include "api/ref_counted_base.h"
 #include "api/scoped_refptr.h"
 #include "rtc_base/buffer.h"
-#include "rtc_base/critical_section.h"
-#include "rtc_base/ref_count.h"
+#include "rtc_base/synchronization/mutex.h"
 
 struct vpx_codec_ctx;
 struct vpx_codec_frame_buffer;
 
 namespace webrtc {
+
+// If more buffers than this are allocated we print warnings and crash if in
+// debug mode. VP9 is defined to have 8 reference buffers, of which 3 can be
+// referenced by any frame, see
+// https://tools.ietf.org/html/draft-grange-vp9-bitstream-00#section-2.2.2.
+// Assuming VP9 holds on to at most 8 buffers, any more buffers than that
+// would have to be by application code. Decoded frames should not be
+// referenced for longer than necessary. If we allow ~60 additional buffers
+// then the application has ~1 second to e.g. render each frame of a 60 fps
+// video.
+constexpr size_t kDefaultMaxNumBuffers = 68;
 
 // This memory pool is used to serve buffers to libvpx for decoding purposes in
 // VP9, which is set up in InitializeVPXUsePool. After the initialization any
@@ -54,13 +65,14 @@ namespace webrtc {
 //    vpx_codec_destroy(decoder_ctx);
 class Vp9FrameBufferPool {
  public:
-  class Vp9FrameBuffer : public rtc::RefCountInterface {
+  class Vp9FrameBuffer final
+      : public rtc::RefCountedNonVirtual<Vp9FrameBuffer> {
    public:
     uint8_t* GetData();
     size_t GetDataSize() const;
     void SetSize(size_t size);
 
-    virtual bool HasOneRef() const = 0;
+    using rtc::RefCountedNonVirtual<Vp9FrameBuffer>::HasOneRef;
 
    private:
     // Data as an easily resizable buffer.
@@ -71,22 +83,26 @@ class Vp9FrameBufferPool {
   // buffers used to decompress frames. This is only supported for VP9.
   bool InitializeVpxUsePool(vpx_codec_ctx* vpx_codec_context);
 
-  // Gets a frame buffer of at least |min_size|, recycling an available one or
+  // Gets a frame buffer of at least `min_size`, recycling an available one or
   // creating a new one. When no longer referenced from the outside the buffer
   // becomes recyclable.
   rtc::scoped_refptr<Vp9FrameBuffer> GetFrameBuffer(size_t min_size);
   // Gets the number of buffers currently in use (not ready to be recycled).
   int GetNumBuffersInUse() const;
+  // Changes the max amount of buffers in the pool to the new value.
+  // Returns true if change was successful and false if the amount of already
+  // allocated buffers is bigger than new value.
+  bool Resize(size_t max_number_of_buffers);
   // Releases allocated buffers, deleting available buffers. Buffers in use are
   // not deleted until they are no longer referenced.
   void ClearPool();
 
   // InitializeVpxUsePool configures libvpx to call this function when it needs
   // a new frame buffer. Parameters:
-  // |user_priv| Private data passed to libvpx, InitializeVpxUsePool sets it up
+  // `user_priv` Private data passed to libvpx, InitializeVpxUsePool sets it up
   //             to be a pointer to the pool.
-  // |min_size|  Minimum size needed by libvpx (to decompress a frame).
-  // |fb|        Pointer to the libvpx frame buffer object, this is updated to
+  // `min_size`  Minimum size needed by libvpx (to decompress a frame).
+  // `fb`        Pointer to the libvpx frame buffer object, this is updated to
   //             use the pool's buffer.
   // Returns 0 on success. Returns < 0 on failure.
   static int32_t VpxGetFrameBuffer(void* user_priv,
@@ -95,29 +111,20 @@ class Vp9FrameBufferPool {
 
   // InitializeVpxUsePool configures libvpx to call this function when it has
   // finished using one of the pool's frame buffer. Parameters:
-  // |user_priv| Private data passed to libvpx, InitializeVpxUsePool sets it up
+  // `user_priv` Private data passed to libvpx, InitializeVpxUsePool sets it up
   //             to be a pointer to the pool.
-  // |fb|        Pointer to the libvpx frame buffer object, its |priv| will be
+  // `fb`        Pointer to the libvpx frame buffer object, its `priv` will be
   //             a pointer to one of the pool's Vp9FrameBuffer.
   static int32_t VpxReleaseFrameBuffer(void* user_priv,
                                        vpx_codec_frame_buffer* fb);
 
  private:
-  // Protects |allocated_buffers_|.
-  rtc::CriticalSection buffers_lock_;
+  // Protects `allocated_buffers_`.
+  mutable Mutex buffers_lock_;
   // All buffers, in use or ready to be recycled.
   std::vector<rtc::scoped_refptr<Vp9FrameBuffer>> allocated_buffers_
       RTC_GUARDED_BY(buffers_lock_);
-  // If more buffers than this are allocated we print warnings and crash if in
-  // debug mode. VP9 is defined to have 8 reference buffers, of which 3 can be
-  // referenced by any frame, see
-  // https://tools.ietf.org/html/draft-grange-vp9-bitstream-00#section-2.2.2.
-  // Assuming VP9 holds on to at most 8 buffers, any more buffers than that
-  // would have to be by application code. Decoded frames should not be
-  // referenced for longer than necessary. If we allow ~60 additional buffers
-  // then the application has ~1 second to e.g. render each frame of a 60 fps
-  // video.
-  static const size_t max_num_buffers_ = 68;
+  size_t max_num_buffers_ = kDefaultMaxNumBuffers;
 };
 
 }  // namespace webrtc

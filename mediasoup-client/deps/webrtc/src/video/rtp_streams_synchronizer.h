@@ -8,23 +8,24 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-// RtpStreamsSynchronizer is responsible for synchronization audio and video for
-// a given voice engine channel and video receive stream.
+// RtpStreamsSynchronizer is responsible for synchronizing audio and video for
+// a given audio receive stream and video receive stream.
 
 #ifndef VIDEO_RTP_STREAMS_SYNCHRONIZER_H_
 #define VIDEO_RTP_STREAMS_SYNCHRONIZER_H_
 
 #include <memory>
 
+#include "api/sequence_checker.h"
 #include "modules/include/module.h"
-#include "rtc_base/critical_section.h"
-#include "rtc_base/thread_checker.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "video/stream_synchronization.h"
 
 namespace webrtc {
 
 class Syncable;
 
+// DEPRECATED.
 class RtpStreamsSynchronizer : public Module {
  public:
   explicit RtpStreamsSynchronizer(Syncable* syncable_video);
@@ -36,26 +37,29 @@ class RtpStreamsSynchronizer : public Module {
   int64_t TimeUntilNextProcess() override;
   void Process() override;
 
-  // Gets the sync offset between the current played out audio frame and the
-  // video |frame|. Returns true on success, false otherwise.
-  // The estimated frequency is the frequency used in the RTP to NTP timestamp
+  // Gets the estimated playout NTP timestamp for the video frame with
+  // `rtp_timestamp` and the sync offset between the current played out audio
+  // frame and the video frame. Returns true on success, false otherwise.
+  // The `estimated_freq_khz` is the frequency used in the RTP to NTP timestamp
   // conversion.
-  bool GetStreamSyncOffsetInMs(uint32_t timestamp,
+  bool GetStreamSyncOffsetInMs(uint32_t rtp_timestamp,
                                int64_t render_time_ms,
+                               int64_t* video_playout_ntp_ms,
                                int64_t* stream_offset_ms,
                                double* estimated_freq_khz) const;
 
  private:
   Syncable* syncable_video_;
 
-  rtc::CriticalSection crit_;
-  Syncable* syncable_audio_ RTC_GUARDED_BY(crit_);
-  std::unique_ptr<StreamSynchronization> sync_ RTC_GUARDED_BY(crit_);
-  StreamSynchronization::Measurements audio_measurement_ RTC_GUARDED_BY(crit_);
-  StreamSynchronization::Measurements video_measurement_ RTC_GUARDED_BY(crit_);
+  mutable Mutex mutex_;
+  Syncable* syncable_audio_ RTC_GUARDED_BY(mutex_);
+  std::unique_ptr<StreamSynchronization> sync_ RTC_GUARDED_BY(mutex_);
+  StreamSynchronization::Measurements audio_measurement_ RTC_GUARDED_BY(mutex_);
+  StreamSynchronization::Measurements video_measurement_ RTC_GUARDED_BY(mutex_);
 
-  rtc::ThreadChecker process_thread_checker_;
+  SequenceChecker process_thread_checker_;
   int64_t last_sync_time_ RTC_GUARDED_BY(&process_thread_checker_);
+  int64_t last_stats_log_ms_ RTC_GUARDED_BY(&process_thread_checker_);
 };
 
 }  // namespace webrtc

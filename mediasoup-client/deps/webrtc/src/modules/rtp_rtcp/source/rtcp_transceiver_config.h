@@ -14,9 +14,10 @@
 #include <string>
 
 #include "api/rtp_headers.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/video/video_bitrate_allocation.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
-#include "rtc_base/task_queue.h"
+#include "system_wrappers/include/clock.h"
 #include "system_wrappers/include/ntp_time.h"
 
 namespace webrtc {
@@ -28,8 +29,8 @@ class MediaReceiverRtcpObserver {
  public:
   virtual ~MediaReceiverRtcpObserver() = default;
 
-  // All message handlers have default empty implementation. This way user needs
-  // to implement only those she is interested in.
+  // All message handlers have default empty implementation. This way users only
+  // need to implement the ones they are interested in.
   virtual void OnSenderReport(uint32_t sender_ssrc,
                               NtpTime ntp_time,
                               uint32_t rtp_time) {}
@@ -61,11 +62,14 @@ struct RtcpTransceiverConfig {
   // Maximum packet size outgoing transport accepts.
   size_t max_packet_size = 1200;
 
+  // The clock to use when querying for the NTP time. Should be set.
+  Clock* clock = nullptr;
+
   // Transport to send rtcp packets to. Should be set.
   Transport* outgoing_transport = nullptr;
 
   // Queue for scheduling delayed tasks, e.g. sending periodic compound packets.
-  rtc::TaskQueue* task_queue = nullptr;
+  TaskQueueBase* task_queue = nullptr;
 
   // Rtcp report block generator for outgoing receiver reports.
   ReceiveStatisticsProvider* receive_statistics = nullptr;
@@ -82,7 +86,7 @@ struct RtcpTransceiverConfig {
   //
   // Tuning parameters.
   //
-  // Initial state if |outgoing_transport| ready to accept packets.
+  // Initial state if `outgoing_transport` ready to accept packets.
   bool initial_ready_to_send = true;
   // Delay before 1st periodic compound packet.
   int initial_report_delay_ms = 500;
@@ -97,6 +101,10 @@ struct RtcpTransceiverConfig {
   // Estimate RTT as non-sender as described in
   // https://tools.ietf.org/html/rfc3611#section-4.4 and #section-4.5
   bool non_sender_rtt_measurement = false;
+
+  // Allows a REMB message to be sent immediately when SetRemb is called without
+  // having to wait for the next compount message to be sent.
+  bool send_remb_on_change = false;
 };
 
 }  // namespace webrtc

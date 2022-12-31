@@ -12,9 +12,10 @@
 #define PC_ICE_TRANSPORT_H_
 
 #include "api/ice_transport_interface.h"
-#include "rtc_base/constructor_magic.h"
+#include "api/sequence_checker.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/thread.h"
-#include "rtc_base/thread_checker.h"
+#include "rtc_base/thread_annotations.h"
 
 namespace webrtc {
 
@@ -29,6 +30,10 @@ class IceTransportWithPointer : public IceTransportInterface {
     RTC_DCHECK(internal_);
   }
 
+  IceTransportWithPointer() = delete;
+  IceTransportWithPointer(const IceTransportWithPointer&) = delete;
+  IceTransportWithPointer& operator=(const IceTransportWithPointer&) = delete;
+
   cricket::IceTransportInternal* internal() override;
   // This call will ensure that the pointer passed at construction is
   // no longer in use by this object. Later calls to internal() will return
@@ -39,7 +44,6 @@ class IceTransportWithPointer : public IceTransportInterface {
   ~IceTransportWithPointer() override;
 
  private:
-  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(IceTransportWithPointer);
   const rtc::Thread* creator_thread_;
   cricket::IceTransportInternal* internal_ RTC_GUARDED_BY(creator_thread_);
 };

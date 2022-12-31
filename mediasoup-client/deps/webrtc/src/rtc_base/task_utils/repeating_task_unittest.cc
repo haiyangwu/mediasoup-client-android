@@ -30,7 +30,7 @@ using ::testing::MockFunction;
 using ::testing::NiceMock;
 using ::testing::Return;
 
-constexpr TimeDelta kTimeout = TimeDelta::Millis<1000>();
+constexpr TimeDelta kTimeout = TimeDelta::Millis(1000);
 
 void Sleep(TimeDelta time_delta) {
   // Note that Chromium style guide prohibits use of <thread> and <chrono> in
@@ -40,8 +40,23 @@ void Sleep(TimeDelta time_delta) {
 
 class MockClosure {
  public:
-  MOCK_METHOD0(Call, TimeDelta());
-  MOCK_METHOD0(Delete, void());
+  MOCK_METHOD(TimeDelta, Call, ());
+  MOCK_METHOD(void, Delete, ());
+};
+
+class MockTaskQueue : public TaskQueueBase {
+ public:
+  MockTaskQueue() : task_queue_setter_(this) {}
+
+  MOCK_METHOD(void, Delete, (), (override));
+  MOCK_METHOD(void, PostTask, (std::unique_ptr<QueuedTask> task), (override));
+  MOCK_METHOD(void,
+              PostDelayedTask,
+              (std::unique_ptr<QueuedTask> task, uint32_t milliseconds),
+              (override));
+
+ private:
+  CurrentTaskQueueSetter task_queue_setter_;
 };
 
 class MoveOnlyClosure {
@@ -63,8 +78,8 @@ class MoveOnlyClosure {
 }  // namespace
 
 TEST(RepeatingTaskTest, TaskIsStoppedOnStop) {
-  const TimeDelta kShortInterval = TimeDelta::ms(50);
-  const TimeDelta kLongInterval = TimeDelta::ms(200);
+  const TimeDelta kShortInterval = TimeDelta::Millis(50);
+  const TimeDelta kLongInterval = TimeDelta::Millis(200);
   const int kShortIntervalCount = 4;
   const int kMargin = 1;
 
@@ -90,10 +105,10 @@ TEST(RepeatingTaskTest, TaskIsStoppedOnStop) {
 TEST(RepeatingTaskTest, CompensatesForLongRunTime) {
   const int kTargetCount = 20;
   const int kTargetCountMargin = 2;
-  const TimeDelta kRepeatInterval = TimeDelta::ms(2);
+  const TimeDelta kRepeatInterval = TimeDelta::Millis(2);
   // Sleeping inside the task for longer than the repeat interval once, should
   // be compensated for by repeating the task faster to catch up.
-  const TimeDelta kSleepDuration = TimeDelta::ms(20);
+  const TimeDelta kSleepDuration = TimeDelta::Millis(20);
   const int kSleepAtCount = 3;
 
   std::atomic_int counter(0);
@@ -115,10 +130,10 @@ TEST(RepeatingTaskTest, CompensatesForShortRunTime) {
   RepeatingTaskHandle::Start(task_queue.Get(), [&] {
     ++counter;
     // Sleeping for the 100 ms should be compensated.
-    Sleep(TimeDelta::ms(100));
-    return TimeDelta::ms(300);
+    Sleep(TimeDelta::Millis(100));
+    return TimeDelta::Millis(300);
   });
-  Sleep(TimeDelta::ms(400));
+  Sleep(TimeDelta::Millis(400));
 
   // We expect that the task have been called twice, once directly at Start and
   // once after 300 ms has passed.
@@ -132,7 +147,7 @@ TEST(RepeatingTaskTest, CancelDelayedTaskBeforeItRuns) {
   EXPECT_CALL(mock, Delete).WillOnce(Invoke([&done] { done.Set(); }));
   TaskQueueForTest task_queue("queue");
   auto handle = RepeatingTaskHandle::DelayedStart(
-      task_queue.Get(), TimeDelta::ms(100), MoveOnlyClosure(&mock));
+      task_queue.Get(), TimeDelta::Millis(100), MoveOnlyClosure(&mock));
   task_queue.PostTask(
       [handle = std::move(handle)]() mutable { handle.Stop(); });
   EXPECT_TRUE(done.Wait(kTimeout.ms()));
@@ -141,7 +156,7 @@ TEST(RepeatingTaskTest, CancelDelayedTaskBeforeItRuns) {
 TEST(RepeatingTaskTest, CancelTaskAfterItRuns) {
   rtc::Event done;
   MockClosure mock;
-  EXPECT_CALL(mock, Call).WillOnce(Return(TimeDelta::ms(100)));
+  EXPECT_CALL(mock, Call).WillOnce(Return(TimeDelta::Millis(100)));
   EXPECT_CALL(mock, Delete).WillOnce(Invoke([&done] { done.Set(); }));
   TaskQueueForTest task_queue("queue");
   auto handle =
@@ -159,10 +174,10 @@ TEST(RepeatingTaskTest, TaskCanStopItself) {
     handle = RepeatingTaskHandle::Start(task_queue.Get(), [&] {
       ++counter;
       handle.Stop();
-      return TimeDelta::ms(2);
+      return TimeDelta::Millis(2);
     });
   });
-  Sleep(TimeDelta::ms(10));
+  Sleep(TimeDelta::Millis(10));
   EXPECT_EQ(counter.load(), 1);
 }
 
@@ -184,8 +199,8 @@ TEST(RepeatingTaskTest, StartPeriodicTask) {
   MockFunction<TimeDelta()> closure;
   rtc::Event done;
   EXPECT_CALL(closure, Call())
-      .WillOnce(Return(TimeDelta::ms(20)))
-      .WillOnce(Return(TimeDelta::ms(20)))
+      .WillOnce(Return(TimeDelta::Millis(20)))
+      .WillOnce(Return(TimeDelta::Millis(20)))
       .WillOnce(Invoke([&done] {
         done.Set();
         return kTimeout;
@@ -199,7 +214,7 @@ TEST(RepeatingTaskTest, Example) {
   class ObjectOnTaskQueue {
    public:
     void DoPeriodicTask() {}
-    TimeDelta TimeUntilNextRun() { return TimeDelta::ms(100); }
+    TimeDelta TimeUntilNextRun() { return TimeDelta::Millis(100); }
     void StartPeriodicTask(RepeatingTaskHandle* handle,
                            TaskQueueBase* task_queue) {
       *handle = RepeatingTaskHandle::Start(task_queue, [this] {
@@ -226,6 +241,57 @@ TEST(RepeatingTaskTest, Example) {
   task_queue.PostTask(Destructor{std::move(object)});
   // Do not wait for the destructor closure in order to create a race between
   // task queue destruction and running the desctructor closure.
+}
+
+TEST(RepeatingTaskTest, ClockIntegration) {
+  std::unique_ptr<QueuedTask> delayed_task;
+  uint32_t expected_ms = 0;
+  SimulatedClock clock(Timestamp::Millis(0));
+
+  NiceMock<MockTaskQueue> task_queue;
+  ON_CALL(task_queue, PostDelayedTask)
+      .WillByDefault(
+          Invoke([&delayed_task, &expected_ms](std::unique_ptr<QueuedTask> task,
+                                               uint32_t milliseconds) {
+            EXPECT_EQ(milliseconds, expected_ms);
+            delayed_task = std::move(task);
+          }));
+
+  expected_ms = 100;
+  RepeatingTaskHandle handle = RepeatingTaskHandle::DelayedStart(
+      &task_queue, TimeDelta::Millis(100),
+      [&clock]() {
+        EXPECT_EQ(Timestamp::Millis(100), clock.CurrentTime());
+        // Simulate work happening for 10ms.
+        clock.AdvanceTimeMilliseconds(10);
+        return TimeDelta::Millis(100);
+      },
+      &clock);
+
+  clock.AdvanceTimeMilliseconds(100);
+  QueuedTask* task_to_run = delayed_task.release();
+  expected_ms = 90;
+  EXPECT_FALSE(task_to_run->Run());
+  EXPECT_NE(nullptr, delayed_task.get());
+  handle.Stop();
+}
+
+TEST(RepeatingTaskTest, CanBeStoppedAfterTaskQueueDeletedTheRepeatingTask) {
+  std::unique_ptr<QueuedTask> repeating_task;
+
+  MockTaskQueue task_queue;
+  EXPECT_CALL(task_queue, PostDelayedTask)
+      .WillOnce([&](std::unique_ptr<QueuedTask> task, uint32_t milliseconds) {
+        repeating_task = std::move(task);
+      });
+
+  RepeatingTaskHandle handle =
+      RepeatingTaskHandle::DelayedStart(&task_queue, TimeDelta::Millis(100),
+                                        [] { return TimeDelta::Millis(100); });
+
+  // shutdown task queue: delete all pending tasks and run 'regular' task.
+  repeating_task = nullptr;
+  handle.Stop();
 }
 
 }  // namespace webrtc

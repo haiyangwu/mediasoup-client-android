@@ -16,17 +16,18 @@
 #include <memory>
 
 #include "rtc_base/constructor_magic.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
 class Desktop;
 
-class ScopedThreadDesktop {
+class RTC_EXPORT ScopedThreadDesktop {
  public:
   ScopedThreadDesktop();
   ~ScopedThreadDesktop();
 
-  // Returns true if |desktop| has the same desktop name as the currently
+  // Returns true if `desktop` has the same desktop name as the currently
   // assigned desktop (if assigned) or as the initial desktop (if not assigned).
   // Returns false in any other case including failing Win32 APIs and
   // uninitialized desktop handles.
@@ -35,8 +36,8 @@ class ScopedThreadDesktop {
   // Reverts the calling thread to use the initial desktop.
   void Revert();
 
-  // Assigns |desktop| to be the calling thread. Returns true if the thread has
-  // been switched to |desktop| successfully. Takes ownership of |desktop|.
+  // Assigns `desktop` to be the calling thread. Returns true if the thread has
+  // been switched to `desktop` successfully. Takes ownership of `desktop`.
   bool SetThreadDesktop(Desktop* desktop);
 
  private:

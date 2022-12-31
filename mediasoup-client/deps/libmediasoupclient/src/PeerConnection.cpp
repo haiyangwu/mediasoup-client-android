@@ -81,7 +81,7 @@ namespace mediasoupclient
 			this->signalingThread = rtc::Thread::Create();
 			this->workerThread    = rtc::Thread::Create();
 
-			this->signalingThread->SetName("network_thread", nullptr);
+			this->networkThread->SetName("network_thread", nullptr);
 			this->signalingThread->SetName("signaling_thread", nullptr);
 			this->workerThread->SetName("worker_thread", nullptr);
 
@@ -183,8 +183,8 @@ namespace mediasoupclient
 		rtc::scoped_refptr<SetSessionDescriptionObserver> observer(
 		  new rtc::RefCountedObject<SetSessionDescriptionObserver>());
 
-		auto& typeStr = sdpType2String[type];
-		auto future   = observer->GetFuture();
+		const auto& typeStr = sdpType2String[type];
+		auto future         = observer->GetFuture();
 
 		sessionDescription = webrtc::CreateSessionDescription(typeStr, sdp, &error);
 		if (sessionDescription == nullptr)
@@ -213,8 +213,8 @@ namespace mediasoupclient
 		rtc::scoped_refptr<SetSessionDescriptionObserver> observer(
 		  new rtc::RefCountedObject<SetSessionDescriptionObserver>());
 
-		auto& typeStr = sdpType2String[type];
-		auto future   = observer->GetFuture();
+		const auto& typeStr = sdpType2String[type];
+		auto future         = observer->GetFuture();
 
 		sessionDescription = webrtc::CreateSessionDescription(typeStr, sdp, &error);
 		if (sessionDescription == nullptr)
@@ -366,6 +366,26 @@ namespace mediasoupclient
 		return future.get();
 	}
 
+	rtc::scoped_refptr<webrtc::DataChannelInterface> PeerConnection::CreateDataChannel(
+	  const std::string& label, const webrtc::DataChannelInit* config)
+	{
+		MSC_TRACE();
+
+		rtc::scoped_refptr<webrtc::DataChannelInterface> webrtcDataChannel =
+		  this->pc->CreateDataChannel(label, config);
+
+		if (webrtcDataChannel.get())
+		{
+			MSC_DEBUG("Success creating data channel");
+		}
+		else
+		{
+			MSC_THROW_ERROR("Failed creating data channel");
+		}
+
+		return webrtcDataChannel;
+	}
+
 	/* SetSessionDescriptionObserver */
 
 	std::future<void> PeerConnection::SetSessionDescriptionObserver::GetFuture()
@@ -424,9 +444,12 @@ namespace mediasoupclient
 	{
 		MSC_TRACE();
 
+		// This callback should take the ownership of |desc|.
+		std::unique_ptr<webrtc::SessionDescriptionInterface> ownedDesc(desc);
+
 		std::string sdp;
 
-		desc->ToString(&sdp);
+		ownedDesc->ToString(&sdp);
 		this->promise.set_value(sdp);
 	};
 

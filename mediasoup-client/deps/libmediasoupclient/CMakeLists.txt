@@ -4,8 +4,8 @@ project(mediasoupclient LANGUAGES CXX)
 
 # Set version number.
 set(mediasoupclient_VERSION_MAJOR 3)
-set(mediasoupclient_VERSION_MINOR 0)
-set(mediasoupclient_VERSION_PATCH 8)
+set(mediasoupclient_VERSION_MINOR 4)
+set(mediasoupclient_VERSION_PATCH 0)
 
 # Configure a header file to pass the version.
 configure_file (
@@ -14,7 +14,7 @@ configure_file (
 )
 
 # C++ standard requirements.
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Project options.
@@ -60,6 +60,8 @@ set(HEADER_FILES
 set(
 	SOURCE_FILES
 	src/Consumer.cpp
+	src/DataConsumer.cpp
+	src/DataProducer.cpp
 	src/Device.cpp
 	src/Handler.cpp
 	src/Logger.cpp
@@ -109,7 +111,7 @@ add_subdirectory(deps/libsdptransform "${CMAKE_CURRENT_BINARY_DIR}/libsdptransfo
 # Add some compile flags to our source files.
 if(MSVC)
 	set_source_files_properties(${SOURCE_FILES}
-		PROPERTIES COMPILE_FLAGS "/W3 /WX")
+		PROPERTIES COMPILE_FLAGS "/W3")
 else()
 	set_source_files_properties(${SOURCE_FILES}
 		PROPERTIES COMPILE_FLAGS -Wall -Wextra -Wpedantic)
@@ -146,6 +148,8 @@ endif()
 target_compile_definitions(${PROJECT_NAME} PUBLIC
 	$<$<NOT:$<PLATFORM_ID:Windows>>:WEBRTC_POSIX>
 	$<$<PLATFORM_ID:Windows>:WEBRTC_WIN>
+	$<$<PLATFORM_ID:Windows>:NOMINMAX>
+	$<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>
 	$<$<PLATFORM_ID:Darwin>:WEBRTC_MAC>
 )
 

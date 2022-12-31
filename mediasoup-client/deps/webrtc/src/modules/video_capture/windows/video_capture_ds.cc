@@ -57,7 +57,7 @@ VideoCaptureDS::~VideoCaptureDS() {
 
 int32_t VideoCaptureDS::Init(const char* deviceUniqueIdUTF8) {
   const int32_t nameLength = (int32_t)strlen((char*)deviceUniqueIdUTF8);
-  if (nameLength > kVideoCaptureUniqueNameLength)
+  if (nameLength >= kVideoCaptureUniqueNameLength)
     return -1;
 
   // Store the device name
@@ -130,7 +130,7 @@ int32_t VideoCaptureDS::Init(const char* deviceUniqueIdUTF8) {
 }
 
 int32_t VideoCaptureDS::StartCapture(const VideoCaptureCapability& capability) {
-  rtc::CritScope cs(&_apiCs);
+  MutexLock lock(&api_lock_);
 
   if (capability != _requestedCapability) {
     DisconnectGraph();
@@ -148,7 +148,7 @@ int32_t VideoCaptureDS::StartCapture(const VideoCaptureCapability& capability) {
 }
 
 int32_t VideoCaptureDS::StopCapture() {
-  rtc::CritScope cs(&_apiCs);
+  MutexLock lock(&api_lock_);
 
   HRESULT hr = _mediaControl->Pause();
   if (FAILED(hr)) {

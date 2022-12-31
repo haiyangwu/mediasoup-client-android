@@ -14,10 +14,13 @@
 #include <memory>
 
 #include "absl/types/optional.h"
+#include "api/units/time_delta.h"
 #include "api/video/video_timing.h"
 #include "modules/video_coding/codec_timer.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/experiments/field_trial_parser.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
+#include "rtc_base/time/timestamp_extrapolator.h"
 
 namespace webrtc {
 
@@ -26,10 +29,8 @@ class TimestampExtrapolator;
 
 class VCMTiming {
  public:
-  // The primary timing component should be passed
-  // if this is the dual timing component.
-  explicit VCMTiming(Clock* clock, VCMTiming* master_timing = NULL);
-  virtual ~VCMTiming();
+  explicit VCMTiming(Clock* clock);
+  virtual ~VCMTiming() = default;
 
   // Resets the timing to the initial state.
   void Reset();
@@ -76,13 +77,20 @@ class VCMTiming {
   void IncomingTimestamp(uint32_t time_stamp, int64_t last_packet_time_ms);
 
   // Returns the receiver system time when the frame with timestamp
-  // |frame_timestamp| should be rendered, assuming that the system time
-  // currently is |now_ms|.
+  // `frame_timestamp` should be rendered, assuming that the system time
+  // currently is `now_ms`.
   virtual int64_t RenderTimeMs(uint32_t frame_timestamp, int64_t now_ms) const;
 
   // Returns the maximum time in ms that we can wait for a frame to become
-  // complete before we must pass it to the decoder.
-  virtual int64_t MaxWaitingTime(int64_t render_time_ms, int64_t now_ms) const;
+  // complete before we must pass it to the decoder. render_time_ms==0 indicates
+  // that the frames should be processed as quickly as possible, with possibly
+  // only a small delay added to make sure that the decoder is not overloaded.
+  // In this case, the parameter too_many_frames_queued is used to signal that
+  // the decode queue is full and that the frame should be decoded as soon as
+  // possible.
+  virtual int64_t MaxWaitingTime(int64_t render_time_ms,
+                                 int64_t now_ms,
+                                 bool too_many_frames_queued) const;
 
   // Returns the current target delay which is required delay + decode time +
   // render delay.
@@ -100,34 +108,57 @@ class VCMTiming {
   void SetTimingFrameInfo(const TimingFrameInfo& info);
   absl::optional<TimingFrameInfo> GetTimingFrameInfo();
 
+  void SetMaxCompositionDelayInFrames(
+      absl::optional<int> max_composition_delay_in_frames);
+  absl::optional<int> MaxCompositionDelayInFrames() const;
+
+  // Updates the last time a frame was scheduled for decoding.
+  void SetLastDecodeScheduledTimestamp(int64_t last_decode_scheduled_ts);
+
   enum { kDefaultRenderDelayMs = 10 };
   enum { kDelayMaxChangeMsPerS = 100 };
 
  protected:
-  int RequiredDecodeTimeMs() const RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+  int RequiredDecodeTimeMs() const RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   int64_t RenderTimeMsInternal(uint32_t frame_timestamp, int64_t now_ms) const
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
-  int TargetDelayInternal() const RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_sect_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  int TargetDelayInternal() const RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
  private:
-  rtc::CriticalSection crit_sect_;
+  mutable Mutex mutex_;
   Clock* const clock_;
-  bool master_ RTC_GUARDED_BY(crit_sect_);
-  TimestampExtrapolator* ts_extrapolator_ RTC_GUARDED_BY(crit_sect_);
-  std::unique_ptr<VCMCodecTimer> codec_timer_ RTC_GUARDED_BY(crit_sect_);
-  int render_delay_ms_ RTC_GUARDED_BY(crit_sect_);
+  const std::unique_ptr<TimestampExtrapolator> ts_extrapolator_
+      RTC_PT_GUARDED_BY(mutex_);
+  std::unique_ptr<VCMCodecTimer> codec_timer_ RTC_GUARDED_BY(mutex_)
+      RTC_PT_GUARDED_BY(mutex_);
+  int render_delay_ms_ RTC_GUARDED_BY(mutex_);
   // Best-effort playout delay range for frames from capture to render.
-  // The receiver tries to keep the delay between |min_playout_delay_ms_|
-  // and |max_playout_delay_ms_| taking the network jitter into account.
+  // The receiver tries to keep the delay between `min_playout_delay_ms_`
+  // and `max_playout_delay_ms_` taking the network jitter into account.
   // A special case is where min_playout_delay_ms_ = max_playout_delay_ms_ = 0,
   // in which case the receiver tries to play the frames as they arrive.
-  int min_playout_delay_ms_ RTC_GUARDED_BY(crit_sect_);
-  int max_playout_delay_ms_ RTC_GUARDED_BY(crit_sect_);
-  int jitter_delay_ms_ RTC_GUARDED_BY(crit_sect_);
-  int current_delay_ms_ RTC_GUARDED_BY(crit_sect_);
-  uint32_t prev_frame_timestamp_ RTC_GUARDED_BY(crit_sect_);
-  absl::optional<TimingFrameInfo> timing_frame_info_ RTC_GUARDED_BY(crit_sect_);
-  size_t num_decoded_frames_ RTC_GUARDED_BY(crit_sect_);
+  int min_playout_delay_ms_ RTC_GUARDED_BY(mutex_);
+  int max_playout_delay_ms_ RTC_GUARDED_BY(mutex_);
+  int jitter_delay_ms_ RTC_GUARDED_BY(mutex_);
+  int current_delay_ms_ RTC_GUARDED_BY(mutex_);
+  uint32_t prev_frame_timestamp_ RTC_GUARDED_BY(mutex_);
+  absl::optional<TimingFrameInfo> timing_frame_info_ RTC_GUARDED_BY(mutex_);
+  size_t num_decoded_frames_ RTC_GUARDED_BY(mutex_);
+  // Set by the field trial WebRTC-LowLatencyRenderer. The parameter enabled
+  // determines if the low-latency renderer algorithm should be used for the
+  // case min playout delay=0 and max playout delay>0.
+  FieldTrialParameter<bool> low_latency_renderer_enabled_
+      RTC_GUARDED_BY(mutex_);
+  absl::optional<int> max_composition_delay_in_frames_ RTC_GUARDED_BY(mutex_);
+  // Set by the field trial WebRTC-ZeroPlayoutDelay. The parameter min_pacing
+  // determines the minimum delay between frames scheduled for decoding that is
+  // used when min playout delay=0 and max playout delay>=0.
+  FieldTrialParameter<TimeDelta> zero_playout_delay_min_pacing_
+      RTC_GUARDED_BY(mutex_);
+  // Timestamp at which the last frame was scheduled to be sent to the decoder.
+  // Used only when the RTP header extension playout delay is set to min=0 ms
+  // which is indicated by a render time set to 0.
+  int64_t last_decode_scheduled_ts_ RTC_GUARDED_BY(mutex_);
 };
 }  // namespace webrtc
 

@@ -7,6 +7,7 @@
 #include <rtc_base/ssl_adapter.h>
 #include <rtc_base/time_utils.h>
 #include <sstream>
+#include <system_wrappers/include/field_trial.h>
 
 namespace mediasoupclient
 {
@@ -15,6 +16,8 @@ namespace mediasoupclient
 		MSC_TRACE();
 
 		MSC_DEBUG("mediasoupclient v%s", Version().c_str());
+
+		webrtc::field_trial::InitFieldTrialsFromString("WebRTC-SupportVP9SVC/EnabledByFlag_3SL3TL/");
 
 		rtc::InitializeSSL();
 		rtc::InitRandom(rtc::Time());

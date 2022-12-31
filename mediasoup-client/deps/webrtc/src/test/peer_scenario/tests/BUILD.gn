@@ -9,18 +9,21 @@
 import("../../../webrtc.gni")
 
 if (rtc_include_tests) {
-  rtc_source_set("tests") {
+  rtc_library("tests") {
     testonly = true
     sources = [
       "peer_scenario_quality_test.cc",
       "remote_estimate_test.cc",
+      "unsignaled_stream_test.cc",
     ]
     deps = [
       "..:peer_scenario",
       "../../:field_trial",
       "../../:test_support",
-      "../../../modules/rtp_rtcp:rtp_rtcp",
+      "../../../media:rtc_media_base",
+      "../../../modules/rtp_rtcp:rtp_rtcp_format",
       "../../../pc:rtc_pc_base",
+      "../../../pc:session_description",
     ]
   }
 }

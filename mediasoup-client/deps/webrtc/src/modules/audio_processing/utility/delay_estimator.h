@@ -16,6 +16,8 @@
 
 #include <stdint.h>
 
+namespace webrtc {
+
 static const int32_t kMaxBitCountsQ9 = (32 << 9);  // 32 matching bits in Q9.
 
 typedef struct {
@@ -79,7 +81,7 @@ void WebRtc_FreeBinaryDelayEstimatorFarend(BinaryDelayEstimatorFarend* self);
 //
 // Return value:
 //      - BinaryDelayEstimatorFarend*
-//                        : Created |handle|. If the memory can't be allocated
+//                        : Created `handle`. If the memory can't be allocated
 //                          or if any of the input parameters are invalid NULL
 //                          is returned.
 //
@@ -157,7 +159,7 @@ BinaryDelayEstimator* WebRtc_CreateBinaryDelayEstimator(
     BinaryDelayEstimatorFarend* farend,
     int max_lookahead);
 
-// Re-allocates |history_size| dependent buffers. The far-end buffers will be
+// Re-allocates `history_size` dependent buffers. The far-end buffers will be
 // updated at the same time if needed.
 //
 // Input:
@@ -235,7 +237,7 @@ int WebRtc_binary_last_delay(BinaryDelayEstimator* self);
 //                                      delay value.
 float WebRtc_binary_last_delay_quality(BinaryDelayEstimator* self);
 
-// Updates the |mean_value| recursively with a step size of 2^-|factor|. This
+// Updates the `mean_value` recursively with a step size of 2^-`factor`. This
 // function is used internally in the Binary Delay Estimator as well as the
 // Fixed point wrapper.
 //
@@ -249,5 +251,7 @@ float WebRtc_binary_last_delay_quality(BinaryDelayEstimator* self);
 void WebRtc_MeanEstimatorFix(int32_t new_value,
                              int factor,
                              int32_t* mean_value);
+
+}  // namespace webrtc
 
 #endif  // MODULES_AUDIO_PROCESSING_UTILITY_DELAY_ESTIMATOR_H_

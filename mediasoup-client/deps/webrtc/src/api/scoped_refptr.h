@@ -24,13 +24,13 @@
 //   void some_function() {
 //     scoped_refptr<MyFoo> foo = new MyFoo();
 //     foo->Method(param);
-//     // |foo| is released when this function returns
+//     // `foo` is released when this function returns
 //   }
 //
 //   void some_other_function() {
 //     scoped_refptr<MyFoo> foo = new MyFoo();
 //     ...
-//     foo = nullptr;  // explicitly releases |foo|
+//     foo = nullptr;  // explicitly releases `foo`
 //     ...
 //     if (foo)
 //       foo->Method(param);
@@ -45,10 +45,10 @@
 //     scoped_refptr<MyFoo> b;
 //
 //     b.swap(a);
-//     // now, |b| references the MyFoo object, and |a| references null.
+//     // now, `b` references the MyFoo object, and `a` references null.
 //   }
 //
-// To make both |a| and |b| in the above example reference the same MyFoo
+// To make both `a` and `b` in the above example reference the same MyFoo
 // object, simply use the assignment operator:
 //
 //   {
@@ -56,7 +56,7 @@
 //     scoped_refptr<MyFoo> b;
 //
 //     b = a;
-//     // now, |a| and |b| each own a reference to the same MyFoo object.
+//     // now, `a` and `b` each own a reference to the same MyFoo object.
 //   }
 //
 
@@ -92,10 +92,10 @@ class scoped_refptr {
   }
 
   // Move constructors.
-  scoped_refptr(scoped_refptr<T>&& r) : ptr_(r.release()) {}
+  scoped_refptr(scoped_refptr<T>&& r) noexcept : ptr_(r.release()) {}
 
   template <typename U>
-  scoped_refptr(scoped_refptr<U>&& r) : ptr_(r.release()) {}
+  scoped_refptr(scoped_refptr<U>&& r) noexcept : ptr_(r.release()) {}
 
   ~scoped_refptr() {
     if (ptr_)
@@ -104,6 +104,7 @@ class scoped_refptr {
 
   T* get() const { return ptr_; }
   operator T*() const { return ptr_; }
+  T& operator*() const { return *ptr_; }
   T* operator->() const { return ptr_; }
 
   // Returns the (possibly null) raw pointer, and makes the scoped_refptr hold a
@@ -136,24 +137,24 @@ class scoped_refptr {
     return *this = r.get();
   }
 
-  scoped_refptr<T>& operator=(scoped_refptr<T>&& r) {
+  scoped_refptr<T>& operator=(scoped_refptr<T>&& r) noexcept {
     scoped_refptr<T>(std::move(r)).swap(*this);
     return *this;
   }
 
   template <typename U>
-  scoped_refptr<T>& operator=(scoped_refptr<U>&& r) {
+  scoped_refptr<T>& operator=(scoped_refptr<U>&& r) noexcept {
     scoped_refptr<T>(std::move(r)).swap(*this);
     return *this;
   }
 
-  void swap(T** pp) {
+  void swap(T** pp) noexcept {
     T* p = ptr_;
     ptr_ = *pp;
     *pp = p;
   }
 
-  void swap(scoped_refptr<T>& r) { swap(&r.ptr_); }
+  void swap(scoped_refptr<T>& r) noexcept { swap(&r.ptr_); }
 
  protected:
   T* ptr_;

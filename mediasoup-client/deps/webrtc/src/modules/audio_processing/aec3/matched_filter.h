@@ -17,7 +17,6 @@
 
 #include "api/array_view.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
-#include "rtc_base/constructor_magic.h"
 #include "rtc_base/system/arch.h"
 
 namespace webrtc {
@@ -45,6 +44,16 @@ void MatchedFilterCore_NEON(size_t x_start_index,
 
 // Filter core for the matched filter that is optimized for SSE2.
 void MatchedFilterCore_SSE2(size_t x_start_index,
+                            float x2_sum_threshold,
+                            float smoothing,
+                            rtc::ArrayView<const float> x,
+                            rtc::ArrayView<const float> y,
+                            rtc::ArrayView<float> h,
+                            bool* filters_updated,
+                            float* error_sum);
+
+// Filter core for the matched filter that is optimized for AVX2.
+void MatchedFilterCore_AVX2(size_t x_start_index,
                             float x2_sum_threshold,
                             float smoothing,
                             rtc::ArrayView<const float> x,
@@ -91,14 +100,20 @@ class MatchedFilter {
                 int num_matched_filters,
                 size_t alignment_shift_sub_blocks,
                 float excitation_limit,
-                float smoothing,
+                float smoothing_fast,
+                float smoothing_slow,
                 float matching_filter_threshold);
+
+  MatchedFilter() = delete;
+  MatchedFilter(const MatchedFilter&) = delete;
+  MatchedFilter& operator=(const MatchedFilter&) = delete;
 
   ~MatchedFilter();
 
   // Updates the correlation with the values in the capture buffer.
   void Update(const DownsampledRenderBuffer& render_buffer,
-              rtc::ArrayView<const float> capture);
+              rtc::ArrayView<const float> capture,
+              bool use_slow_smoothing);
 
   // Resets the matched filter.
   void Reset();
@@ -127,10 +142,9 @@ class MatchedFilter {
   std::vector<LagEstimate> lag_estimates_;
   std::vector<size_t> filters_offsets_;
   const float excitation_limit_;
-  const float smoothing_;
+  const float smoothing_fast_;
+  const float smoothing_slow_;
   const float matching_filter_threshold_;
-
-  RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(MatchedFilter);
 };
 
 }  // namespace webrtc

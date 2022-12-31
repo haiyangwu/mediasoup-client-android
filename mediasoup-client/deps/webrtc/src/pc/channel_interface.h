@@ -37,13 +37,12 @@ class ChannelInterface {
 
   virtual const std::string& content_name() const = 0;
 
-  virtual bool enabled() const = 0;
-
   // Enables or disables this channel
-  virtual bool Enable(bool enable) = 0;
+  virtual void Enable(bool enable) = 0;
 
   // Used for latency measurements.
-  virtual sigslot::signal1<ChannelInterface*>& SignalFirstPacketReceived() = 0;
+  virtual void SetFirstPacketReceivedCallback(
+      std::function<void()> callback) = 0;
 
   // Channel control
   virtual bool SetLocalContent(const MediaContentDescription* content,
@@ -52,6 +51,7 @@ class ChannelInterface {
   virtual bool SetRemoteContent(const MediaContentDescription* content,
                                 webrtc::SdpType type,
                                 std::string* error_desc) = 0;
+  virtual bool SetPayloadTypeDemuxingEnabled(bool enabled) = 0;
 
   // Access to the local and remote streams that were set on the channel.
   virtual const std::vector<StreamParams>& local_streams() const = 0;

@@ -14,6 +14,7 @@
 #include "api/video_codecs/sdp_video_format.h"
 #include "media/base/codec.h"
 #include "media/base/media_constants.h"
+#include "modules/video_coding/codecs/av1/libaom_av1_decoder.h"
 #include "modules/video_coding/codecs/h264/include/h264.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
@@ -22,38 +23,24 @@
 
 namespace webrtc {
 
-namespace {
-
-bool IsFormatSupported(
-    const std::vector<webrtc::SdpVideoFormat>& supported_formats,
-    const webrtc::SdpVideoFormat& format) {
-  for (const webrtc::SdpVideoFormat& supported_format : supported_formats) {
-    if (cricket::IsSameCodec(format.name, format.parameters,
-                             supported_format.name,
-                             supported_format.parameters)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 std::vector<SdpVideoFormat> InternalDecoderFactory::GetSupportedFormats()
     const {
   std::vector<SdpVideoFormat> formats;
   formats.push_back(SdpVideoFormat(cricket::kVp8CodecName));
-  for (const SdpVideoFormat& format : SupportedVP9Codecs())
+  for (const SdpVideoFormat& format : SupportedVP9DecoderCodecs())
     formats.push_back(format);
   for (const SdpVideoFormat& h264_format : SupportedH264Codecs())
     formats.push_back(h264_format);
+  if (kIsLibaomAv1DecoderSupported)
+    formats.push_back(SdpVideoFormat(cricket::kAv1CodecName));
   return formats;
 }
 
 std::unique_ptr<VideoDecoder> InternalDecoderFactory::CreateVideoDecoder(
     const SdpVideoFormat& format) {
-  if (!IsFormatSupported(GetSupportedFormats(), format)) {
-    RTC_LOG(LS_ERROR) << "Trying to create decoder for unsupported format";
+  if (!format.IsCodecInList(GetSupportedFormats())) {
+    RTC_LOG(LS_WARNING) << "Trying to create decoder for unsupported format. "
+                        << format.ToString();
     return nullptr;
   }
 
@@ -63,6 +50,9 @@ std::unique_ptr<VideoDecoder> InternalDecoderFactory::CreateVideoDecoder(
     return VP9Decoder::Create();
   if (absl::EqualsIgnoreCase(format.name, cricket::kH264CodecName))
     return H264Decoder::Create();
+  if (kIsLibaomAv1DecoderSupported &&
+      absl::EqualsIgnoreCase(format.name, cricket::kAv1CodecName))
+    return CreateLibaomAv1Decoder();
 
   RTC_NOTREACHED();
   return nullptr;

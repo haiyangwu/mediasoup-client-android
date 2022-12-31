@@ -65,7 +65,7 @@ class RTC_EXPORT PacketTransportInternal : public sigslot::has_slots<> {
   // TODO(zhihuang): Make it pure virtual once the Chrome/remoting is updated.
   virtual absl::optional<NetworkRoute> network_route() const;
 
-  // Emitted when the writable state, represented by |writable()|, changes.
+  // Emitted when the writable state, represented by `writable()`, changes.
   sigslot::signal1<PacketTransportInternal*> SignalWritableState;
 
   //  Emitted when the PacketTransportInternal is ready to send packets. "Ready
@@ -94,6 +94,9 @@ class RTC_EXPORT PacketTransportInternal : public sigslot::has_slots<> {
 
   // Signalled when the current network route has changed.
   sigslot::signal1<absl::optional<rtc::NetworkRoute>> SignalNetworkRouteChanged;
+
+  // Signalled when the transport is closed.
+  sigslot::signal1<PacketTransportInternal*> SignalClosed;
 
  protected:
   PacketTransportInternal();

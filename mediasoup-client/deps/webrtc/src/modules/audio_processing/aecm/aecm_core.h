@@ -19,6 +19,10 @@ extern "C" {
 }
 #include "modules/audio_processing/aecm/aecm_defines.h"
 
+struct RealFFT;
+
+namespace webrtc {
+
 #ifdef _MSC_VER  // visual c++
 #define ALIGN8_BEG __declspec(align(8))
 #define ALIGN8_END
@@ -54,7 +58,7 @@ typedef struct {
   void* delay_estimator;
   uint16_t currentDelay;
   // Far end history variables
-  // TODO(bjornv): Replace |far_history| with ring_buffer.
+  // TODO(bjornv): Replace `far_history` with ring_buffer.
   uint16_t far_history[PART_LEN1 * MAX_DELAY];
   int far_history_pos;
   int far_q_domains[MAX_DELAY];
@@ -267,7 +271,7 @@ void WebRtcAecm_FetchFarFrame(AecmCore* const aecm,
 ////////////////////////////////////////////////////////////////////////////////
 // WebRtcAecm_UpdateFarHistory()
 //
-// Moves the pointer to the next entry and inserts |far_spectrum| and
+// Moves the pointer to the next entry and inserts `far_spectrum` and
 // corresponding Q-domain in its buffer.
 //
 // Inputs:
@@ -431,5 +435,7 @@ void WebRtcAecm_StoreAdaptiveChannel_mips(AecmCore* aecm,
 void WebRtcAecm_ResetAdaptiveChannel_mips(AecmCore* aecm);
 #endif
 #endif
+
+}  // namespace webrtc
 
 #endif

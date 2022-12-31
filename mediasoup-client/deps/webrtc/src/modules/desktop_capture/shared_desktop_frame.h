@@ -23,7 +23,7 @@ namespace webrtc {
 
 // SharedDesktopFrame is a DesktopFrame that may have multiple instances all
 // sharing the same buffer.
-class RTC_EXPORT SharedDesktopFrame : public DesktopFrame {
+class RTC_EXPORT SharedDesktopFrame final : public DesktopFrame {
  public:
   ~SharedDesktopFrame() override;
 
@@ -40,7 +40,7 @@ class RTC_EXPORT SharedDesktopFrame : public DesktopFrame {
   // Returns the underlying instance of DesktopFrame.
   DesktopFrame* GetUnderlyingFrame();
 
-  // Returns whether |this| and |other| share the underlying DesktopFrame.
+  // Returns whether `this` and `other` share the underlying DesktopFrame.
   bool ShareFrameWith(const SharedDesktopFrame& other) const;
 
   // Creates a clone of this object.
@@ -51,7 +51,7 @@ class RTC_EXPORT SharedDesktopFrame : public DesktopFrame {
   bool IsShared();
 
  private:
-  typedef rtc::RefCountedObject<std::unique_ptr<DesktopFrame>> Core;
+  typedef rtc::FinalRefCountedObject<std::unique_ptr<DesktopFrame>> Core;
 
   SharedDesktopFrame(rtc::scoped_refptr<Core> core);
 

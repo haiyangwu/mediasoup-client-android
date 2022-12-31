@@ -25,7 +25,7 @@ void SourceTracker::OnFrameDelivered(const RtpPacketInfos& packet_infos) {
   }
 
   int64_t now_ms = clock_->TimeInMilliseconds();
-  rtc::CritScope lock_scope(&lock_);
+  MutexLock lock_scope(&lock_);
 
   for (const auto& packet_info : packet_infos) {
     for (uint32_t csrc : packet_info.csrcs()) {
@@ -34,6 +34,7 @@ void SourceTracker::OnFrameDelivered(const RtpPacketInfos& packet_infos) {
 
       entry.timestamp_ms = now_ms;
       entry.audio_level = packet_info.audio_level();
+      entry.absolute_capture_time = packet_info.absolute_capture_time();
       entry.rtp_timestamp = packet_info.rtp_timestamp();
     }
 
@@ -42,6 +43,7 @@ void SourceTracker::OnFrameDelivered(const RtpPacketInfos& packet_infos) {
 
     entry.timestamp_ms = now_ms;
     entry.audio_level = packet_info.audio_level();
+    entry.absolute_capture_time = packet_info.absolute_capture_time();
     entry.rtp_timestamp = packet_info.rtp_timestamp();
   }
 
@@ -52,7 +54,7 @@ std::vector<RtpSource> SourceTracker::GetSources() const {
   std::vector<RtpSource> sources;
 
   int64_t now_ms = clock_->TimeInMilliseconds();
-  rtc::CritScope lock_scope(&lock_);
+  MutexLock lock_scope(&lock_);
 
   PruneEntries(now_ms);
 
@@ -60,8 +62,9 @@ std::vector<RtpSource> SourceTracker::GetSources() const {
     const SourceKey& key = pair.first;
     const SourceEntry& entry = pair.second;
 
-    sources.emplace_back(entry.timestamp_ms, key.source, key.source_type,
-                         entry.audio_level, entry.rtp_timestamp);
+    sources.emplace_back(
+        entry.timestamp_ms, key.source, key.source_type, entry.rtp_timestamp,
+        RtpSource::Extensions{entry.audio_level, entry.absolute_capture_time});
   }
 
   return sources;
@@ -69,7 +72,7 @@ std::vector<RtpSource> SourceTracker::GetSources() const {
 
 SourceTracker::SourceEntry& SourceTracker::UpdateEntry(const SourceKey& key) {
   // We intentionally do |find() + emplace()|, instead of checking the return
-  // value of |emplace()|, for performance reasons. It's much more likely for
+  // value of `emplace()`, for performance reasons. It's much more likely for
   // the key to already exist than for it not to.
   auto map_it = map_.find(key);
   if (map_it == map_.end()) {

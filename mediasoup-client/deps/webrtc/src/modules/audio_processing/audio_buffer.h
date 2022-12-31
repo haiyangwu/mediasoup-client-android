@@ -17,7 +17,6 @@
 #include <memory>
 #include <vector>
 
-#include "api/audio/audio_frame.h"
 #include "common_audio/channel_buffer.h"
 #include "modules/audio_processing/include/audio_processing.h"
 
@@ -72,8 +71,8 @@ class AudioBuffer {
   // Usage:
   // channels()[channel][sample].
   // Where:
-  // 0 <= channel < |buffer_num_channels_|
-  // 0 <= sample < |buffer_num_frames_|
+  // 0 <= channel < `buffer_num_channels_`
+  // 0 <= sample < `buffer_num_frames_`
   float* const* channels() { return data_->channels(); }
   const float* const* channels_const() const { return data_->channels(); }
 
@@ -81,9 +80,9 @@ class AudioBuffer {
   // Usage:
   // split_bands(channel)[band][sample].
   // Where:
-  // 0 <= channel < |buffer_num_channels_|
-  // 0 <= band < |num_bands_|
-  // 0 <= sample < |num_split_frames_|
+  // 0 <= channel < `buffer_num_channels_`
+  // 0 <= band < `num_bands_`
+  // 0 <= sample < `num_split_frames_`
   const float* const* split_bands_const(size_t channel) const {
     return split_data_.get() ? split_data_->bands(channel)
                              : data_->bands(channel);
@@ -97,9 +96,9 @@ class AudioBuffer {
   // Usage:
   // split_channels(band)[channel][sample].
   // Where:
-  // 0 <= band < |num_bands_|
-  // 0 <= channel < |buffer_num_channels_|
-  // 0 <= sample < |num_split_frames_|
+  // 0 <= band < `num_bands_`
+  // 0 <= channel < `buffer_num_channels_`
+  // 0 <= sample < `num_split_frames_`
   const float* const* split_channels_const(Band band) const {
     if (split_data_.get()) {
       return split_data_->channels(band);
@@ -109,12 +108,15 @@ class AudioBuffer {
   }
 
   // Copies data into the buffer.
-  void CopyFrom(const AudioFrame* frame);
-  void CopyFrom(const float* const* data, const StreamConfig& stream_config);
+  void CopyFrom(const int16_t* const interleaved_data,
+                const StreamConfig& stream_config);
+  void CopyFrom(const float* const* stacked_data,
+                const StreamConfig& stream_config);
 
   // Copies data from the buffer.
-  void CopyTo(AudioFrame* frame) const;
-  void CopyTo(const StreamConfig& stream_config, float* const* data);
+  void CopyTo(const StreamConfig& stream_config,
+              int16_t* const interleaved_data);
+  void CopyTo(const StreamConfig& stream_config, float* const* stacked_data);
   void CopyTo(AudioBuffer* buffer) const;
 
   // Splits the buffer data into frequency bands.
@@ -124,7 +126,8 @@ class AudioBuffer {
   void MergeFrequencyBands();
 
   // Copies the split bands data into the integer two-dimensional array.
-  void ExportSplitChannelData(size_t channel, int16_t* const* split_band_data);
+  void ExportSplitChannelData(size_t channel,
+                              int16_t* const* split_band_data) const;
 
   // Copies the data in the integer two-dimensional array into the split_bands
   // data.
@@ -144,8 +147,6 @@ class AudioBuffer {
   const float* const* split_channels_const_f(Band band) const {
     return split_channels_const(band);
   }
-  void DeinterleaveFrom(const AudioFrame* frame) { CopyFrom(frame); }
-  void InterleaveTo(AudioFrame* frame) const { CopyTo(frame); }
 
  private:
   FRIEND_TEST_ALL_PREFIXES(AudioBufferTest,

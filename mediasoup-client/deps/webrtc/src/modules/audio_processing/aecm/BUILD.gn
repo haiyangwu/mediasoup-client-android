@@ -8,7 +8,7 @@
 
 import("../../../webrtc.gni")
 
-rtc_source_set("aecm_core") {
+rtc_library("aecm_core") {
   sources = [
     "aecm_core.cc",
     "aecm_core.h",
@@ -21,7 +21,7 @@ rtc_source_set("aecm_core") {
     "../../../rtc_base:checks",
     "../../../rtc_base:rtc_base_approved",
     "../../../rtc_base:sanitizer",
-    "../../../system_wrappers:cpu_features_api",
+    "../../../system_wrappers",
     "../utility:legacy_delay_estimator",
   ]
   cflags = []

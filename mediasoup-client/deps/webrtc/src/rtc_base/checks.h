@@ -37,6 +37,18 @@ RTC_NORETURN void rtc_FatalMessage(const char* file, int line, const char* msg);
 }  // extern "C"
 #endif
 
+#ifdef RTC_DISABLE_CHECK_MSG
+#define RTC_CHECK_MSG_ENABLED 0
+#else
+#define RTC_CHECK_MSG_ENABLED 1
+#endif
+
+#if RTC_CHECK_MSG_ENABLED
+#define RTC_CHECK_EVAL_MESSAGE(message) message
+#else
+#define RTC_CHECK_EVAL_MESSAGE(message) ""
+#endif
+
 #ifdef __cplusplus
 // C++ version.
 
@@ -57,7 +69,7 @@ RTC_NORETURN void rtc_FatalMessage(const char* file, int line, const char* msg);
 //   the reason that it's better to terminate might simply be that the error
 //   handling code isn't in place yet; in production, the reason might be that
 //   the author of the code truly believes that x will always be true, but that
-//   she recognizes that if she is wrong, abrupt and unpleasant process
+//   they recognizes that if they are wrong, abrupt and unpleasant process
 //   termination is still better than carrying on with the assumption violated.
 //
 //   RTC_CHECK always evaluates its argument, so it's OK for x to have side
@@ -83,7 +95,7 @@ RTC_NORETURN void rtc_FatalMessage(const char* file, int line, const char* msg);
 //   messages if the condition doesn't hold. Prefer them to raw RTC_CHECK and
 //   RTC_DCHECK.
 //
-// - FATAL() aborts unconditionally.
+// - RTC_FATAL() aborts unconditionally.
 
 namespace rtc {
 namespace webrtc_checks_impl {
@@ -109,11 +121,15 @@ enum class CheckArgType : int8_t {
   kCheckOp,
 };
 
+#if RTC_CHECK_MSG_ENABLED
 RTC_NORETURN RTC_EXPORT void FatalLog(const char* file,
                                       int line,
                                       const char* message,
                                       const CheckArgType* fmt,
                                       ...);
+#else
+RTC_NORETURN RTC_EXPORT void FatalLog(const char* file, int line);
+#endif
 
 // Wrapper for log arguments. Only ever make values of this type with the
 // MakeVal() functions.
@@ -214,6 +230,7 @@ class LogStreamer<> final {
     return LogStreamer<V>(MakeVal(arg), this);
   }
 
+#if RTC_CHECK_MSG_ENABLED
   template <typename... Us>
   RTC_NORETURN RTC_FORCE_INLINE static void Call(const char* file,
                                                  const int line,
@@ -232,6 +249,13 @@ class LogStreamer<> final {
                                          CheckArgType::kEnd};
     FatalLog(file, line, message, t, args.GetVal()...);
   }
+#else
+  template <typename... Us>
+  RTC_NORETURN RTC_FORCE_INLINE static void Call(const char* file,
+                                                 const int line) {
+    FatalLog(file, line);
+  }
+#endif
 };
 
 // Inductive case: We've already seen at least one << argument. The most recent
@@ -258,6 +282,7 @@ class LogStreamer<T, Ts...> final {
     return LogStreamer<V, T, Ts...>(MakeVal(arg), this);
   }
 
+#if RTC_CHECK_MSG_ENABLED
   template <typename... Us>
   RTC_NORETURN RTC_FORCE_INLINE void Call(const char* file,
                                           const int line,
@@ -273,6 +298,13 @@ class LogStreamer<T, Ts...> final {
                                                  const Us&... args) const {
     prior_->CallCheckOp(file, line, message, arg_, args...);
   }
+#else
+  template <typename... Us>
+  RTC_NORETURN RTC_FORCE_INLINE void Call(const char* file,
+                                          const int line) const {
+    prior_->Call(file, line);
+  }
+#endif
 
  private:
   // The most recent argument.
@@ -292,8 +324,12 @@ class FatalLogCall final {
   template <typename... Ts>
   RTC_NORETURN RTC_FORCE_INLINE void operator&(
       const LogStreamer<Ts...>& streamer) {
+#if RTC_CHECK_MSG_ENABLED
     isCheckOp ? streamer.CallCheckOp(file_, line_, message_)
               : streamer.Call(file_, line_, message_);
+#else
+    streamer.Call(file_, line_);
+#endif
   }
 
  private:
@@ -301,44 +337,83 @@ class FatalLogCall final {
   int line_;
   const char* message_;
 };
+
+#if RTC_DCHECK_IS_ON
+
+// Be helpful, and include file and line in the RTC_CHECK_NOTREACHED error
+// message.
+#define RTC_UNREACHABLE_FILE_AND_LINE_CALL_ARGS __FILE__, __LINE__
+RTC_NORETURN RTC_EXPORT void UnreachableCodeReached(const char* file, int line);
+
+#else
+
+// Be mindful of binary size, and don't include file and line in the
+// RTC_CHECK_NOTREACHED error message.
+#define RTC_UNREACHABLE_FILE_AND_LINE_CALL_ARGS
+RTC_NORETURN RTC_EXPORT void UnreachableCodeReached();
+
+#endif
+
 }  // namespace webrtc_checks_impl
 
-// The actual stream used isn't important. We reference |ignored| in the code
+// The actual stream used isn't important. We reference `ignored` in the code
 // but don't evaluate it; this is to avoid "unused variable" warnings (we do so
 // in a particularly convoluted way with an extra ?: because that appears to be
 // the simplest construct that keeps Visual Studio from complaining about
 // condition being unused).
-#define RTC_EAT_STREAM_PARAMETERS(ignored)                        \
-  (true ? true : ((void)(ignored), true))                         \
-      ? static_cast<void>(0)                                      \
-      : rtc::webrtc_checks_impl::FatalLogCall<false>("", 0, "") & \
-            rtc::webrtc_checks_impl::LogStreamer<>()
+#define RTC_EAT_STREAM_PARAMETERS(ignored)                          \
+  (true ? true : ((void)(ignored), true))                           \
+      ? static_cast<void>(0)                                        \
+      : ::rtc::webrtc_checks_impl::FatalLogCall<false>("", 0, "") & \
+            ::rtc::webrtc_checks_impl::LogStreamer<>()
 
 // Call RTC_EAT_STREAM_PARAMETERS with an argument that fails to compile if
-// values of the same types as |a| and |b| can't be compared with the given
-// operation, and that would evaluate |a| and |b| if evaluated.
+// values of the same types as `a` and `b` can't be compared with the given
+// operation, and that would evaluate `a` and `b` if evaluated.
 #define RTC_EAT_STREAM_PARAMETERS_OP(op, a, b) \
-  RTC_EAT_STREAM_PARAMETERS(((void)rtc::Safe##op(a, b)))
+  RTC_EAT_STREAM_PARAMETERS(((void)::rtc::Safe##op(a, b)))
 
 // RTC_CHECK dies with a fatal error if condition is not true. It is *not*
 // controlled by NDEBUG or anything else, so the check will be executed
 // regardless of compilation mode.
 //
-// We make sure RTC_CHECK et al. always evaluates |condition|, as
+// We make sure RTC_CHECK et al. always evaluates `condition`, as
 // doing RTC_CHECK(FunctionWithSideEffect()) is a common idiom.
-#define RTC_CHECK(condition)                                       \
-  while (!(condition))                                             \
-  rtc::webrtc_checks_impl::FatalLogCall<false>(__FILE__, __LINE__, \
-                                               #condition) &       \
-      rtc::webrtc_checks_impl::LogStreamer<>()
-
-// Helper macro for binary operators.
+//
+// RTC_CHECK_OP is a helper macro for binary operators.
 // Don't use this macro directly in your code, use RTC_CHECK_EQ et al below.
-#define RTC_CHECK_OP(name, op, val1, val2)                               \
-  while (!rtc::Safe##name((val1), (val2)))                               \
-  rtc::webrtc_checks_impl::FatalLogCall<true>(__FILE__, __LINE__,        \
-                                              #val1 " " #op " " #val2) & \
-      rtc::webrtc_checks_impl::LogStreamer<>() << (val1) << (val2)
+#if RTC_CHECK_MSG_ENABLED
+#define RTC_CHECK(condition)                                    \
+  (condition) ? static_cast<void>(0)                            \
+              : ::rtc::webrtc_checks_impl::FatalLogCall<false>( \
+                    __FILE__, __LINE__, #condition) &           \
+                    ::rtc::webrtc_checks_impl::LogStreamer<>()
+
+#define RTC_CHECK_OP(name, op, val1, val2)                 \
+  ::rtc::Safe##name((val1), (val2))                        \
+      ? static_cast<void>(0)                               \
+      : ::rtc::webrtc_checks_impl::FatalLogCall<true>(     \
+            __FILE__, __LINE__, #val1 " " #op " " #val2) & \
+            ::rtc::webrtc_checks_impl::LogStreamer<>() << (val1) << (val2)
+#else
+#define RTC_CHECK(condition)                                                  \
+  (condition)                                                                 \
+      ? static_cast<void>(0)                                                  \
+      : true ? ::rtc::webrtc_checks_impl::FatalLogCall<false>(__FILE__,       \
+                                                              __LINE__, "") & \
+                   ::rtc::webrtc_checks_impl::LogStreamer<>()                 \
+             : ::rtc::webrtc_checks_impl::FatalLogCall<false>("", 0, "") &    \
+                   ::rtc::webrtc_checks_impl::LogStreamer<>()
+
+#define RTC_CHECK_OP(name, op, val1, val2)                                   \
+  ::rtc::Safe##name((val1), (val2))                                          \
+      ? static_cast<void>(0)                                                 \
+      : true ? ::rtc::webrtc_checks_impl::FatalLogCall<true>(__FILE__,       \
+                                                             __LINE__, "") & \
+                   ::rtc::webrtc_checks_impl::LogStreamer<>()                \
+             : ::rtc::webrtc_checks_impl::FatalLogCall<false>("", 0, "") &   \
+                   ::rtc::webrtc_checks_impl::LogStreamer<>()
+#endif
 
 #define RTC_CHECK_EQ(val1, val2) RTC_CHECK_OP(Eq, ==, val1, val2)
 #define RTC_CHECK_NE(val1, val2) RTC_CHECK_OP(Ne, !=, val1, val2)
@@ -371,11 +446,18 @@ class FatalLogCall final {
 #define RTC_UNREACHABLE_CODE_HIT false
 #define RTC_NOTREACHED() RTC_DCHECK(RTC_UNREACHABLE_CODE_HIT)
 
-// TODO(bugs.webrtc.org/8454): Add an RTC_ prefix or rename differently.
-#define FATAL()                                                    \
-  rtc::webrtc_checks_impl::FatalLogCall<false>(__FILE__, __LINE__, \
-                                               "FATAL()") &        \
-      rtc::webrtc_checks_impl::LogStreamer<>()
+// Kills the process with an error message. Never returns. Use when you wish to
+// assert that a point in the code is never reached.
+#define RTC_CHECK_NOTREACHED()                         \
+  do {                                                 \
+    ::rtc::webrtc_checks_impl::UnreachableCodeReached( \
+        RTC_UNREACHABLE_FILE_AND_LINE_CALL_ARGS);      \
+  } while (0)
+
+#define RTC_FATAL()                                                  \
+  ::rtc::webrtc_checks_impl::FatalLogCall<false>(__FILE__, __LINE__, \
+                                                 "FATAL()") &        \
+      ::rtc::webrtc_checks_impl::LogStreamer<>()
 
 // Performs the integer division a/b and returns the result. CHECKs that the
 // remainder is zero.
@@ -391,11 +473,12 @@ inline T CheckedDivExact(T a, T b) {
 // C version. Lacks many features compared to the C++ version, but usage
 // guidelines are the same.
 
-#define RTC_CHECK(condition)                                             \
-  do {                                                                   \
-    if (!(condition)) {                                                  \
-      rtc_FatalMessage(__FILE__, __LINE__, "CHECK failed: " #condition); \
-    }                                                                    \
+#define RTC_CHECK(condition)                                                 \
+  do {                                                                       \
+    if (!(condition)) {                                                      \
+      rtc_FatalMessage(__FILE__, __LINE__,                                   \
+                       RTC_CHECK_EVAL_MESSAGE("CHECK failed: " #condition)); \
+    }                                                                        \
   } while (0)
 
 #define RTC_CHECK_EQ(a, b) RTC_CHECK((a) == (b))
@@ -405,11 +488,12 @@ inline T CheckedDivExact(T a, T b) {
 #define RTC_CHECK_GE(a, b) RTC_CHECK((a) >= (b))
 #define RTC_CHECK_GT(a, b) RTC_CHECK((a) > (b))
 
-#define RTC_DCHECK(condition)                                             \
-  do {                                                                    \
-    if (RTC_DCHECK_IS_ON && !(condition)) {                               \
-      rtc_FatalMessage(__FILE__, __LINE__, "DCHECK failed: " #condition); \
-    }                                                                     \
+#define RTC_DCHECK(condition)                                                 \
+  do {                                                                        \
+    if (RTC_DCHECK_IS_ON && !(condition)) {                                   \
+      rtc_FatalMessage(__FILE__, __LINE__,                                    \
+                       RTC_CHECK_EVAL_MESSAGE("DCHECK failed: " #condition)); \
+    }                                                                         \
   } while (0)
 
 #define RTC_DCHECK_EQ(a, b) RTC_DCHECK((a) == (b))

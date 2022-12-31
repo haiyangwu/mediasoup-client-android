@@ -37,7 +37,7 @@ class VideoEncoderFactoryWrapper : public VideoEncoderFactory {
 
   std::vector<SdpVideoFormat> GetImplementations() const override;
 
-  CodecInfo QueryVideoEncoder(const SdpVideoFormat& format) const override;
+  std::unique_ptr<EncoderSelectorInterface> GetEncoderSelector() const override;
 
  private:
   const ScopedJavaGlobalRef<jobject> encoder_factory_;

@@ -2,6 +2,7 @@
 
 #include "sdp/RemoteSdp.hpp"
 #include "Logger.hpp"
+#include "algorithm" // find_if.
 #include "sdptransform.hpp"
 
 using json = nlohmann::json;
@@ -74,6 +75,16 @@ namespace mediasoupclient
 			}
 		};
 		// clang-format on
+	}
+
+	Sdp::RemoteSdp::~RemoteSdp()
+	{
+		MSC_TRACE();
+
+		for (const auto* mediaSection : this->mediaSections)
+		{
+			delete mediaSection;
+		}
 	}
 
 	void Sdp::RemoteSdp::UpdateIceParameters(const json& iceParameters)
@@ -163,6 +174,39 @@ namespace mediasoupclient
 		}
 	}
 
+	void Sdp::RemoteSdp::SendSctpAssociation(json& offerMediaObject)
+	{
+		nlohmann::json emptyJson;
+		auto* mediaSection = new AnswerMediaSection(
+		  this->iceParameters,
+		  this->iceCandidates,
+		  this->dtlsParameters,
+		  this->sctpParameters,
+		  offerMediaObject,
+		  emptyJson,
+		  emptyJson,
+		  nullptr);
+
+		this->AddMediaSection(mediaSection);
+	}
+
+	void Sdp::RemoteSdp::RecvSctpAssociation()
+	{
+		nlohmann::json emptyJson;
+		auto* mediaSection = new OfferMediaSection(
+		  this->iceParameters,
+		  this->iceCandidates,
+		  this->dtlsParameters,
+		  this->sctpParameters,
+		  "datachannel", // mid
+		  "application", // kind
+		  emptyJson,     // offerRtpParameters
+		  "",            // streamId
+		  ""             // trackId
+		);
+		this->AddMediaSection(mediaSection);
+	}
+
 	void Sdp::RemoteSdp::Receive(
 	  const std::string& mid,
 	  const std::string& kind,
@@ -183,7 +227,21 @@ namespace mediasoupclient
 		  streamId,
 		  trackId);
 
-		this->AddMediaSection(mediaSection);
+		// Let's try to recycle a closed media section (if any).
+		// NOTE: We can recycle a closed m=audio section with a new m=video.
+		auto mediaSectionIt = find_if(
+		  this->mediaSections.begin(), this->mediaSections.end(), [](const MediaSection* mediaSection) {
+			  return mediaSection->IsClosed();
+		  });
+
+		if (mediaSectionIt != this->mediaSections.end())
+		{
+			this->ReplaceMediaSection(mediaSection, (*mediaSectionIt)->GetMid());
+		}
+		else
+		{
+			this->AddMediaSection(mediaSection);
+		}
 	}
 
 	void Sdp::RemoteSdp::DisableMediaSection(const std::string& mid)
@@ -255,8 +313,8 @@ namespace mediasoupclient
 		// Store it in the map.
 		if (!reuseMid.empty())
 		{
-			const auto idx             = this->midToIndex[reuseMid];
-			const auto oldMediaSection = this->mediaSections[idx];
+			const auto idx              = this->midToIndex[reuseMid];
+			auto* const oldMediaSection = this->mediaSections[idx];
 
 			// Replace the index in the vector with the new media section.
 			this->mediaSections[idx] = newMediaSection;
@@ -276,8 +334,8 @@ namespace mediasoupclient
 		}
 		else
 		{
-			const auto idx             = this->midToIndex[newMediaSection->GetMid()];
-			const auto oldMediaSection = this->mediaSections[idx];
+			const auto idx              = this->midToIndex[newMediaSection->GetMid()];
+			auto* const oldMediaSection = this->mediaSections[idx];
 
 			// Replace the index in the vector with the new media section.
 			this->mediaSections[idx] = newMediaSection;

@@ -29,16 +29,6 @@ struct VideoSendTiming {
     kInvalid = std::numeric_limits<uint8_t>::max()  // Invalid, ignore!
   };
 
-  // Offsets of the fields in the RTP header extension, counting from the first
-  // byte after the one-byte header.
-  static constexpr uint8_t kFlagsOffset = 0;
-  static constexpr uint8_t kEncodeStartDeltaOffset = 1;
-  static constexpr uint8_t kEncodeFinishDeltaOffset = 3;
-  static constexpr uint8_t kPacketizationFinishDeltaOffset = 5;
-  static constexpr uint8_t kPacerExitDeltaOffset = 7;
-  static constexpr uint8_t kNetworkTimestampDeltaOffset = 9;
-  static constexpr uint8_t kNetwork2TimestampDeltaOffset = 11;
-
   // Returns |time_ms - base_ms| capped at max 16-bit value.
   // Used to fill this data structure as per
   // https://webrtc.org/experiments/rtp-hdrext/video-timing/ extension stores
@@ -51,7 +41,7 @@ struct VideoSendTiming {
   uint16_t pacer_exit_delta_ms;
   uint16_t network_timestamp_delta_ms;
   uint16_t network2_timestamp_delta_ms;
-  uint8_t flags;
+  uint8_t flags = TimingFrameFlags::kInvalid;
 };
 
 // Used to report precise timings of a 'timing frames'. Contains all important
@@ -65,7 +55,7 @@ struct TimingFrameInfo {
   // synchronized, -1 otherwise.
   int64_t EndToEndDelay() const;
 
-  // Returns true if current frame took longer to process than |other| frame.
+  // Returns true if current frame took longer to process than `other` frame.
   // If other frame's clocks are not synchronized, current frame is always
   // preferred.
   bool IsLongerThan(const TimingFrameInfo& other) const;
@@ -109,6 +99,30 @@ struct TimingFrameInfo {
 
   uint8_t flags;  // Flags indicating validity and/or why tracing was triggered.
 };
+
+// Minimum and maximum playout delay values from capture to render.
+// These are best effort values.
+//
+// A value < 0 indicates no change from previous valid value.
+//
+// min = max = 0 indicates that the receiver should try and render
+// frame as soon as possible.
+//
+// min = x, max = y indicates that the receiver is free to adapt
+// in the range (x, y) based on network jitter.
+struct VideoPlayoutDelay {
+  VideoPlayoutDelay() = default;
+  VideoPlayoutDelay(int min_ms, int max_ms) : min_ms(min_ms), max_ms(max_ms) {}
+  int min_ms = -1;
+  int max_ms = -1;
+
+  bool operator==(const VideoPlayoutDelay& rhs) const {
+    return min_ms == rhs.min_ms && max_ms == rhs.max_ms;
+  }
+};
+
+// TODO(bugs.webrtc.org/7660): Old name, delete after downstream use is updated.
+using PlayoutDelay = VideoPlayoutDelay;
 
 }  // namespace webrtc
 

@@ -11,7 +11,6 @@
 #include "video/frame_encode_metadata_writer.h"
 
 #include <algorithm>
-#include <memory>
 #include <utility>
 
 #include "common_video/h264/sps_vui_rewriter.h"
@@ -34,8 +33,6 @@ class EncodedImageBufferWrapper : public EncodedImageBufferInterface {
   const uint8_t* data() const override { return buffer_.data(); }
   uint8_t* data() override { return buffer_.data(); }
   size_t size() const override { return buffer_.size(); }
-
-  void Realloc(size_t t) override { RTC_NOTREACHED(); }
 
  private:
   rtc::Buffer buffer_;
@@ -62,7 +59,7 @@ FrameEncodeMetadataWriter::~FrameEncodeMetadataWriter() {}
 
 void FrameEncodeMetadataWriter::OnEncoderInit(const VideoCodec& codec,
                                               bool internal_source) {
-  rtc::CritScope cs(&lock_);
+  MutexLock lock(&lock_);
   codec_settings_ = codec;
   internal_source_ = internal_source;
 }
@@ -70,7 +67,7 @@ void FrameEncodeMetadataWriter::OnEncoderInit(const VideoCodec& codec,
 void FrameEncodeMetadataWriter::OnSetRates(
     const VideoBitrateAllocation& bitrate_allocation,
     uint32_t framerate_fps) {
-  rtc::CritScope cs(&lock_);
+  MutexLock lock(&lock_);
   framerate_fps_ = framerate_fps;
   const size_t num_spatial_layers = NumSpatialLayers();
   if (timing_frames_info_.size() < num_spatial_layers) {
@@ -83,7 +80,7 @@ void FrameEncodeMetadataWriter::OnSetRates(
 }
 
 void FrameEncodeMetadataWriter::OnEncodeStarted(const VideoFrame& frame) {
-  rtc::CritScope cs(&lock_);
+  MutexLock lock(&lock_);
   if (internal_source_) {
     return;
   }
@@ -107,7 +104,7 @@ void FrameEncodeMetadataWriter::OnEncodeStarted(const VideoFrame& frame) {
     // If stream is disabled due to low bandwidth OnEncodeStarted still will be
     // called and have to be ignored.
     if (timing_frames_info_[si].target_bitrate_bytes_per_sec == 0)
-      return;
+      continue;
     if (timing_frames_info_[si].frames.size() == kMaxEncodeStartTimeListSize) {
       ++stalled_encoder_logged_messages_;
       if (stalled_encoder_logged_messages_ <= kMessagesThrottlingThreshold ||
@@ -130,7 +127,7 @@ void FrameEncodeMetadataWriter::OnEncodeStarted(const VideoFrame& frame) {
 
 void FrameEncodeMetadataWriter::FillTimingInfo(size_t simulcast_svc_idx,
                                                EncodedImage* encoded_image) {
-  rtc::CritScope cs(&lock_);
+  MutexLock lock(&lock_);
   absl::optional<size_t> outlier_frame_size;
   absl::optional<int64_t> encode_start_ms;
   uint8_t timing_flags = VideoSendTiming::kNotTriggered;
@@ -138,7 +135,7 @@ void FrameEncodeMetadataWriter::FillTimingInfo(size_t simulcast_svc_idx,
   int64_t encode_done_ms = rtc::TimeMillis();
 
   // Encoders with internal sources do not call OnEncodeStarted
-  // |timing_frames_info_| may be not filled here.
+  // `timing_frames_info_` may be not filled here.
   if (!internal_source_) {
     encode_start_ms =
         ExtractEncodeStartTimeAndFillMetadata(simulcast_svc_idx, encoded_image);
@@ -177,7 +174,7 @@ void FrameEncodeMetadataWriter::FillTimingInfo(size_t simulcast_svc_idx,
   }
 
   // Workaround for chromoting encoder: it passes encode start and finished
-  // timestamps in |timing_| field, but they (together with capture timestamp)
+  // timestamps in `timing_` field, but they (together with capture timestamp)
   // are not in the WebRTC clock.
   if (internal_source_ && encoded_image->timing_.encode_finish_ms > 0 &&
       encoded_image->timing_.encode_start_ms > 0) {
@@ -204,40 +201,28 @@ void FrameEncodeMetadataWriter::FillTimingInfo(size_t simulcast_svc_idx,
   }
 }
 
-std::unique_ptr<RTPFragmentationHeader>
-FrameEncodeMetadataWriter::UpdateBitstream(
+void FrameEncodeMetadataWriter::UpdateBitstream(
     const CodecSpecificInfo* codec_specific_info,
-    const RTPFragmentationHeader* fragmentation,
     EncodedImage* encoded_image) {
   if (!codec_specific_info ||
-      codec_specific_info->codecType != kVideoCodecH264 || !fragmentation ||
+      codec_specific_info->codecType != kVideoCodecH264 ||
       encoded_image->_frameType != VideoFrameType::kVideoFrameKey) {
-    return nullptr;
+    return;
   }
-
-  rtc::Buffer modified_buffer;
-  std::unique_ptr<RTPFragmentationHeader> modified_fragmentation =
-      std::make_unique<RTPFragmentationHeader>();
-  modified_fragmentation->CopyFrom(*fragmentation);
 
   // Make sure that the data is not copied if owned by EncodedImage.
   const EncodedImage& buffer = *encoded_image;
-  SpsVuiRewriter::ParseOutgoingBitstreamAndRewriteSps(
-      buffer, fragmentation->fragmentationVectorSize,
-      fragmentation->fragmentationOffset, fragmentation->fragmentationLength,
-      encoded_image->ColorSpace(), &modified_buffer,
-      modified_fragmentation->fragmentationOffset,
-      modified_fragmentation->fragmentationLength);
+  rtc::Buffer modified_buffer =
+      SpsVuiRewriter::ParseOutgoingBitstreamAndRewrite(
+          buffer, encoded_image->ColorSpace());
 
   encoded_image->SetEncodedData(
-      new rtc::RefCountedObject<EncodedImageBufferWrapper>(
+      rtc::make_ref_counted<EncodedImageBufferWrapper>(
           std::move(modified_buffer)));
-
-  return modified_fragmentation;
 }
 
 void FrameEncodeMetadataWriter::Reset() {
-  rtc::CritScope cs(&lock_);
+  MutexLock lock(&lock_);
   for (auto& info : timing_frames_info_) {
     info.frames.clear();
   }

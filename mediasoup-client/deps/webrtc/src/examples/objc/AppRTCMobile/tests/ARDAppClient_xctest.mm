@@ -15,8 +15,8 @@
 
 #include "rtc_base/ssl_adapter.h"
 
-#import <WebRTC/RTCMediaConstraints.h>
-#import <WebRTC/RTCPeerConnectionFactory.h>
+#import "sdk/objc/api/peerconnection/RTCMediaConstraints.h"
+#import "sdk/objc/api/peerconnection/RTCPeerConnectionFactory.h"
 
 #import "ARDAppClient+Internal.h"
 #import "ARDJoinResponse+Internal.h"
@@ -196,8 +196,8 @@
   // TODO(tkchin): Figure out why DTLS-SRTP constraint causes thread assertion
   // crash in Debug.
   caller.defaultPeerConnectionConstraints =
-      [[RTCMediaConstraints alloc] initWithMandatoryConstraints:nil
-                                            optionalConstraints:nil];
+      [[RTC_OBJC_TYPE(RTCMediaConstraints) alloc] initWithMandatoryConstraints:nil
+                                                           optionalConstraints:nil];
   weakCaller = caller;
 
   answerer = [self createAppClientForRoomId:roomId
@@ -214,8 +214,8 @@
   // TODO(tkchin): Figure out why DTLS-SRTP constraint causes thread assertion
   // crash in Debug.
   answerer.defaultPeerConnectionConstraints =
-      [[RTCMediaConstraints alloc] initWithMandatoryConstraints:nil
-                                            optionalConstraints:nil];
+      [[RTC_OBJC_TYPE(RTCMediaConstraints) alloc] initWithMandatoryConstraints:nil
+                                                           optionalConstraints:nil];
   weakAnswerer = answerer;
 
   // Kick off connection.
@@ -248,8 +248,8 @@
                          connectedHandler:^{}
                    localVideoTrackHandler:^{ [localVideoTrackExpectation fulfill]; }];
   caller.defaultPeerConnectionConstraints =
-      [[RTCMediaConstraints alloc] initWithMandatoryConstraints:nil
-                                          optionalConstraints:nil];
+      [[RTC_OBJC_TYPE(RTCMediaConstraints) alloc] initWithMandatoryConstraints:nil
+                                                           optionalConstraints:nil];
 
   // Kick off connection.
   [caller connectToRoomWithId:roomId

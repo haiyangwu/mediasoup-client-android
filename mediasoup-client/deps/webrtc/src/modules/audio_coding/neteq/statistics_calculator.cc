@@ -10,7 +10,6 @@
 
 #include "modules/audio_coding/neteq/statistics_calculator.h"
 
-#include <assert.h>
 #include <string.h>  // memset
 
 #include <algorithm>
@@ -115,11 +114,8 @@ void StatisticsCalculator::PeriodicUmaAverage::Reset() {
 StatisticsCalculator::StatisticsCalculator()
     : preemptive_samples_(0),
       accelerate_samples_(0),
-      added_zero_samples_(0),
       expanded_speech_samples_(0),
       expanded_noise_samples_(0),
-      discarded_packets_(0),
-      lost_timestamps_(0),
       timestamps_since_last_report_(0),
       secondary_decoded_samples_(0),
       discarded_secondary_packets_(0),
@@ -139,7 +135,6 @@ StatisticsCalculator::~StatisticsCalculator() = default;
 void StatisticsCalculator::Reset() {
   preemptive_samples_ = 0;
   accelerate_samples_ = 0;
-  added_zero_samples_ = 0;
   expanded_speech_samples_ = 0;
   expanded_noise_samples_ = 0;
   secondary_decoded_samples_ = 0;
@@ -148,8 +143,6 @@ void StatisticsCalculator::Reset() {
 }
 
 void StatisticsCalculator::ResetMcu() {
-  discarded_packets_ = 0;
-  lost_timestamps_ = 0;
   timestamps_since_last_report_ = 0;
 }
 
@@ -193,6 +186,8 @@ void StatisticsCalculator::EndExpandEvent(int fs_hz) {
   if (event_duration_ms >= kInterruptionLenMs && decoded_output_played_) {
     lifetime_stats_.interruption_count++;
     lifetime_stats_.total_interruption_duration_ms += event_duration_ms;
+    RTC_HISTOGRAM_COUNTS("WebRTC.Audio.AudioInterruptionMs", event_duration_ms,
+                         /*min=*/150, /*max=*/5000, /*bucket_count=*/50);
   }
   concealed_samples_at_event_end_ = lifetime_stats_.concealed_samples;
 }
@@ -235,10 +230,6 @@ void StatisticsCalculator::AcceleratedSamples(size_t num_samples) {
   lifetime_stats_.removed_samples_for_acceleration += num_samples;
 }
 
-void StatisticsCalculator::AddZeros(size_t num_samples) {
-  added_zero_samples_ += num_samples;
-}
-
 void StatisticsCalculator::PacketsDiscarded(size_t num_packets) {
   operations_and_state_.discarded_primary_packets += num_packets;
 }
@@ -252,10 +243,6 @@ void StatisticsCalculator::SecondaryPacketsReceived(size_t num_packets) {
   lifetime_stats_.fec_packets_received += num_packets;
 }
 
-void StatisticsCalculator::LostSamples(size_t num_samples) {
-  lost_timestamps_ += num_samples;
-}
-
 void StatisticsCalculator::IncreaseCounter(size_t num_samples, int fs_hz) {
   const int time_step_ms =
       rtc::CheckedDivExact(static_cast<int>(1000 * num_samples), fs_hz);
@@ -265,16 +252,17 @@ void StatisticsCalculator::IncreaseCounter(size_t num_samples, int fs_hz) {
   timestamps_since_last_report_ += static_cast<uint32_t>(num_samples);
   if (timestamps_since_last_report_ >
       static_cast<uint32_t>(fs_hz * kMaxReportPeriod)) {
-    lost_timestamps_ = 0;
     timestamps_since_last_report_ = 0;
-    discarded_packets_ = 0;
   }
   lifetime_stats_.total_samples_received += num_samples;
 }
 
 void StatisticsCalculator::JitterBufferDelay(size_t num_samples,
-                                             uint64_t waiting_time_ms) {
+                                             uint64_t waiting_time_ms,
+                                             uint64_t target_delay_ms) {
   lifetime_stats_.jitter_buffer_delay_ms += waiting_time_ms * num_samples;
+  lifetime_stats_.jitter_buffer_target_delay_ms +=
+      target_delay_ms * num_samples;
   lifetime_stats_.jitter_buffer_emitted_count += num_samples;
 }
 
@@ -316,19 +304,9 @@ void StatisticsCalculator::StoreWaitingTime(int waiting_time_ms) {
   operations_and_state_.last_waiting_time_ms = waiting_time_ms;
 }
 
-void StatisticsCalculator::GetNetworkStatistics(int fs_hz,
-                                                size_t num_samples_in_buffers,
-                                                size_t samples_per_packet,
+void StatisticsCalculator::GetNetworkStatistics(size_t samples_per_packet,
                                                 NetEqNetworkStatistics* stats) {
-  RTC_DCHECK_GT(fs_hz, 0);
   RTC_DCHECK(stats);
-
-  stats->added_zero_samples = added_zero_samples_;
-  stats->current_buffer_size_ms =
-      static_cast<uint16_t>(num_samples_in_buffers * 1000 / fs_hz);
-
-  stats->packet_loss_rate =
-      CalculateQ14Ratio(lost_timestamps_, timestamps_since_last_report_);
 
   stats->accelerate_rate =
       CalculateQ14Ratio(accelerate_samples_, timestamps_since_last_report_);
@@ -361,7 +339,7 @@ void StatisticsCalculator::GetNetworkStatistics(int fs_hz,
   } else {
     std::sort(waiting_times_.begin(), waiting_times_.end());
     // Find mid-point elements. If the size is odd, the two values
-    // |middle_left| and |middle_right| will both be the one middle element; if
+    // `middle_left` and `middle_right` will both be the one middle element; if
     // the size is even, they will be the the two neighboring elements at the
     // middle of the list.
     const int middle_left = waiting_times_[(waiting_times_.size() - 1) / 2];
@@ -382,16 +360,6 @@ void StatisticsCalculator::GetNetworkStatistics(int fs_hz,
   Reset();
 }
 
-void StatisticsCalculator::PopulateDelayManagerStats(
-    int ms_per_packet,
-    const DelayManager& delay_manager,
-    NetEqNetworkStatistics* stats) {
-  RTC_DCHECK(stats);
-  stats->preferred_buffer_size_ms =
-      (delay_manager.TargetLevel() >> 8) * ms_per_packet;
-  stats->jitter_peaks_found = delay_manager.PeakFound();
-}
-
 NetEqLifetimeStatistics StatisticsCalculator::GetLifetimeStatistics() const {
   return lifetime_stats_;
 }
@@ -406,7 +374,7 @@ uint16_t StatisticsCalculator::CalculateQ14Ratio(size_t numerator,
     return 0;
   } else if (numerator < denominator) {
     // Ratio must be smaller than 1 in Q14.
-    assert((numerator << 14) / denominator < (1 << 14));
+    RTC_DCHECK_LT((numerator << 14) / denominator, (1 << 14));
     return static_cast<uint16_t>((numerator << 14) / denominator);
   } else {
     // Will not produce a ratio larger than 1, since this is probably an error.

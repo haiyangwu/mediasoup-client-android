@@ -23,7 +23,7 @@
 
 namespace webrtc {
 
-#if defined(USE_X11)
+#if defined(WEBRTC_USE_X11)
 class XAtomCache;
 #endif
 
@@ -33,10 +33,10 @@ class WindowFinder {
   WindowFinder() = default;
   virtual ~WindowFinder() = default;
 
-  // Returns the id of the visible window under |point|. This function returns
-  // kNullWindowId if no window is under |point| and the platform does not have
-  // "root window" concept, i.e. the visible area under |point| is the desktop.
-  // |point| is always in system coordinate, i.e. the primary monitor always
+  // Returns the id of the visible window under `point`. This function returns
+  // kNullWindowId if no window is under `point` and the platform does not have
+  // "root window" concept, i.e. the visible area under `point` is the desktop.
+  // `point` is always in system coordinate, i.e. the primary monitor always
   // starts from (0, 0).
   virtual WindowId GetWindowUnderPoint(DesktopVector point) = 0;
 
@@ -46,7 +46,7 @@ class WindowFinder {
     Options(const Options& other);
     Options(Options&& other);
 
-#if defined(USE_X11)
+#if defined(WEBRTC_USE_X11)
     XAtomCache* cache = nullptr;
 #endif
 #if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
@@ -55,7 +55,7 @@ class WindowFinder {
   };
 
   // Creates a platform-independent WindowFinder implementation. This function
-  // returns nullptr if |options| does not contain enough information or
+  // returns nullptr if `options` does not contain enough information or
   // WindowFinder does not support current platform.
   static std::unique_ptr<WindowFinder> Create(const Options& options);
 };

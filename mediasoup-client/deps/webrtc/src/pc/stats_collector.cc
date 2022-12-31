@@ -10,15 +10,47 @@
 
 #include "pc/stats_collector.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <memory>
 #include <set>
 #include <utility>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "api/audio_codecs/audio_encoder.h"
+#include "api/candidate.h"
+#include "api/data_channel_interface.h"
+#include "api/media_types.h"
+#include "api/rtp_receiver_interface.h"
+#include "api/rtp_sender_interface.h"
+#include "api/scoped_refptr.h"
+#include "api/sequence_checker.h"
+#include "api/video/video_content_type.h"
+#include "api/video/video_timing.h"
+#include "call/call.h"
+#include "media/base/media_channel.h"
+#include "modules/audio_processing/include/audio_processing_statistics.h"
+#include "p2p/base/ice_transport_internal.h"
+#include "p2p/base/p2p_constants.h"
 #include "pc/channel.h"
-#include "pc/peer_connection.h"
+#include "pc/channel_interface.h"
+#include "pc/data_channel_utils.h"
+#include "pc/rtp_receiver.h"
+#include "pc/rtp_transceiver.h"
+#include "pc/transport_stats.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/third_party/base64/base64.h"
+#include "rtc_base/ip_address.h"
+#include "rtc_base/location.h"
+#include "rtc_base/logging.h"
+#include "rtc_base/rtc_certificate.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/ssl_stream_adapter.h"
+#include "rtc_base/string_encode.h"
+#include "rtc_base/thread.h"
+#include "rtc_base/time_utils.h"
+#include "rtc_base/trace_event.h"
 #include "system_wrappers/include/field_trial.h"
 
 namespace webrtc {
@@ -287,6 +319,10 @@ void ExtractStats(const cricket::VideoReceiverInfo& info,
   if (info.qp_sum)
     report->AddInt64(StatsReport::kStatsValueNameQpSum, *info.qp_sum);
 
+  if (info.nacks_sent) {
+    report->AddInt(StatsReport::kStatsValueNameNacksSent, *info.nacks_sent);
+  }
+
   const IntForAdd ints[] = {
       {StatsReport::kStatsValueNameCurrentDelayMs, info.current_delay_ms},
       {StatsReport::kStatsValueNameDecodeMs, info.decode_ms},
@@ -300,7 +336,6 @@ void ExtractStats(const cricket::VideoReceiverInfo& info,
       {StatsReport::kStatsValueNameMaxDecodeMs, info.max_decode_ms},
       {StatsReport::kStatsValueNameMinPlayoutDelayMs,
        info.min_playout_delay_ms},
-      {StatsReport::kStatsValueNameNacksSent, info.nacks_sent},
       {StatsReport::kStatsValueNamePacketsLost, info.packets_lost},
       {StatsReport::kStatsValueNamePacketsReceived, info.packets_rcvd},
       {StatsReport::kStatsValueNamePlisSent, info.plis_sent},
@@ -483,6 +518,10 @@ const char* AdapterTypeToStatsType(rtc::AdapterType type) {
     case rtc::ADAPTER_TYPE_WIFI:
       return STATSREPORT_ADAPTER_TYPE_WIFI;
     case rtc::ADAPTER_TYPE_CELLULAR:
+    case rtc::ADAPTER_TYPE_CELLULAR_2G:
+    case rtc::ADAPTER_TYPE_CELLULAR_3G:
+    case rtc::ADAPTER_TYPE_CELLULAR_4G:
+    case rtc::ADAPTER_TYPE_CELLULAR_5G:
       return STATSREPORT_ADAPTER_TYPE_WWAN;
     case rtc::ADAPTER_TYPE_VPN:
       return STATSREPORT_ADAPTER_TYPE_VPN;
@@ -505,7 +544,7 @@ StatsCollector::StatsCollector(PeerConnectionInternal* pc)
 }
 
 StatsCollector::~StatsCollector() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 }
 
 // Wallclock time in ms.
@@ -513,10 +552,10 @@ double StatsCollector::GetTimeNow() {
   return static_cast<double>(rtc::TimeUTCMillis());
 }
 
-// Adds a MediaStream with tracks that can be used as a |selector| in a call
+// Adds a MediaStream with tracks that can be used as a `selector` in a call
 // to GetStats.
 void StatsCollector::AddStream(MediaStreamInterface* stream) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   RTC_DCHECK(stream != NULL);
 
   CreateTrackReports<AudioTrackVector>(stream->GetAudioTracks(), &reports_,
@@ -539,7 +578,7 @@ void StatsCollector::AddTrack(MediaStreamTrackInterface* track) {
 
 void StatsCollector::AddLocalAudioTrack(AudioTrackInterface* audio_track,
                                         uint32_t ssrc) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   RTC_DCHECK(audio_track != NULL);
 #if RTC_DCHECK_IS_ON
   for (const auto& track : local_audio_tracks_)
@@ -573,7 +612,7 @@ void StatsCollector::RemoveLocalAudioTrack(AudioTrackInterface* audio_track,
 
 void StatsCollector::GetStats(MediaStreamTrackInterface* track,
                               StatsReports* reports) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   RTC_DCHECK(reports != NULL);
   RTC_DCHECK(reports->empty());
 
@@ -613,26 +652,33 @@ void StatsCollector::GetStats(MediaStreamTrackInterface* track,
 
 void StatsCollector::UpdateStats(
     PeerConnectionInterface::StatsOutputLevel level) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
-  double time_now = GetTimeNow();
-  // Calls to UpdateStats() that occur less than kMinGatherStatsPeriod number of
-  // ms apart will be ignored.
-  const double kMinGatherStatsPeriod = 50;
-  if (stats_gathering_started_ != 0 &&
-      stats_gathering_started_ + kMinGatherStatsPeriod > time_now) {
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
+  // Calls to UpdateStats() that occur less than kMinGatherStatsPeriodMs apart
+  // will be ignored. Using a monotonic clock specifically for this, while using
+  // a UTC clock for the reports themselves.
+  const int64_t kMinGatherStatsPeriodMs = 50;
+  int64_t cache_now_ms = rtc::TimeMillis();
+  if (cache_timestamp_ms_ != 0 &&
+      cache_timestamp_ms_ + kMinGatherStatsPeriodMs > cache_now_ms) {
     return;
   }
-  stats_gathering_started_ = time_now;
+  cache_timestamp_ms_ = cache_now_ms;
+  stats_gathering_started_ = GetTimeNow();
+
+  // TODO(tommi): ExtractSessionInfo now has a single hop to the network thread
+  // to fetch stats, then applies them on the signaling thread. See if we need
+  // to do this synchronously or if updating the stats without blocking is safe.
+  std::map<std::string, std::string> transport_names_by_mid =
+      ExtractSessionInfo();
 
   // TODO(tommi): All of these hop over to the worker thread to fetch
-  // information.  We could use an AsyncInvoker to run all of these and post
+  // information.  We could post a task to run all of these and post
   // the information back to the signaling thread where we can create and
   // update stats reports.  That would also clean up the threading story a bit
   // since we'd be creating/updating the stats report objects consistently on
   // the same thread (this class has no locks right now).
-  ExtractSessionInfo();
   ExtractBweInfo();
-  ExtractMediaInfo();
+  ExtractMediaInfo(transport_names_by_mid);
   ExtractSenderInfo();
   ExtractDataInfo();
   UpdateTrackReports();
@@ -643,7 +689,7 @@ StatsReport* StatsCollector::PrepareReport(bool local,
                                            const std::string& track_id,
                                            const StatsReport::Id& transport_id,
                                            StatsReport::Direction direction) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   StatsReport::Id id(StatsReport::NewIdWithDirection(
       local ? StatsReport::kStatsReportTypeSsrc
             : StatsReport::kStatsReportTypeRemoteSsrc,
@@ -666,7 +712,7 @@ StatsReport* StatsCollector::PrepareReport(bool local,
 }
 
 StatsReport* StatsCollector::PrepareADMReport() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   StatsReport::Id id(StatsReport::NewTypedId(
       StatsReport::kStatsReportTypeSession, pc_->session_id()));
   StatsReport* report = reports_.FindOrAddNew(id);
@@ -680,7 +726,7 @@ bool StatsCollector::IsValidTrack(const std::string& track_id) {
 
 StatsReport* StatsCollector::AddCertificateReports(
     std::unique_ptr<rtc::SSLCertificateStats> cert_stats) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   StatsReport* first_report = nullptr;
   StatsReport* prev_report = nullptr;
@@ -768,7 +814,7 @@ StatsReport* StatsCollector::AddConnectionInfoReport(
 StatsReport* StatsCollector::AddCandidateReport(
     const cricket::CandidateStats& candidate_stats,
     bool local) {
-  const auto& candidate = candidate_stats.candidate;
+  const auto& candidate = candidate_stats.candidate();
   StatsReport::Id id(StatsReport::NewCandidateId(local, candidate.id()));
   StatsReport* report = reports_.Find(id);
   if (!report) {
@@ -791,8 +837,8 @@ StatsReport* StatsCollector::AddCandidateReport(
   }
   report->set_timestamp(stats_gathering_started_);
 
-  if (local && candidate_stats.stun_stats.has_value()) {
-    const auto& stun_stats = candidate_stats.stun_stats.value();
+  if (local && candidate_stats.stun_stats().has_value()) {
+    const auto& stun_stats = candidate_stats.stun_stats().value();
     report->AddInt64(StatsReport::kStatsValueNameSentStunKeepaliveRequests,
                      stun_stats.stun_binding_requests_sent);
     report->AddInt64(StatsReport::kStatsValueNameRecvStunKeepaliveResponses,
@@ -806,35 +852,58 @@ StatsReport* StatsCollector::AddCandidateReport(
   return report;
 }
 
-void StatsCollector::ExtractSessionInfo() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+std::map<std::string, std::string> StatsCollector::ExtractSessionInfo() {
+  TRACE_EVENT0("webrtc", "StatsCollector::ExtractSessionInfo");
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
-  // Extract information from the base session.
-  StatsReport::Id id(StatsReport::NewTypedId(
-      StatsReport::kStatsReportTypeSession, pc_->session_id()));
-  StatsReport* report = reports_.ReplaceOrAddNew(id);
-  report->set_timestamp(stats_gathering_started_);
-  report->AddBoolean(StatsReport::kStatsValueNameInitiator,
-                     pc_->initial_offerer());
+  SessionStats stats;
+  auto transceivers = pc_->GetTransceiversInternal();
+  pc_->network_thread()->Invoke<void>(
+      RTC_FROM_HERE, [&, sctp_transport_name = pc_->sctp_transport_name(),
+                      sctp_mid = pc_->sctp_mid()]() mutable {
+        stats = ExtractSessionInfo_n(
+            transceivers, std::move(sctp_transport_name), std::move(sctp_mid));
+      });
 
-  cricket::CandidateStatsList pooled_candidate_stats_list =
-      pc_->GetPooledCandidateStats();
+  ExtractSessionInfo_s(stats);
 
-  for (const cricket::CandidateStats& stats : pooled_candidate_stats_list) {
-    AddCandidateReport(stats, true);
+  return std::move(stats.transport_names_by_mid);
+}
+
+StatsCollector::SessionStats StatsCollector::ExtractSessionInfo_n(
+    const std::vector<rtc::scoped_refptr<
+        RtpTransceiverProxyWithInternal<RtpTransceiver>>>& transceivers,
+    absl::optional<std::string> sctp_transport_name,
+    absl::optional<std::string> sctp_mid) {
+  TRACE_EVENT0("webrtc", "StatsCollector::ExtractSessionInfo_n");
+  RTC_DCHECK_RUN_ON(pc_->network_thread());
+  rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
+  SessionStats stats;
+  stats.candidate_stats = pc_->GetPooledCandidateStats();
+  for (auto& transceiver : transceivers) {
+    cricket::ChannelInterface* channel = transceiver->internal()->channel();
+    if (channel) {
+      stats.transport_names_by_mid[channel->content_name()] =
+          channel->transport_name();
+    }
+  }
+
+  if (sctp_transport_name) {
+    RTC_DCHECK(sctp_mid);
+    stats.transport_names_by_mid[*sctp_mid] = *sctp_transport_name;
   }
 
   std::set<std::string> transport_names;
-  for (const auto& entry : pc_->GetTransportNamesByMid()) {
+  for (const auto& entry : stats.transport_names_by_mid) {
     transport_names.insert(entry.second);
   }
 
   std::map<std::string, cricket::TransportStats> transport_stats_by_name =
       pc_->GetTransportStatsByNames(transport_names);
 
-  for (const auto& entry : transport_stats_by_name) {
-    const std::string& transport_name = entry.first;
-    const cricket::TransportStats& transport_stats = entry.second;
+  for (auto& entry : transport_stats_by_name) {
+    stats.transport_stats.emplace_back(entry.first, std::move(entry.second));
+    TransportStats& transport = stats.transport_stats.back();
 
     // Attempt to get a copy of the certificates from the transport and
     // expose them in stats reports.  All channels in a transport share the
@@ -842,24 +911,59 @@ void StatsCollector::ExtractSessionInfo() {
     //
     StatsReport::Id local_cert_report_id, remote_cert_report_id;
     rtc::scoped_refptr<rtc::RTCCertificate> certificate;
-    if (pc_->GetLocalCertificate(transport_name, &certificate)) {
-      StatsReport* r = AddCertificateReports(
-          certificate->GetSSLCertificateChain().GetStats());
+    if (pc_->GetLocalCertificate(transport.name, &certificate)) {
+      transport.local_cert_stats =
+          certificate->GetSSLCertificateChain().GetStats();
+    }
+
+    std::unique_ptr<rtc::SSLCertChain> remote_cert_chain =
+        pc_->GetRemoteSSLCertChain(transport.name);
+    if (remote_cert_chain) {
+      transport.remote_cert_stats = remote_cert_chain->GetStats();
+    }
+  }
+
+  return stats;
+}
+
+void StatsCollector::ExtractSessionInfo_s(SessionStats& session_stats) {
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
+  rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
+
+  StatsReport::Id id(StatsReport::NewTypedId(
+      StatsReport::kStatsReportTypeSession, pc_->session_id()));
+  StatsReport* report = reports_.ReplaceOrAddNew(id);
+  report->set_timestamp(stats_gathering_started_);
+  report->AddBoolean(StatsReport::kStatsValueNameInitiator,
+                     pc_->initial_offerer());
+
+  for (const cricket::CandidateStats& stats : session_stats.candidate_stats) {
+    AddCandidateReport(stats, true);
+  }
+
+  for (auto& transport : session_stats.transport_stats) {
+    // Attempt to get a copy of the certificates from the transport and
+    // expose them in stats reports.  All channels in a transport share the
+    // same local and remote certificates.
+    //
+    StatsReport::Id local_cert_report_id, remote_cert_report_id;
+    if (transport.local_cert_stats) {
+      StatsReport* r =
+          AddCertificateReports(std::move(transport.local_cert_stats));
       if (r)
         local_cert_report_id = r->id();
     }
 
-    std::unique_ptr<rtc::SSLCertChain> remote_cert_chain =
-        pc_->GetRemoteSSLCertChain(transport_name);
-    if (remote_cert_chain) {
-      StatsReport* r = AddCertificateReports(remote_cert_chain->GetStats());
+    if (transport.remote_cert_stats) {
+      StatsReport* r =
+          AddCertificateReports(std::move(transport.remote_cert_stats));
       if (r)
         remote_cert_report_id = r->id();
     }
 
-    for (const auto& channel_iter : transport_stats.channel_stats) {
+    for (const auto& channel_iter : transport.stats.channel_stats) {
       StatsReport::Id id(
-          StatsReport::NewComponentId(transport_name, channel_iter.component));
+          StatsReport::NewComponentId(transport.name, channel_iter.component));
       StatsReport* channel_report = reports_.ReplaceOrAddNew(id);
       channel_report->set_timestamp(stats_gathering_started_);
       channel_report->AddInt(StatsReport::kStatsValueNameComponent,
@@ -873,14 +977,14 @@ void StatsCollector::ExtractSessionInfo() {
                               remote_cert_report_id);
       }
       int srtp_crypto_suite = channel_iter.srtp_crypto_suite;
-      if (srtp_crypto_suite != rtc::SRTP_INVALID_CRYPTO_SUITE &&
+      if (srtp_crypto_suite != rtc::kSrtpInvalidCryptoSuite &&
           rtc::SrtpCryptoSuiteToName(srtp_crypto_suite).length()) {
         channel_report->AddString(
             StatsReport::kStatsValueNameSrtpCipher,
             rtc::SrtpCryptoSuiteToName(srtp_crypto_suite));
       }
       int ssl_cipher_suite = channel_iter.ssl_cipher_suite;
-      if (ssl_cipher_suite != rtc::TLS_NULL_WITH_NULL_NULL &&
+      if (ssl_cipher_suite != rtc::kTlsNullWithNullNull &&
           rtc::SSLStreamAdapter::SslCipherSuiteToName(ssl_cipher_suite)
               .length()) {
         channel_report->AddString(
@@ -902,7 +1006,7 @@ void StatsCollector::ExtractSessionInfo() {
       for (const cricket::ConnectionInfo& info :
            channel_iter.ice_transport_stats.connection_infos) {
         StatsReport* connection_report = AddConnectionInfoReport(
-            transport_name, channel_iter.component, connection_id++,
+            transport.name, channel_iter.component, connection_id++,
             channel_report->id(), info);
         if (info.best_connection) {
           channel_report->AddId(
@@ -915,7 +1019,7 @@ void StatsCollector::ExtractSessionInfo() {
 }
 
 void StatsCollector::ExtractBweInfo() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   if (pc_->signaling_state() == PeerConnectionInterface::kClosed)
     return;
@@ -928,16 +1032,25 @@ void StatsCollector::ExtractBweInfo() {
 
   // Fill in target encoder bitrate, actual encoder bitrate, rtx bitrate, etc.
   // TODO(holmer): Also fill this in for audio.
-  for (const auto& transceiver : pc_->GetTransceiversInternal()) {
+  auto transceivers = pc_->GetTransceiversInternal();
+  std::vector<cricket::VideoChannel*> video_channels;
+  for (const auto& transceiver : transceivers) {
     if (transceiver->media_type() != cricket::MEDIA_TYPE_VIDEO) {
       continue;
     }
     auto* video_channel =
         static_cast<cricket::VideoChannel*>(transceiver->internal()->channel());
-    if (!video_channel) {
-      continue;
+    if (video_channel) {
+      video_channels.push_back(video_channel);
     }
-    video_channel->FillBitrateInfo(&bwe_info);
+  }
+
+  if (!video_channels.empty()) {
+    pc_->worker_thread()->Invoke<void>(RTC_FROM_HERE, [&] {
+      for (const auto& channel : video_channels) {
+        channel->FillBitrateInfo(&bwe_info);
+      }
+    });
   }
 
   StatsReport::Id report_id(StatsReport::NewBandwidthEstimationId());
@@ -987,7 +1100,8 @@ class VoiceMediaChannelStatsGatherer final : public MediaChannelStatsGatherer {
   }
 
   bool GetStatsOnWorkerThread() override {
-    return voice_media_channel_->GetStats(&voice_media_info);
+    return voice_media_channel_->GetStats(&voice_media_info,
+                                          /*get_and_clear_legacy_stats=*/true);
   }
 
   void ExtractStats(StatsCollector* collector) const override {
@@ -1024,7 +1138,7 @@ class VideoMediaChannelStatsGatherer final : public MediaChannelStatsGatherer {
 
   void ExtractStats(StatsCollector* collector) const override {
     ExtractSenderReceiverStats(collector, video_media_info.receivers,
-                               video_media_info.senders);
+                               video_media_info.aggregated_senders);
   }
 
   bool HasRemoteAudio() const override { return false; }
@@ -1049,14 +1163,16 @@ std::unique_ptr<MediaChannelStatsGatherer> CreateMediaChannelStatsGatherer(
 
 }  // namespace
 
-void StatsCollector::ExtractMediaInfo() {
+void StatsCollector::ExtractMediaInfo(
+    const std::map<std::string, std::string>& transport_names_by_mid) {
   RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   std::vector<std::unique_ptr<MediaChannelStatsGatherer>> gatherers;
 
+  auto transceivers = pc_->GetTransceiversInternal();
   {
     rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
-    for (const auto& transceiver : pc_->GetTransceiversInternal()) {
+    for (const auto& transceiver : transceivers) {
       cricket::ChannelInterface* channel = transceiver->internal()->channel();
       if (!channel) {
         continue;
@@ -1064,22 +1180,40 @@ void StatsCollector::ExtractMediaInfo() {
       std::unique_ptr<MediaChannelStatsGatherer> gatherer =
           CreateMediaChannelStatsGatherer(channel->media_channel());
       gatherer->mid = channel->content_name();
-      gatherer->transport_name = channel->transport_name();
+      gatherer->transport_name = transport_names_by_mid.at(gatherer->mid);
+
       for (const auto& sender : transceiver->internal()->senders()) {
-        std::string track_id = (sender->track() ? sender->track()->id() : "");
+        auto track = sender->track();
+        std::string track_id = (track ? track->id() : "");
         gatherer->sender_track_id_by_ssrc.insert(
             std::make_pair(sender->ssrc(), track_id));
       }
-      for (const auto& receiver : transceiver->internal()->receivers()) {
-        gatherer->receiver_track_id_by_ssrc.insert(std::make_pair(
-            receiver->internal()->ssrc(), receiver->track()->id()));
-      }
+
+      // Populating `receiver_track_id_by_ssrc` will be done on the worker
+      // thread as the `ssrc` property of the receiver needs to be accessed
+      // there.
+
       gatherers.push_back(std::move(gatherer));
     }
   }
 
   pc_->worker_thread()->Invoke<void>(RTC_FROM_HERE, [&] {
     rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
+    // Populate `receiver_track_id_by_ssrc` for the gatherers.
+    int i = 0;
+    for (const auto& transceiver : transceivers) {
+      cricket::ChannelInterface* channel = transceiver->internal()->channel();
+      if (!channel)
+        continue;
+      MediaChannelStatsGatherer* gatherer = gatherers[i++].get();
+      RTC_DCHECK_EQ(gatherer->mid, channel->content_name());
+
+      for (const auto& receiver : transceiver->internal()->receivers()) {
+        gatherer->receiver_track_id_by_ssrc.insert(std::make_pair(
+            receiver->internal()->ssrc(), receiver->track()->id()));
+      }
+    }
+
     for (auto it = gatherers.begin(); it != gatherers.end();
          /* incremented manually */) {
       MediaChannelStatsGatherer* gatherer = it->get();
@@ -1105,7 +1239,7 @@ void StatsCollector::ExtractMediaInfo() {
 }
 
 void StatsCollector::ExtractSenderInfo() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   for (const auto& sender : pc_->GetSenders()) {
     // TODO(nisse): SSRC == 0 currently means none. Delete check when
@@ -1138,30 +1272,31 @@ void StatsCollector::ExtractSenderInfo() {
 }
 
 void StatsCollector::ExtractDataInfo() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
 
-  for (const auto& dc : pc_->sctp_data_channels()) {
+  std::vector<DataChannelStats> data_stats = pc_->GetDataChannelStats();
+  for (const auto& stats : data_stats) {
     StatsReport::Id id(StatsReport::NewTypedIntId(
-        StatsReport::kStatsReportTypeDataChannel, dc->id()));
+        StatsReport::kStatsReportTypeDataChannel, stats.id));
     StatsReport* report = reports_.ReplaceOrAddNew(id);
     report->set_timestamp(stats_gathering_started_);
-    report->AddString(StatsReport::kStatsValueNameLabel, dc->label());
+    report->AddString(StatsReport::kStatsValueNameLabel, stats.label);
     // Filter out the initial id (-1).
-    if (dc->id() >= 0) {
-      report->AddInt(StatsReport::kStatsValueNameDataChannelId, dc->id());
+    if (stats.id >= 0) {
+      report->AddInt(StatsReport::kStatsValueNameDataChannelId, stats.id);
     }
-    report->AddString(StatsReport::kStatsValueNameProtocol, dc->protocol());
+    report->AddString(StatsReport::kStatsValueNameProtocol, stats.protocol);
     report->AddString(StatsReport::kStatsValueNameState,
-                      DataChannelInterface::DataStateString(dc->state()));
+                      DataChannelInterface::DataStateString(stats.state));
   }
 }
 
 StatsReport* StatsCollector::GetReport(const StatsReport::StatsType& type,
                                        const std::string& id,
                                        StatsReport::Direction direction) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   RTC_DCHECK(type == StatsReport::kStatsReportTypeSsrc ||
              type == StatsReport::kStatsReportTypeRemoteSsrc);
   return reports_.Find(StatsReport::NewIdWithDirection(type, id, direction));
@@ -1169,7 +1304,7 @@ StatsReport* StatsCollector::GetReport(const StatsReport::StatsType& type,
 
 void StatsCollector::UpdateStatsFromExistingLocalAudioTracks(
     bool has_remote_tracks) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   // Loop through the existing local audio tracks.
   for (const auto& it : local_audio_tracks_) {
     AudioTrackInterface* track = it.first;
@@ -1197,7 +1332,7 @@ void StatsCollector::UpdateStatsFromExistingLocalAudioTracks(
 void StatsCollector::UpdateReportFromAudioTrack(AudioTrackInterface* track,
                                                 StatsReport* report,
                                                 bool has_remote_tracks) {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
   RTC_DCHECK(track != NULL);
 
   // Don't overwrite report values if they're not available.
@@ -1219,7 +1354,7 @@ void StatsCollector::UpdateReportFromAudioTrack(AudioTrackInterface* track,
 }
 
 void StatsCollector::UpdateTrackReports() {
-  RTC_DCHECK(pc_->signaling_thread()->IsCurrent());
+  RTC_DCHECK_RUN_ON(pc_->signaling_thread());
 
   rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
 
@@ -1230,7 +1365,7 @@ void StatsCollector::UpdateTrackReports() {
 }
 
 void StatsCollector::ClearUpdateStatsCacheForTest() {
-  stats_gathering_started_ = 0;
+  cache_timestamp_ms_ = 0;
 }
 
 }  // namespace webrtc

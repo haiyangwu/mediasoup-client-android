@@ -10,7 +10,7 @@ import("../webrtc.gni")
 
 visibility = [ ":*" ]
 
-rtc_static_library("common_audio") {
+rtc_library("common_audio") {
   visibility += [ "*" ]
   sources = [
     "audio_converter.cc",
@@ -32,8 +32,6 @@ rtc_static_library("common_audio") {
     "resampler/sinc_resampler.cc",
     "smoothing_filter.cc",
     "smoothing_filter.h",
-    "sparse_fir_filter.cc",
-    "sparse_fir_filter.h",
     "vad/include/vad.h",
     "vad/vad.cc",
     "wav_file.cc",
@@ -47,20 +45,18 @@ rtc_static_library("common_audio") {
   deps = [
     ":common_audio_c",
     ":sinc_resampler",
+    "../api:array_view",
     "../rtc_base:checks",
     "../rtc_base:gtest_prod",
     "../rtc_base:rtc_base_approved",
     "../rtc_base:sanitizer",
-    "../rtc_base/memory:aligned_array",
     "../rtc_base/memory:aligned_malloc",
     "../rtc_base/system:arch",
     "../rtc_base/system:file_wrapper",
     "../system_wrappers",
-    "../system_wrappers:cpu_features_api",
-    "third_party/fft4g",
-    "//third_party/abseil-cpp/absl/container:inlined_vector",
-    "//third_party/abseil-cpp/absl/types:optional",
+    "third_party/ooura:fft_size_256",
   ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 
   defines = []
 
@@ -70,6 +66,7 @@ rtc_static_library("common_audio") {
 
   if (current_cpu == "x86" || current_cpu == "x64") {
     deps += [ ":common_audio_sse2" ]
+    deps += [ ":common_audio_avx2" ]
   }
 }
 
@@ -101,7 +98,7 @@ rtc_source_set("common_audio_c_arm_asm") {
   }
 }
 
-rtc_source_set("common_audio_c") {
+rtc_library("common_audio_c") {
   visibility += webrtc_default_visibility
   sources = [
     "ring_buffer.c",
@@ -187,13 +184,12 @@ rtc_source_set("common_audio_c") {
     "../rtc_base:sanitizer",
     "../rtc_base/system:arch",
     "../system_wrappers",
-    "../system_wrappers:cpu_features_api",
-    "third_party/fft4g",
+    "third_party/ooura:fft_size_256",
     "third_party/spl_sqrt_floor",
   ]
 }
 
-rtc_source_set("common_audio_cc") {
+rtc_library("common_audio_cc") {
   sources = [
     "signal_processing/dot_product_with_scale.cc",
     "signal_processing/dot_product_with_scale.h",
@@ -206,9 +202,7 @@ rtc_source_set("common_audio_cc") {
 }
 
 rtc_source_set("sinc_resampler") {
-  sources = [
-    "resampler/sinc_resampler.h",
-  ]
+  sources = [ "resampler/sinc_resampler.h" ]
   deps = [
     "../rtc_base:gtest_prod",
     "../rtc_base:rtc_base_approved",
@@ -220,12 +214,10 @@ rtc_source_set("sinc_resampler") {
 
 rtc_source_set("fir_filter") {
   visibility += webrtc_default_visibility
-  sources = [
-    "fir_filter.h",
-  ]
+  sources = [ "fir_filter.h" ]
 }
 
-rtc_source_set("fir_filter_factory") {
+rtc_library("fir_filter_factory") {
   visibility += webrtc_default_visibility
   sources = [
     "fir_filter_c.cc",
@@ -238,10 +230,11 @@ rtc_source_set("fir_filter_factory") {
     "../rtc_base:checks",
     "../rtc_base:rtc_base_approved",
     "../rtc_base/system:arch",
-    "../system_wrappers:cpu_features_api",
+    "../system_wrappers",
   ]
   if (current_cpu == "x86" || current_cpu == "x64") {
     deps += [ ":common_audio_sse2" ]
+    deps += [ ":common_audio_avx2" ]
   }
   if (rtc_build_with_neon) {
     deps += [ ":common_audio_neon" ]
@@ -249,7 +242,7 @@ rtc_source_set("fir_filter_factory") {
 }
 
 if (current_cpu == "x86" || current_cpu == "x64") {
-  rtc_static_library("common_audio_sse2") {
+  rtc_library("common_audio_sse2") {
     sources = [
       "fir_filter_sse.cc",
       "fir_filter_sse.h",
@@ -268,10 +261,35 @@ if (current_cpu == "x86" || current_cpu == "x64") {
       "../rtc_base/memory:aligned_malloc",
     ]
   }
+
+  rtc_library("common_audio_avx2") {
+    sources = [
+      "fir_filter_avx2.cc",
+      "fir_filter_avx2.h",
+      "resampler/sinc_resampler_avx2.cc",
+    ]
+
+    if (is_win) {
+      cflags = [ "/arch:AVX2" ]
+    } else {
+      cflags = [
+        "-mavx2",
+        "-mfma",
+      ]
+    }
+
+    deps = [
+      ":fir_filter",
+      ":sinc_resampler",
+      "../rtc_base:checks",
+      "../rtc_base:rtc_base_approved",
+      "../rtc_base/memory:aligned_malloc",
+    ]
+  }
 }
 
 if (rtc_build_with_neon) {
-  rtc_static_library("common_audio_neon") {
+  rtc_library("common_audio_neon") {
     sources = [
       "fir_filter_neon.cc",
       "fir_filter_neon.h",
@@ -294,7 +312,7 @@ if (rtc_build_with_neon) {
     ]
   }
 
-  rtc_source_set("common_audio_neon_c") {
+  rtc_library("common_audio_neon_c") {
     visibility += webrtc_default_visibility
     sources = [
       "signal_processing/cross_correlation_neon.c",
@@ -317,7 +335,7 @@ if (rtc_build_with_neon) {
   }
 }
 
-if (rtc_include_tests) {
+if (rtc_include_tests && !build_with_chromium) {
   rtc_test("common_audio_unittests") {
     visibility += webrtc_default_visibility
     testonly = true
@@ -337,7 +355,6 @@ if (rtc_include_tests) {
       "signal_processing/real_fft_unittest.cc",
       "signal_processing/signal_processing_unittest.cc",
       "smoothing_filter_unittest.cc",
-      "sparse_fir_filter_unittest.cc",
       "vad/vad_core_unittest.cc",
       "vad/vad_filterbank_unittest.cc",
       "vad/vad_gmm_unittest.cc",
@@ -364,8 +381,9 @@ if (rtc_include_tests) {
       "../rtc_base:rtc_base_approved",
       "../rtc_base:rtc_base_tests_utils",
       "../rtc_base/system:arch",
-      "../system_wrappers:cpu_features_api",
+      "../system_wrappers",
       "../test:fileutils",
+      "../test:rtc_expect_death",
       "../test:test_main",
       "../test:test_support",
       "//testing/gtest",

@@ -10,6 +10,8 @@
 
 #include "system_wrappers/include/clock.h"
 
+#include "system_wrappers/include/field_trial.h"
+
 #if defined(WEBRTC_WIN)
 
 // Windows needs to be included before mmsystem.h
@@ -17,7 +19,6 @@
 
 #include <mmsystem.h>
 
-#include "rtc_base/critical_section.h"
 
 #elif defined(WEBRTC_POSIX)
 
@@ -26,59 +27,92 @@
 
 #endif  // defined(WEBRTC_POSIX)
 
-#include "rtc_base/synchronization/rw_lock_wrapper.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/time_utils.h"
 
 namespace webrtc {
+namespace {
+
+int64_t NtpOffsetUsCalledOnce() {
+  constexpr int64_t kNtpJan1970Sec = 2208988800;
+  int64_t clock_time = rtc::TimeMicros();
+  int64_t utc_time = rtc::TimeUTCMicros();
+  return utc_time - clock_time + kNtpJan1970Sec * rtc::kNumMicrosecsPerSec;
+}
+
+NtpTime TimeMicrosToNtp(int64_t time_us) {
+  static int64_t ntp_offset_us = NtpOffsetUsCalledOnce();
+
+  int64_t time_ntp_us = time_us + ntp_offset_us;
+  RTC_DCHECK_GE(time_ntp_us, 0);  // Time before year 1900 is unsupported.
+
+  // Convert seconds to uint32 through uint64 for a well-defined cast.
+  // A wrap around, which will happen in 2036, is expected for NTP time.
+  uint32_t ntp_seconds =
+      static_cast<uint64_t>(time_ntp_us / rtc::kNumMicrosecsPerSec);
+
+  // Scale fractions of the second to NTP resolution.
+  constexpr int64_t kNtpFractionsInSecond = 1LL << 32;
+  int64_t us_fractions = time_ntp_us % rtc::kNumMicrosecsPerSec;
+  uint32_t ntp_fractions =
+      us_fractions * kNtpFractionsInSecond / rtc::kNumMicrosecsPerSec;
+
+  return NtpTime(ntp_seconds, ntp_fractions);
+}
+
+void GetSecondsAndFraction(const timeval& time,
+                           uint32_t* seconds,
+                           double* fraction) {
+  *seconds = time.tv_sec + kNtpJan1970;
+  *fraction = time.tv_usec / 1e6;
+
+  while (*fraction >= 1) {
+    --*fraction;
+    ++*seconds;
+  }
+  while (*fraction < 0) {
+    ++*fraction;
+    --*seconds;
+  }
+}
+
+}  // namespace
 
 class RealTimeClock : public Clock {
-  Timestamp CurrentTime() override { return Timestamp::us(rtc::TimeMicros()); }
-  // Return a timestamp in milliseconds relative to some arbitrary source; the
-  // source is fixed for this clock.
-  int64_t TimeInMilliseconds() override { return rtc::TimeMillis(); }
+ public:
+  RealTimeClock()
+      : use_system_independent_ntp_time_(!field_trial::IsEnabled(
+            "WebRTC-SystemIndependentNtpTimeKillSwitch")) {}
 
-  // Return a timestamp in microseconds relative to some arbitrary source; the
-  // source is fixed for this clock.
-  int64_t TimeInMicroseconds() override { return rtc::TimeMicros(); }
-
-  // Retrieve an NTP absolute timestamp.
-  NtpTime CurrentNtpTime() override {
-    timeval tv = CurrentTimeVal();
-    double microseconds_in_seconds;
-    uint32_t seconds;
-    Adjust(tv, &seconds, &microseconds_in_seconds);
-    uint32_t fractions = static_cast<uint32_t>(
-        microseconds_in_seconds * kMagicNtpFractionalUnit + 0.5);
-    return NtpTime(seconds, fractions);
+  Timestamp CurrentTime() override {
+    return Timestamp::Micros(rtc::TimeMicros());
   }
 
-  // Retrieve an NTP absolute timestamp in milliseconds.
-  int64_t CurrentNtpInMilliseconds() override {
-    timeval tv = CurrentTimeVal();
-    uint32_t seconds;
-    double microseconds_in_seconds;
-    Adjust(tv, &seconds, &microseconds_in_seconds);
-    return 1000 * static_cast<int64_t>(seconds) +
-           static_cast<int64_t>(1000.0 * microseconds_in_seconds + 0.5);
+  NtpTime CurrentNtpTime() override {
+    return use_system_independent_ntp_time_ ? TimeMicrosToNtp(rtc::TimeMicros())
+                                            : SystemDependentNtpTime();
+  }
+
+  NtpTime ConvertTimestampToNtpTime(Timestamp timestamp) override {
+    // This method does not check `use_system_independent_ntp_time_` because
+    // all callers never used the old behavior of `CurrentNtpTime`.
+    return TimeMicrosToNtp(timestamp.us());
   }
 
  protected:
   virtual timeval CurrentTimeVal() = 0;
 
-  static void Adjust(const timeval& tv,
-                     uint32_t* adjusted_s,
-                     double* adjusted_us_in_s) {
-    *adjusted_s = tv.tv_sec + kNtpJan1970;
-    *adjusted_us_in_s = tv.tv_usec / 1e6;
+ private:
+  NtpTime SystemDependentNtpTime() {
+    uint32_t seconds;
+    double fraction;
+    GetSecondsAndFraction(CurrentTimeVal(), &seconds, &fraction);
 
-    if (*adjusted_us_in_s >= 1) {
-      *adjusted_us_in_s -= 1;
-      ++*adjusted_s;
-    } else if (*adjusted_us_in_s < -1) {
-      *adjusted_us_in_s += 1;
-      --*adjusted_s;
-    }
+    return NtpTime(seconds, static_cast<uint32_t>(
+                                fraction * kMagicNtpFractionalUnit + 0.5));
   }
+
+  bool use_system_independent_ntp_time_;
 };
 
 #if defined(WINUWP)
@@ -89,10 +123,10 @@ class WinUwpRealTimeClock final : public RealTimeClock {
 
  protected:
   timeval CurrentTimeVal() override {
-    // The rtc::SystemTimeNanos() method is already time offset from a base
-    // epoch value and might as be synchronized against an NTP time server as
-    // an added bonus.
-    auto nanos = rtc::SystemTimeNanos();
+    // The rtc::WinUwpSystemTimeNanos() method is already time offset from a
+    // base epoch value and might as be synchronized against an NTP time server
+    // as an added bonus.
+    auto nanos = rtc::WinUwpSystemTimeNanos();
 
     struct timeval tv;
 
@@ -148,7 +182,7 @@ class WindowsRealTimeClock : public RealTimeClock {
     DWORD t;
     LARGE_INTEGER elapsed_ms;
     {
-      rtc::CritScope lock(&crit_);
+      MutexLock lock(&mutex_);
       // time MUST be fetched inside the critical section to avoid non-monotonic
       // last_time_ms_ values that'll register as incorrect wraparounds due to
       // concurrent calls to GetTime.
@@ -198,7 +232,7 @@ class WindowsRealTimeClock : public RealTimeClock {
     return ref;
   }
 
-  rtc::CriticalSection crit_;
+  Mutex mutex_;
   DWORD last_time_ms_;
   LONG num_timer_wraps_;
   const ReferencePoint ref_point_;
@@ -237,41 +271,40 @@ Clock* Clock::GetRealTimeClock() {
 }
 
 SimulatedClock::SimulatedClock(int64_t initial_time_us)
-    : SimulatedClock(Timestamp::us(initial_time_us)) {}
+    : time_us_(initial_time_us) {}
 
 SimulatedClock::SimulatedClock(Timestamp initial_time)
-    : time_(initial_time), lock_(RWLockWrapper::CreateRWLock()) {}
+    : SimulatedClock(initial_time.us()) {}
 
 SimulatedClock::~SimulatedClock() {}
 
 Timestamp SimulatedClock::CurrentTime() {
-  ReadLockScoped synchronize(*lock_);
-  return time_;
+  return Timestamp::Micros(time_us_.load(std::memory_order_relaxed));
 }
 
-NtpTime SimulatedClock::CurrentNtpTime() {
-  int64_t now_ms = TimeInMilliseconds();
-  uint32_t seconds = (now_ms / 1000) + kNtpJan1970;
-  uint32_t fractions =
-      static_cast<uint32_t>((now_ms % 1000) * kMagicNtpFractionalUnit / 1000);
+NtpTime SimulatedClock::ConvertTimestampToNtpTime(Timestamp timestamp) {
+  int64_t now_us = timestamp.us();
+  uint32_t seconds = (now_us / 1'000'000) + kNtpJan1970;
+  uint32_t fractions = static_cast<uint32_t>(
+      (now_us % 1'000'000) * kMagicNtpFractionalUnit / 1'000'000);
   return NtpTime(seconds, fractions);
 }
 
-int64_t SimulatedClock::CurrentNtpInMilliseconds() {
-  return TimeInMilliseconds() + 1000 * static_cast<int64_t>(kNtpJan1970);
-}
-
 void SimulatedClock::AdvanceTimeMilliseconds(int64_t milliseconds) {
-  AdvanceTime(TimeDelta::ms(milliseconds));
+  AdvanceTime(TimeDelta::Millis(milliseconds));
 }
 
 void SimulatedClock::AdvanceTimeMicroseconds(int64_t microseconds) {
-  AdvanceTime(TimeDelta::us(microseconds));
+  AdvanceTime(TimeDelta::Micros(microseconds));
 }
 
+// TODO(bugs.webrtc.org(12102): It's desirable to let a single thread own
+// advancement of the clock. We could then replace this read-modify-write
+// operation with just a thread checker. But currently, that breaks a couple of
+// tests, in particular, RepeatingTaskTest.ClockIntegration and
+// CallStatsTest.LastProcessedRtt.
 void SimulatedClock::AdvanceTime(TimeDelta delta) {
-  WriteLockScoped synchronize(*lock_);
-  time_ += delta;
+  time_us_.fetch_add(delta.us(), std::memory_order_relaxed);
 }
 
 }  // namespace webrtc

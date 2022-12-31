@@ -14,11 +14,15 @@
 
 #include "absl/algorithm/container.h"
 #include "api/call/audio_sink.h"
-#include "media/base/rtp_utils.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/gunit.h"
+#include "rtc_base/thread.h"
 
 namespace cricket {
+
+using ::webrtc::ParseRtpSsrc;
+
 FakeAudioSendStream::FakeAudioSendStream(
     int id,
     const webrtc::AudioSendStream::Config& config)
@@ -95,12 +99,35 @@ bool FakeAudioReceiveStream::DeliverRtp(const uint8_t* packet,
   return true;
 }
 
-void FakeAudioReceiveStream::Reconfigure(
-    const webrtc::AudioReceiveStream::Config& config) {
-  config_ = config;
+void FakeAudioReceiveStream::SetDepacketizerToDecoderFrameTransformer(
+    rtc::scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer) {
+  config_.frame_transformer = std::move(frame_transformer);
 }
 
-webrtc::AudioReceiveStream::Stats FakeAudioReceiveStream::GetStats() const {
+void FakeAudioReceiveStream::SetDecoderMap(
+    std::map<int, webrtc::SdpAudioFormat> decoder_map) {
+  config_.decoder_map = std::move(decoder_map);
+}
+
+void FakeAudioReceiveStream::SetUseTransportCcAndNackHistory(
+    bool use_transport_cc,
+    int history_ms) {
+  config_.rtp.transport_cc = use_transport_cc;
+  config_.rtp.nack.rtp_history_ms = history_ms;
+}
+
+void FakeAudioReceiveStream::SetFrameDecryptor(
+    rtc::scoped_refptr<webrtc::FrameDecryptorInterface> frame_decryptor) {
+  config_.frame_decryptor = std::move(frame_decryptor);
+}
+
+void FakeAudioReceiveStream::SetRtpExtensions(
+    std::vector<webrtc::RtpExtension> extensions) {
+  config_.rtp.extensions = std::move(extensions);
+}
+
+webrtc::AudioReceiveStream::Stats FakeAudioReceiveStream::GetStats(
+    bool get_and_clear_legacy_stats) const {
   return stats_;
 }
 
@@ -279,6 +306,14 @@ void FakeVideoSendStream::Stop() {
   sending_ = false;
 }
 
+void FakeVideoSendStream::AddAdaptationResource(
+    rtc::scoped_refptr<webrtc::Resource> resource) {}
+
+std::vector<rtc::scoped_refptr<webrtc::Resource>>
+FakeVideoSendStream::GetAdaptationResources() {
+  return {};
+}
+
 void FakeVideoSendStream::SetSource(
     rtc::VideoSourceInterface<webrtc::VideoFrame>* source,
     const webrtc::DegradationPreference& degradation_preference) {
@@ -317,10 +352,7 @@ void FakeVideoSendStream::InjectVideoSinkWants(
 
 FakeVideoReceiveStream::FakeVideoReceiveStream(
     webrtc::VideoReceiveStream::Config config)
-    : config_(std::move(config)),
-      receiving_(false),
-      num_added_secondary_sinks_(0),
-      num_removed_secondary_sinks_(0) {}
+    : config_(std::move(config)), receiving_(false) {}
 
 const webrtc::VideoReceiveStream::Config& FakeVideoReceiveStream::GetConfig()
     const {
@@ -352,24 +384,6 @@ void FakeVideoReceiveStream::SetStats(
   stats_ = stats;
 }
 
-void FakeVideoReceiveStream::AddSecondarySink(
-    webrtc::RtpPacketSinkInterface* sink) {
-  ++num_added_secondary_sinks_;
-}
-
-void FakeVideoReceiveStream::RemoveSecondarySink(
-    const webrtc::RtpPacketSinkInterface* sink) {
-  ++num_removed_secondary_sinks_;
-}
-
-int FakeVideoReceiveStream::GetNumAddedSecondarySinks() const {
-  return num_added_secondary_sinks_;
-}
-
-int FakeVideoReceiveStream::GetNumRemovedSecondarySinks() const {
-  return num_removed_secondary_sinks_;
-}
-
 FakeFlexfecReceiveStream::FakeFlexfecReceiveStream(
     const webrtc::FlexfecReceiveStream::Config& config)
     : config_(config) {}
@@ -389,7 +403,13 @@ void FakeFlexfecReceiveStream::OnRtpPacket(const webrtc::RtpPacketReceived&) {
 }
 
 FakeCall::FakeCall()
-    : audio_network_state_(webrtc::kNetworkUp),
+    : FakeCall(rtc::Thread::Current(), rtc::Thread::Current()) {}
+
+FakeCall::FakeCall(webrtc::TaskQueueBase* worker_thread,
+                   webrtc::TaskQueueBase* network_thread)
+    : network_thread_(network_thread),
+      worker_thread_(worker_thread),
+      audio_network_state_(webrtc::kNetworkUp),
       video_network_state_(webrtc::kNetworkUp),
       num_created_send_streams_(0),
       num_created_receive_streams_(0) {}
@@ -570,6 +590,9 @@ void FakeCall::DestroyFlexfecReceiveStream(
   }
 }
 
+void FakeCall::AddAdaptationResource(
+    rtc::scoped_refptr<webrtc::Resource> resource) {}
+
 webrtc::PacketReceiver* FakeCall::Receiver() {
   return this;
 }
@@ -581,20 +604,24 @@ FakeCall::DeliveryStatus FakeCall::DeliverPacket(webrtc::MediaType media_type,
   RTC_DCHECK(media_type == webrtc::MediaType::AUDIO ||
              media_type == webrtc::MediaType::VIDEO);
 
-  uint32_t ssrc;
-  if (!GetRtpSsrc(packet.cdata(), packet.size(), &ssrc))
+  if (!webrtc::IsRtpPacket(packet)) {
     return DELIVERY_PACKET_ERROR;
+  }
 
+  uint32_t ssrc = ParseRtpSsrc(packet);
   if (media_type == webrtc::MediaType::VIDEO) {
     for (auto receiver : video_receive_streams_) {
-      if (receiver->GetConfig().rtp.remote_ssrc == ssrc)
+      if (receiver->GetConfig().rtp.remote_ssrc == ssrc) {
+        ++delivered_packets_by_ssrc_[ssrc];
         return DELIVERY_OK;
+      }
     }
   }
   if (media_type == webrtc::MediaType::AUDIO) {
     for (auto receiver : audio_receive_streams_) {
       if (receiver->GetConfig().rtp.remote_ssrc == ssrc) {
         receiver->DeliverRtp(packet.cdata(), packet.size(), packet_time_us);
+        ++delivered_packets_by_ssrc_[ssrc];
         return DELIVERY_OK;
       }
     }
@@ -618,6 +645,14 @@ webrtc::Call::Stats FakeCall::GetStats() const {
   return stats_;
 }
 
+webrtc::TaskQueueBase* FakeCall::network_thread() const {
+  return network_thread_;
+}
+
+webrtc::TaskQueueBase* FakeCall::worker_thread() const {
+  return worker_thread_;
+}
+
 void FakeCall::SignalChannelNetworkState(webrtc::MediaType media,
                                          webrtc::NetworkState state) {
   switch (media) {
@@ -636,6 +671,18 @@ void FakeCall::SignalChannelNetworkState(webrtc::MediaType media,
 
 void FakeCall::OnAudioTransportOverheadChanged(
     int transport_overhead_per_packet) {}
+
+void FakeCall::OnLocalSsrcUpdated(webrtc::AudioReceiveStream& stream,
+                                  uint32_t local_ssrc) {
+  auto& fake_stream = static_cast<FakeAudioReceiveStream&>(stream);
+  fake_stream.SetLocalSsrc(local_ssrc);
+}
+
+void FakeCall::OnUpdateSyncGroup(webrtc::AudioReceiveStream& stream,
+                                 const std::string& sync_group) {
+  auto& fake_stream = static_cast<FakeAudioReceiveStream&>(stream);
+  fake_stream.SetSyncGroup(sync_group);
+}
 
 void FakeCall::OnSentPacket(const rtc::SentPacket& sent_packet) {
   last_sent_packet_ = sent_packet;

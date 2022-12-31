@@ -31,21 +31,27 @@ public class RTCUtils {
   public static RtpParameters.Encoding genRtpEncodingParameters(
       String rid,
       boolean active,
+      double bitRatePriority,
+      int networkPriority,
       Integer maxBitrateBps,
       Integer minBitrateBps,
       Integer maxFramerate,
       Integer numTemporalLayers,
       Double scaleResolutionDownBy,
-      Long ssrc) {
+      Long ssrc,
+      boolean adaptativeAudioPacketTime) {
     return new RtpParameters.Encoding(
         rid,
         active,
+        bitRatePriority,
+        networkPriority,
         maxBitrateBps,
         minBitrateBps,
         maxFramerate,
         numTemporalLayers,
         scaleResolutionDownBy,
-        ssrc);
+        ssrc,
+        adaptativeAudioPacketTime);
   }
 
   public static MediaStreamTrack createMediaStreamTrack(long nativeTrack) {

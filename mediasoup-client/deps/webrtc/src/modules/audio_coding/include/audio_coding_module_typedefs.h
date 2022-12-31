@@ -13,8 +13,6 @@
 
 #include <map>
 
-#include "rtc_base/deprecation.h"
-
 namespace webrtc {
 
 ///////////////////////////////////////////////////////////////////////////
@@ -83,7 +81,7 @@ struct NetworkStatistics {
   // adding extra delay due to "peaky jitter"
   bool jitterPeaksFound;
   // Stats below correspond to similarly-named fields in the WebRTC stats spec.
-  // https://w3c.github.io/webrtc-stats/#dom-rtcmediastreamtrackstats
+  // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats
   uint64_t totalSamplesReceived;
   uint64_t concealedSamples;
   uint64_t silentConcealedSamples;
@@ -94,13 +92,12 @@ struct NetworkStatistics {
   uint64_t removedSamplesForAcceleration;
   uint64_t fecPacketsReceived;
   uint64_t fecPacketsDiscarded;
+  // Stats below correspond to similarly-named fields in the WebRTC stats spec.
+  // https://w3c.github.io/webrtc-stats/#dom-rtcreceivedrtpstreamstats
+  uint64_t packetsDiscarded;
+  // Non standard stats propagated to spec complaint GetStats API.
+  uint64_t jitterBufferTargetDelayMs;
   // Stats below DO NOT correspond directly to anything in the WebRTC stats
-  // Loss rate (network + late); fraction between 0 and 1, scaled to Q14.
-  uint16_t currentPacketLossRate;
-  // Late loss rate; fraction between 0 and 1, scaled to Q14.
-  union {
-    RTC_DEPRECATED uint16_t currentDiscardRate;
-  };
   // fraction (of original stream) of synthesized audio inserted through
   // expansion (in Q14)
   uint16_t currentExpandRate;
@@ -121,14 +118,8 @@ struct NetworkStatistics {
   uint16_t currentSecondaryDiscardedRate;
   // average packet waiting time in the jitter buffer (ms)
   int meanWaitingTimeMs;
-  // median packet waiting time in the jitter buffer (ms)
-  int medianWaitingTimeMs;
-  // min packet waiting time in the jitter buffer (ms)
-  int minWaitingTimeMs;
   // max packet waiting time in the jitter buffer (ms)
   int maxWaitingTimeMs;
-  // added samples in off mode due to packet loss
-  size_t addedSamples;
   // count of the number of buffer flushes
   uint64_t packetBufferFlushes;
   // number of samples expanded due to delayed packets

@@ -23,7 +23,7 @@
 #include <utility>
 
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
-#include "modules/audio_coding/neteq/include/neteq.h"
+#include "api/neteq/neteq.h"
 #include "modules/audio_coding/neteq/tools/audio_sink.h"
 #include "modules/audio_coding/neteq/tools/fake_decode_from_file.h"
 #include "modules/audio_coding/neteq/tools/initial_packet_inserter_neteq_input.h"
@@ -110,6 +110,7 @@ NetEqTestFactory::Config::~Config() = default;
 
 std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTestFromString(
     const std::string& input_string,
+    NetEqFactory* factory,
     const Config& config) {
   std::unique_ptr<NetEqInput> input(
       NetEqEventLogInput::CreateFromString(input_string, config.ssrc_filter));
@@ -117,11 +118,12 @@ std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTestFromString(
     std::cerr << "Error: Cannot parse input string" << std::endl;
     return nullptr;
   }
-  return InitializeTest(std::move(input), config);
+  return InitializeTest(std::move(input), factory, config);
 }
 
 std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTestFromFile(
     const std::string& input_file_name,
+    NetEqFactory* factory,
     const Config& config) {
   // Gather RTP header extensions in a map.
   NetEqPacketSourceInput::RtpHeaderExtensionMap rtp_ext_map = {
@@ -146,11 +148,12 @@ std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTestFromFile(
     std::cerr << "Error: Cannot open input file" << std::endl;
     return nullptr;
   }
-  return InitializeTest(std::move(input), config);
+  return InitializeTest(std::move(input), factory, config);
 }
 
 std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTest(
     std::unique_ptr<NetEqInput> input,
+    NetEqFactory* factory,
     const Config& config) {
   if (input->ended()) {
     std::cerr << "Error: Input is empty" << std::endl;
@@ -282,7 +285,7 @@ std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTest(
 
     // Note that capture-by-copy implies that the lambda captures the value of
     // decoder_factory before it's reassigned on the left-hand side.
-    decoder_factory = new rtc::RefCountedObject<FunctionAudioDecoderFactory>(
+    decoder_factory = rtc::make_ref_counted<FunctionAudioDecoderFactory>(
         [decoder_factory, config](
             const SdpAudioFormat& format,
             absl::optional<AudioCodecPairId> codec_pair_id) {
@@ -305,10 +308,15 @@ std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTest(
     }
   }
 
-  // Create a text log file if needed.
+  // Create a text log output stream if needed.
   std::unique_ptr<std::ofstream> text_log;
-  if (config.textlog_filename.has_value()) {
+  if (config.textlog && config.textlog_filename.has_value()) {
+    // Write to file.
     text_log = std::make_unique<std::ofstream>(*config.textlog_filename);
+  } else if (config.textlog) {
+    // Print to stdout.
+    text_log = std::make_unique<std::ofstream>();
+    text_log->basic_ios<char>::rdbuf(std::cout.rdbuf());
   }
 
   NetEqTest::Callbacks callbacks;
@@ -325,9 +333,9 @@ std::unique_ptr<NetEqTest> NetEqTestFactory::InitializeTest(
   neteq_config.sample_rate_hz = *sample_rate_hz;
   neteq_config.max_packets_in_buffer = config.max_nr_packets_in_buffer;
   neteq_config.enable_fast_accelerate = config.enable_fast_accelerate;
-  return std::make_unique<NetEqTest>(neteq_config, decoder_factory, codecs,
-                                     std::move(text_log), std::move(input),
-                                     std::move(output), callbacks);
+  return std::make_unique<NetEqTest>(
+      neteq_config, decoder_factory, codecs, std::move(text_log), factory,
+      std::move(input), std::move(output), callbacks);
 }
 
 }  // namespace test

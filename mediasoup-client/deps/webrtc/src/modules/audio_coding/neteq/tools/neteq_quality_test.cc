@@ -15,6 +15,7 @@
 #include <cmath>
 
 #include "absl/flags/flag.h"
+#include "modules/audio_coding/neteq/default_neteq_factory.h"
 #include "modules/audio_coding/neteq/tools/neteq_quality_test.h"
 #include "modules/audio_coding/neteq/tools/output_audio_file.h"
 #include "modules/audio_coding/neteq/tools/output_wav_file.h"
@@ -87,6 +88,17 @@ ABSL_FLAG(std::string,
 namespace webrtc {
 namespace test {
 
+namespace {
+
+std::unique_ptr<NetEq> CreateNetEq(
+    const NetEq::Config& config,
+    Clock* clock,
+    const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory) {
+  return DefaultNetEqFactory().CreateNetEq(config, decoder_factory, clock);
+}
+
+}  // namespace
+
 const uint8_t kPayloadType = 95;
 const int kOutputSizeMs = 10;
 const int kInitSeed = 0x12345678;
@@ -95,7 +107,7 @@ const int kPacketLossTimeUnitMs = 10;
 // Common validator for file names.
 static bool ValidateFilename(const std::string& value, bool is_output) {
   if (!is_output) {
-    RTC_CHECK_NE(value.substr(value.find_last_of(".") + 1), "wav")
+    RTC_CHECK_NE(value.substr(value.find_last_of('.') + 1), "wav")
         << "WAV file input is not supported";
   }
   FILE* fid =
@@ -108,8 +120,8 @@ static bool ValidateFilename(const std::string& value, bool is_output) {
 
 // ProbTrans00Solver() is to calculate the transition probability from no-loss
 // state to itself in a modified Gilbert Elliot packet loss model. The result is
-// to achieve the target packet loss rate |loss_rate|, when a packet is not
-// lost only if all |units| drawings within the duration of the packet result in
+// to achieve the target packet loss rate `loss_rate`, when a packet is not
+// lost only if all `units` drawings within the duration of the packet result in
 // no-loss.
 static double ProbTrans00Solver(int units,
                                 double loss_rate,
@@ -228,8 +240,7 @@ NetEqQualityTest::NetEqQualityTest(
 
   NetEq::Config config;
   config.sample_rate_hz = out_sampling_khz_ * 1000;
-  neteq_.reset(
-      NetEq::Create(config, Clock::GetRealTimeClock(), decoder_factory));
+  neteq_ = CreateNetEq(config, Clock::GetRealTimeClock(), decoder_factory);
   max_payload_bytes_ = in_size_samples_ * channels_ * sizeof(int16_t);
   in_data_.reset(new int16_t[in_size_samples_ * channels_]);
 }
@@ -299,10 +310,10 @@ void NetEqQualityTest::SetUp() {
   int units = block_duration_ms_ / kPacketLossTimeUnitMs;
   switch (absl::GetFlag(FLAGS_random_loss_mode)) {
     case kUniformLoss: {
-      // |unit_loss_rate| is the packet loss rate for each unit time interval
+      // `unit_loss_rate` is the packet loss rate for each unit time interval
       // (kPacketLossTimeUnitMs). Since a packet loss event is generated if any
       // of |block_duration_ms_ / kPacketLossTimeUnitMs| unit time intervals of
-      // a full packet duration is drawn with a loss, |unit_loss_rate| fulfills
+      // a full packet duration is drawn with a loss, `unit_loss_rate` fulfills
       // (1 - unit_loss_rate) ^ (block_duration_ms_ / kPacketLossTimeUnitMs) ==
       // 1 - packet_loss_rate.
       double unit_loss_rate =
@@ -311,7 +322,7 @@ void NetEqQualityTest::SetUp() {
       break;
     }
     case kGilbertElliotLoss: {
-      // |FLAGS_burst_length| should be integer times of kPacketLossTimeUnitMs.
+      // `FLAGS_burst_length` should be integer times of kPacketLossTimeUnitMs.
       ASSERT_EQ(0, absl::GetFlag(FLAGS_burst_length) % kPacketLossTimeUnitMs);
 
       // We do not allow 100 percent packet loss in Gilbert Elliot model, which

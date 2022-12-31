@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "api/task_queue/default_task_queue_factory.h"
+#include "api/test/create_frame_generator.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "api/video_codecs/video_encoder.h"
@@ -135,10 +136,15 @@ absl::optional<RtpGeneratorOptions> ParseRtpGeneratorOptionsFromFile(
   }
 
   // Parse the file as JSON
-  Json::Reader json_reader;
+  Json::CharReaderBuilder builder;
   Json::Value json;
-  if (!json_reader.parse(raw_json_buffer.data(), json)) {
-    RTC_LOG(LS_ERROR) << "Unable to parse the corpus config json file";
+  std::string error_message;
+  std::unique_ptr<Json::CharReader> json_reader(builder.newCharReader());
+  if (!json_reader->parse(raw_json_buffer.data(),
+                          raw_json_buffer.data() + raw_json_buffer.size(),
+                          &json, &error_message)) {
+    RTC_LOG(LS_ERROR) << "Unable to parse the corpus config json file. Error:"
+                      << error_message;
     return absl::nullopt;
   }
 
@@ -187,15 +193,17 @@ RtpGenerator::RtpGenerator(const RtpGeneratorOptions& options)
         PayloadStringToCodecType(video_config.rtp.payload_name);
     if (video_config.rtp.payload_name == cricket::kVp8CodecName) {
       VideoCodecVP8 settings = VideoEncoder::GetDefaultVp8Settings();
-      encoder_config.encoder_specific_settings = new rtc::RefCountedObject<
-          VideoEncoderConfig::Vp8EncoderSpecificSettings>(settings);
+      encoder_config.encoder_specific_settings =
+          rtc::make_ref_counted<VideoEncoderConfig::Vp8EncoderSpecificSettings>(
+              settings);
     } else if (video_config.rtp.payload_name == cricket::kVp9CodecName) {
       VideoCodecVP9 settings = VideoEncoder::GetDefaultVp9Settings();
-      encoder_config.encoder_specific_settings = new rtc::RefCountedObject<
-          VideoEncoderConfig::Vp9EncoderSpecificSettings>(settings);
+      encoder_config.encoder_specific_settings =
+          rtc::make_ref_counted<VideoEncoderConfig::Vp9EncoderSpecificSettings>(
+              settings);
     } else if (video_config.rtp.payload_name == cricket::kH264CodecName) {
       VideoCodecH264 settings = VideoEncoder::GetDefaultH264Settings();
-      encoder_config.encoder_specific_settings = new rtc::RefCountedObject<
+      encoder_config.encoder_specific_settings = rtc::make_ref_counted<
           VideoEncoderConfig::H264EncoderSpecificSettings>(settings);
     }
     encoder_config.video_format.name = video_config.rtp.payload_name;
@@ -216,7 +224,7 @@ RtpGenerator::RtpGenerator(const RtpGeneratorOptions& options)
     }
 
     encoder_config.video_stream_factory =
-        new rtc::RefCountedObject<cricket::EncoderStreamFactory>(
+        rtc::make_ref_counted<cricket::EncoderStreamFactory>(
             video_config.rtp.payload_name, /*max qp*/ 56, /*screencast*/ false,
             /*screenshare enabled*/ false);
 
@@ -224,9 +232,9 @@ RtpGenerator::RtpGenerator(const RtpGeneratorOptions& options)
     std::unique_ptr<test::FrameGeneratorCapturer> frame_generator =
         std::make_unique<test::FrameGeneratorCapturer>(
             Clock::GetRealTimeClock(),
-            test::FrameGenerator::CreateSquareGenerator(
-                send_config.video_width, send_config.video_height,
-                absl::nullopt, absl::nullopt),
+            test::CreateSquareFrameGenerator(send_config.video_width,
+                                             send_config.video_height,
+                                             absl::nullopt, absl::nullopt),
             send_config.video_fps, *task_queue_);
     frame_generator->Init();
 

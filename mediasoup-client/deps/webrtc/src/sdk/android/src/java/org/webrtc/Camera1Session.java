@@ -11,11 +11,8 @@
 package org.webrtc;
 
 import android.content.Context;
-import android.graphics.Matrix;
 import android.os.Handler;
 import android.os.SystemClock;
-import android.support.annotation.Nullable;
-import android.view.Surface;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -136,7 +133,7 @@ class Camera1Session implements CameraSession {
 
   private static CaptureFormat findClosestCaptureFormat(
       android.hardware.Camera.Parameters parameters, int width, int height, int framerate) {
-    // Find closest supported format for |width| x |height| @ |framerate|.
+    // Find closest supported format for `width` x `height` @ `framerate`.
     final List<CaptureFormat.FramerateRange> supportedFramerates =
         Camera1Enumerator.convertFramerates(parameters.getSupportedPreviewFpsRange());
     Logging.d(TAG, "Available fps ranges: " + supportedFramerates);

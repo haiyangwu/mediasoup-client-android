@@ -15,14 +15,14 @@
 #include "api/rtp_headers.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
 #include "system_wrappers/include/clock.h"
 
 namespace webrtc {
 
 //
-// Helper class for sending the |AbsoluteCaptureTime| header extension.
+// Helper class for sending the `AbsoluteCaptureTime` header extension.
 //
 // Supports the "timestamp interpolation" optimization:
 //   A sender SHOULD save bandwidth by not sending abs-capture-time with every
@@ -41,8 +41,8 @@ namespace webrtc {
 class AbsoluteCaptureTimeSender {
  public:
   static constexpr TimeDelta kInterpolationMaxInterval =
-      TimeDelta::Millis<1000>();
-  static constexpr TimeDelta kInterpolationMaxError = TimeDelta::Millis<1>();
+      TimeDelta::Millis(1000);
+  static constexpr TimeDelta kInterpolationMaxError = TimeDelta::Millis(1);
 
   explicit AbsoluteCaptureTimeSender(Clock* clock);
 
@@ -50,7 +50,7 @@ class AbsoluteCaptureTimeSender {
   static uint32_t GetSource(uint32_t ssrc,
                             rtc::ArrayView<const uint32_t> csrcs);
 
-  // Returns a header extension to be sent, or |absl::nullopt| if the header
+  // Returns a header extension to be sent, or `absl::nullopt` if the header
   // extension shouldn't be sent.
   absl::optional<AbsoluteCaptureTime> OnSendPacket(
       uint32_t source,
@@ -67,20 +67,20 @@ class AbsoluteCaptureTimeSender {
       uint32_t rtp_clock_frequency,
       uint64_t absolute_capture_timestamp,
       absl::optional<int64_t> estimated_capture_clock_offset) const
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Clock* const clock_;
 
-  rtc::CriticalSection crit_;
+  Mutex mutex_;
 
-  Timestamp last_send_time_ RTC_GUARDED_BY(crit_);
+  Timestamp last_send_time_ RTC_GUARDED_BY(mutex_);
 
-  uint32_t last_source_ RTC_GUARDED_BY(crit_);
-  uint32_t last_rtp_timestamp_ RTC_GUARDED_BY(crit_);
-  uint32_t last_rtp_clock_frequency_ RTC_GUARDED_BY(crit_);
-  uint64_t last_absolute_capture_timestamp_ RTC_GUARDED_BY(crit_);
+  uint32_t last_source_ RTC_GUARDED_BY(mutex_);
+  uint32_t last_rtp_timestamp_ RTC_GUARDED_BY(mutex_);
+  uint32_t last_rtp_clock_frequency_ RTC_GUARDED_BY(mutex_);
+  uint64_t last_absolute_capture_timestamp_ RTC_GUARDED_BY(mutex_);
   absl::optional<int64_t> last_estimated_capture_clock_offset_
-      RTC_GUARDED_BY(crit_);
+      RTC_GUARDED_BY(mutex_);
 };  // AbsoluteCaptureTimeSender
 
 }  // namespace webrtc

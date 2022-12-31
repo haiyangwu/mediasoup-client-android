@@ -14,7 +14,7 @@
 #include <string>
 
 #include "api/test/stats_observer_interface.h"
-#include "api/test/track_id_stream_label_map.h"
+#include "api/test/track_id_stream_info_map.h"
 
 namespace webrtc {
 namespace webrtc_pc_e2e {
@@ -25,13 +25,13 @@ class AudioQualityAnalyzerInterface : public StatsObserverInterface {
   ~AudioQualityAnalyzerInterface() override = default;
 
   // Will be called by the framework before the test.
-  // |test_case_name| is name of test case, that should be used to report all
+  // `test_case_name` is name of test case, that should be used to report all
   // audio metrics.
-  // |analyzer_helper| is a pointer to a class that will allow track_id to
+  // `analyzer_helper` is a pointer to a class that will allow track_id to
   // stream_id matching. The caller is responsible for ensuring the
   // AnalyzerHelper outlives the instance of the AudioQualityAnalyzerInterface.
   virtual void Start(std::string test_case_name,
-                     TrackIdStreamLabelMap* analyzer_helper) = 0;
+                     TrackIdStreamInfoMap* analyzer_helper) = 0;
 
   // Will be called by the framework at the end of the test. The analyzer
   // has to finalize all its stats and it should report them.

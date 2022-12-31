@@ -11,10 +11,21 @@ public class MediasoupClient {
     System.loadLibrary("mediasoupclient_so");
   }
 
+  /**
+   * libmediasoupclient initialization. Initializes libwebrtc.
+   *
+   * @param appContext app context
+   */
   public static void initialize(Context appContext) {
     initialize(appContext, null);
   }
 
+  /**
+   * libmediasoupclient initialization. Initializes libwebrtc.
+   *
+   * @param appContext app context
+   * @param fieldTrials fieldTrials desc
+   */
   public static void initialize(Context appContext, String fieldTrials) {
     InitializationOptions options =
         InitializationOptions.builder(appContext)
@@ -25,6 +36,9 @@ public class MediasoupClient {
     PeerConnectionFactory.initialize(options);
   }
 
+  /**
+   * @return The libmediasoupclient version.
+   */
   public static String version() {
     return nativeVersion();
   }

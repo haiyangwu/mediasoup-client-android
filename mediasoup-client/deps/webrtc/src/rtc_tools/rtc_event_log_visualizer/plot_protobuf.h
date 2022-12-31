@@ -10,6 +10,7 @@
 #ifndef RTC_TOOLS_RTC_EVENT_LOG_VISUALIZER_PLOT_PROTOBUF_H_
 #define RTC_TOOLS_RTC_EVENT_LOG_VISUALIZER_PLOT_PROTOBUF_H_
 
+#include "absl/base/attributes.h"
 #include "rtc_base/ignore_wundef.h"
 RTC_PUSH_IGNORING_WUNDEF()
 #include "rtc_tools/rtc_event_log_visualizer/proto/chart.pb.h"
@@ -23,16 +24,15 @@ class ProtobufPlot final : public Plot {
   ProtobufPlot();
   ~ProtobufPlot() override;
   void Draw() override;
-  void ExportProtobuf(webrtc::analytics::Chart* chart);
 };
 
-class ProtobufPlotCollection final : public PlotCollection {
+class ABSL_DEPRECATED("Use PlotCollection and ExportProtobuf() instead")
+    ProtobufPlotCollection final : public PlotCollection {
  public:
   ProtobufPlotCollection();
   ~ProtobufPlotCollection() override;
   void Draw() override;
   Plot* AppendNewPlot() override;
-  void ExportProtobuf(webrtc::analytics::ChartCollection* collection);
 };
 
 }  // namespace webrtc

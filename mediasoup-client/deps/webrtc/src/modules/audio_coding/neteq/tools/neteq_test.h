@@ -19,8 +19,9 @@
 
 #include "absl/types/optional.h"
 #include "api/audio_codecs/audio_decoder_factory.h"
+#include "api/neteq/neteq.h"
+#include "api/neteq/neteq_factory.h"
 #include "api/test/neteq_simulator.h"
-#include "modules/audio_coding/neteq/include/neteq.h"
 #include "modules/audio_coding/neteq/tools/audio_sink.h"
 #include "modules/audio_coding/neteq/tools/neteq_input.h"
 #include "system_wrappers/include/clock.h"
@@ -60,7 +61,7 @@ class NetEqGetAudioCallback {
 class NetEqSimulationEndedCallback {
  public:
   virtual ~NetEqSimulationEndedCallback() = default;
-  virtual void SimulationEnded(int64_t simulation_time_ms) = 0;
+  virtual void SimulationEnded(int64_t simulation_time_ms, NetEq* neteq) = 0;
 };
 
 // Class that provides an input--output test for NetEq. The input (both packets
@@ -83,6 +84,7 @@ class NetEqTest : public NetEqSimulator {
             rtc::scoped_refptr<AudioDecoderFactory> decoder_factory,
             const DecoderMap& codecs,
             std::unique_ptr<std::ofstream> text_log,
+            NetEqFactory* neteq_factory,
             std::unique_ptr<NetEqInput> input,
             std::unique_ptr<AudioSink> output,
             Callbacks callbacks);
@@ -90,7 +92,7 @@ class NetEqTest : public NetEqSimulator {
   ~NetEqTest() override;
 
   // Runs the test. Returns the duration of the produced audio in ms.
-  int64_t Run();
+  int64_t Run() override;
   // Runs the simulation until we hit the next GetAudio event. If the simulation
   // is finished, is_simulation_finished will be set to true in the returned
   // SimulationStepResult.

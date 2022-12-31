@@ -17,8 +17,8 @@
 #include <memory>
 
 #include "api/audio_codecs/audio_decoder.h"
+#include "api/neteq/tick_timer.h"
 #include "api/rtp_packet_info.h"
-#include "modules/audio_coding/neteq/tick_timer.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/checks.h"
 
@@ -84,8 +84,8 @@ struct Packet {
 
   // Packets should generally be moved around but sometimes it's useful to make
   // a copy, for example for testing purposes. NOTE: Will only work for
-  // un-parsed packets, i.e. |frame| must be unset. The payload will, however,
-  // be copied. |waiting_time| will also not be copied.
+  // un-parsed packets, i.e. `frame` must be unset. The payload will, however,
+  // be copied. `waiting_time` will also not be copied.
   Packet Clone() const;
 
   Packet& operator=(Packet&& b);

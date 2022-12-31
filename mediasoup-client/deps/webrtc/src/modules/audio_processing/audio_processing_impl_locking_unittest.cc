@@ -14,11 +14,12 @@
 
 #include "api/array_view.h"
 #include "modules/audio_processing/audio_processing_impl.h"
+#include "modules/audio_processing/test/audio_processing_builder_for_testing.h"
 #include "modules/audio_processing/test/test_utils.h"
-#include "rtc_base/critical_section.h"
 #include "rtc_base/event.h"
 #include "rtc_base/platform_thread.h"
 #include "rtc_base/random.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "system_wrappers/include/sleep.h"
 #include "test/gtest.h"
 
@@ -30,17 +31,13 @@ class AudioProcessingImplLockTest;
 
 // Type of the render thread APM API call to use in the test.
 enum class RenderApiImpl {
-  ProcessReverseStreamImpl1,
-  ProcessReverseStreamImpl2,
-  AnalyzeReverseStreamImpl
+  ProcessReverseStreamImplInteger,
+  ProcessReverseStreamImplFloat,
+  AnalyzeReverseStreamImplFloat,
 };
 
 // Type of the capture thread APM API call to use in the test.
-enum class CaptureApiImpl {
-  ProcessStreamImpl1,
-  ProcessStreamImpl2,
-  ProcessStreamImpl3
-};
+enum class CaptureApiImpl { ProcessStreamImplInteger, ProcessStreamImplFloat };
 
 // The runtime parameter setting scheme to use in the test.
 enum class RuntimeParameterSettingScheme {
@@ -65,23 +62,23 @@ class RandomGenerator {
   RandomGenerator() : rand_gen_(42U) {}
 
   int RandInt(int min, int max) {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return rand_gen_.Rand(min, max);
   }
 
   int RandInt(int max) {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return rand_gen_.Rand(max);
   }
 
   float RandFloat() {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return rand_gen_.Rand<float>();
   }
 
  private:
-  rtc::CriticalSection crit_;
-  Random rand_gen_ RTC_GUARDED_BY(crit_);
+  Mutex mutex_;
+  Random rand_gen_ RTC_GUARDED_BY(mutex_);
 };
 
 // Variables related to the audio data and formats.
@@ -97,25 +94,21 @@ struct AudioFrameData {
     output_frame.resize(2);
     output_frame[0] = &output_frame_channels[0];
     output_frame[1] = &output_frame_channels[max_frame_size];
+
+    frame.resize(2 * max_frame_size);
   }
 
-  AudioFrame frame;
+  std::vector<int16_t> frame;
+
   std::vector<float*> output_frame;
   std::vector<float> output_frame_channels;
-  AudioProcessing::ChannelLayout output_channel_layout =
-      AudioProcessing::ChannelLayout::kMono;
-  int input_sample_rate_hz = 16000;
-  int input_number_of_channels = -1;
   std::vector<float*> input_frame;
   std::vector<float> input_framechannels;
-  AudioProcessing::ChannelLayout input_channel_layout =
-      AudioProcessing::ChannelLayout::kMono;
+
+  int input_sample_rate_hz = 16000;
+  int input_number_of_channels = 1;
   int output_sample_rate_hz = 16000;
-  int output_number_of_channels = -1;
-  StreamConfig input_stream_config;
-  StreamConfig output_stream_config;
-  int input_samples_per_channel = -1;
-  int output_samples_per_channel = -1;
+  int output_number_of_channels = 1;
 };
 
 // The configuration for the test.
@@ -138,15 +131,17 @@ struct TestConfig {
       // Only test 16 kHz for this test suite.
       test_config.initial_sample_rate_hz = 16000;
 
-      // Create test config for the second processing API function set.
+      // Create test config for the Int16 processing API function set.
       test_config.render_api_function =
-          RenderApiImpl::ProcessReverseStreamImpl2;
-      test_config.capture_api_function = CaptureApiImpl::ProcessStreamImpl2;
-
-      // Create test config for the first processing API function set.
+          RenderApiImpl::ProcessReverseStreamImplInteger;
+      test_config.capture_api_function =
+          CaptureApiImpl::ProcessStreamImplInteger;
       test_configs.push_back(test_config);
-      test_config.render_api_function = RenderApiImpl::AnalyzeReverseStreamImpl;
-      test_config.capture_api_function = CaptureApiImpl::ProcessStreamImpl3;
+
+      // Create test config for the StreamConfig processing API function set.
+      test_config.render_api_function =
+          RenderApiImpl::ProcessReverseStreamImplFloat;
+      test_config.capture_api_function = CaptureApiImpl::ProcessStreamImplFloat;
       test_configs.push_back(test_config);
     }
 
@@ -165,16 +160,16 @@ struct TestConfig {
       };
 
       const AllowedApiCallCombinations api_calls[] = {
-          {RenderApiImpl::ProcessReverseStreamImpl1,
-           CaptureApiImpl::ProcessStreamImpl1},
-          {RenderApiImpl::ProcessReverseStreamImpl2,
-           CaptureApiImpl::ProcessStreamImpl2},
-          {RenderApiImpl::ProcessReverseStreamImpl2,
-           CaptureApiImpl::ProcessStreamImpl3},
-          {RenderApiImpl::AnalyzeReverseStreamImpl,
-           CaptureApiImpl::ProcessStreamImpl2},
-          {RenderApiImpl::AnalyzeReverseStreamImpl,
-           CaptureApiImpl::ProcessStreamImpl3}};
+          {RenderApiImpl::ProcessReverseStreamImplInteger,
+           CaptureApiImpl::ProcessStreamImplInteger},
+          {RenderApiImpl::ProcessReverseStreamImplFloat,
+           CaptureApiImpl::ProcessStreamImplFloat},
+          {RenderApiImpl::AnalyzeReverseStreamImplFloat,
+           CaptureApiImpl::ProcessStreamImplFloat},
+          {RenderApiImpl::ProcessReverseStreamImplInteger,
+           CaptureApiImpl::ProcessStreamImplFloat},
+          {RenderApiImpl::ProcessReverseStreamImplFloat,
+           CaptureApiImpl::ProcessStreamImplInteger}};
       std::vector<TestConfig> out;
       for (auto api_call : api_calls) {
         test_config.render_api_function = api_call.render_api;
@@ -249,8 +244,9 @@ struct TestConfig {
         add_aec_settings(add_processing_apis(test_config))));
   }
 
-  RenderApiImpl render_api_function = RenderApiImpl::ProcessReverseStreamImpl2;
-  CaptureApiImpl capture_api_function = CaptureApiImpl::ProcessStreamImpl2;
+  RenderApiImpl render_api_function =
+      RenderApiImpl::ProcessReverseStreamImplFloat;
+  CaptureApiImpl capture_api_function = CaptureApiImpl::ProcessStreamImplFloat;
   RuntimeParameterSettingScheme runtime_parameter_setting_scheme =
       RuntimeParameterSettingScheme::ExtremeStreamMetadataChangeScheme;
   int initial_sample_rate_hz = 16000;
@@ -262,27 +258,27 @@ struct TestConfig {
 class FrameCounters {
  public:
   void IncreaseRenderCounter() {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     render_count++;
   }
 
   void IncreaseCaptureCounter() {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     capture_count++;
   }
 
   int GetCaptureCounter() const {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return capture_count;
   }
 
   int GetRenderCounter() const {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return render_count;
   }
 
   int CaptureMinusRenderCounters() const {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return capture_count - render_count;
   }
 
@@ -291,14 +287,14 @@ class FrameCounters {
   }
 
   bool BothCountersExceedeThreshold(int threshold) {
-    rtc::CritScope cs(&crit_);
+    MutexLock lock(&mutex_);
     return (render_count > threshold && capture_count > threshold);
   }
 
  private:
-  rtc::CriticalSection crit_;
-  int render_count RTC_GUARDED_BY(crit_) = 0;
-  int capture_count RTC_GUARDED_BY(crit_) = 0;
+  mutable Mutex mutex_;
+  int render_count RTC_GUARDED_BY(mutex_) = 0;
+  int capture_count RTC_GUARDED_BY(mutex_) = 0;
 };
 
 // Class for handling the capture side processing.
@@ -391,33 +387,6 @@ class AudioProcessingImplLockTest
   void SetUp() override;
   void TearDown() override;
 
-  // Thread callback for the render thread
-  static void RenderProcessorThreadFunc(void* context) {
-    AudioProcessingImplLockTest* impl =
-        reinterpret_cast<AudioProcessingImplLockTest*>(context);
-    while (!impl->MaybeEndTest()) {
-      impl->render_thread_state_.Process();
-    }
-  }
-
-  // Thread callback for the capture thread
-  static void CaptureProcessorThreadFunc(void* context) {
-    AudioProcessingImplLockTest* impl =
-        reinterpret_cast<AudioProcessingImplLockTest*>(context);
-    while (!impl->MaybeEndTest()) {
-      impl->capture_thread_state_.Process();
-    }
-  }
-
-  // Thread callback for the stats thread
-  static void StatsProcessorThreadFunc(void* context) {
-    AudioProcessingImplLockTest* impl =
-        reinterpret_cast<AudioProcessingImplLockTest*>(context);
-    while (!impl->MaybeEndTest()) {
-      impl->stats_thread_state_.Process();
-    }
-  }
-
   // Tests whether all the required render and capture side calls have been
   // done.
   bool TestDone() {
@@ -427,9 +396,28 @@ class AudioProcessingImplLockTest
 
   // Start the threads used in the test.
   void StartThreads() {
-    render_thread_.Start();
-    capture_thread_.Start();
-    stats_thread_.Start();
+    const auto attributes =
+        rtc::ThreadAttributes().SetPriority(rtc::ThreadPriority::kRealtime);
+    render_thread_ = rtc::PlatformThread::SpawnJoinable(
+        [this] {
+          while (!MaybeEndTest())
+            render_thread_state_.Process();
+        },
+        "render", attributes);
+    capture_thread_ = rtc::PlatformThread::SpawnJoinable(
+        [this] {
+          while (!MaybeEndTest()) {
+            capture_thread_state_.Process();
+          }
+        },
+        "capture", attributes);
+
+    stats_thread_ = rtc::PlatformThread::SpawnJoinable(
+        [this] {
+          while (!MaybeEndTest())
+            stats_thread_state_.Process();
+        },
+        "stats", attributes);
   }
 
   // Event handlers for the test.
@@ -438,17 +426,17 @@ class AudioProcessingImplLockTest
   rtc::Event capture_call_event_;
 
   // Thread related variables.
-  rtc::PlatformThread render_thread_;
-  rtc::PlatformThread capture_thread_;
-  rtc::PlatformThread stats_thread_;
   mutable RandomGenerator rand_gen_;
 
-  std::unique_ptr<AudioProcessing> apm_;
+  rtc::scoped_refptr<AudioProcessing> apm_;
   TestConfig test_config_;
   FrameCounters frame_counters_;
   RenderProcessor render_thread_state_;
   CaptureProcessor capture_thread_state_;
   StatsProcessor stats_thread_state_;
+  rtc::PlatformThread render_thread_;
+  rtc::PlatformThread capture_thread_;
+  rtc::PlatformThread stats_thread_;
 };
 
 // Sleeps a random time between 0 and max_sleep milliseconds.
@@ -471,36 +459,25 @@ void PopulateAudioFrame(float** frame,
   }
 }
 
-// Populates an audioframe frame of AudioFrame type with random data.
-void PopulateAudioFrame(AudioFrame* frame,
-                        int16_t amplitude,
+// Populates an integer audio frame with random data.
+void PopulateAudioFrame(float amplitude,
+                        size_t num_channels,
+                        size_t samples_per_channel,
+                        rtc::ArrayView<int16_t> frame,
                         RandomGenerator* rand_gen) {
   ASSERT_GT(amplitude, 0);
   ASSERT_LE(amplitude, 32767);
-  int16_t* frame_data = frame->mutable_data();
-  for (size_t ch = 0; ch < frame->num_channels_; ch++) {
-    for (size_t k = 0; k < frame->samples_per_channel_; k++) {
+  for (size_t ch = 0; ch < num_channels; ch++) {
+    for (size_t k = 0; k < samples_per_channel; k++) {
       // Store random 16 bit number between -(amplitude+1) and
       // amplitude.
-      frame_data[k * ch] = rand_gen->RandInt(2 * amplitude + 1) - amplitude - 1;
+      frame[k * ch] = rand_gen->RandInt(2 * amplitude + 1) - amplitude - 1;
     }
   }
 }
 
 AudioProcessingImplLockTest::AudioProcessingImplLockTest()
-    : render_thread_(RenderProcessorThreadFunc,
-                     this,
-                     "render",
-                     rtc::kRealtimePriority),
-      capture_thread_(CaptureProcessorThreadFunc,
-                      this,
-                      "capture",
-                      rtc::kRealtimePriority),
-      stats_thread_(StatsProcessorThreadFunc,
-                    this,
-                    "stats",
-                    rtc::kNormalPriority),
-      apm_(AudioProcessingBuilder().Create()),
+    : apm_(AudioProcessingBuilderForTesting().Create()),
       render_thread_state_(kMaxFrameSize,
                            &rand_gen_,
                            &render_call_event_,
@@ -547,25 +524,11 @@ void AudioProcessingImplLockTest::SetUp() {
   apm_config.voice_detection.enabled = true;
   apm_config.level_estimation.enabled = true;
   apm_->ApplyConfig(apm_config);
-
-  Config config;
-  config.Set<ExtendedFilter>(
-      new ExtendedFilter(test_config_.aec_type ==
-                         AecType::BasicWebRtcAecSettingsWithExtentedFilter));
-
-  config.Set<DelayAgnostic>(
-      new DelayAgnostic(test_config_.aec_type ==
-                        AecType::BasicWebRtcAecSettingsWithDelayAgnosticAec));
-
-  apm_->SetExtraOptions(config);
 }
 
 void AudioProcessingImplLockTest::TearDown() {
   render_call_event_.Set();
   capture_call_event_.Set();
-  render_thread_.Stop();
-  capture_thread_.Stop();
-  stats_thread_.Stop();
 }
 
 StatsProcessor::StatsProcessor(RandomGenerator* rand_gen,
@@ -591,7 +554,7 @@ void StatsProcessor::Process() {
   EXPECT_TRUE(apm_config.noise_suppression.enabled);
 
   // The below return value is not testable.
-  apm_->GetStatistics(/*has_remote_tracks=*/true);
+  apm_->GetStatistics();
 }
 
 const float CaptureProcessor::kCaptureInputFloatLevel = 0.03125f;
@@ -638,49 +601,26 @@ void CaptureProcessor::Process() {
 
 // Prepares a frame with relevant audio data and metadata.
 void CaptureProcessor::PrepareFrame() {
-  // Restrict to a common fixed sample rate if the AudioFrame
+  // Restrict to a common fixed sample rate if the integer
   // interface is used.
   if (test_config_->capture_api_function ==
-      CaptureApiImpl::ProcessStreamImpl1) {
+      CaptureApiImpl::ProcessStreamImplInteger) {
     frame_data_.input_sample_rate_hz = test_config_->initial_sample_rate_hz;
     frame_data_.output_sample_rate_hz = test_config_->initial_sample_rate_hz;
   }
 
-  // Prepare the audioframe data and metadata.
-  frame_data_.input_samples_per_channel =
-      frame_data_.input_sample_rate_hz * AudioProcessing::kChunkSizeMs / 1000;
-  frame_data_.frame.sample_rate_hz_ = frame_data_.input_sample_rate_hz;
-  frame_data_.frame.num_channels_ = frame_data_.input_number_of_channels;
-  frame_data_.frame.samples_per_channel_ =
-      frame_data_.input_samples_per_channel;
-  PopulateAudioFrame(&frame_data_.frame, kCaptureInputFixLevel, rand_gen_);
+  // Prepare the audio data.
+  StreamConfig input_stream_config(frame_data_.input_sample_rate_hz,
+                                   frame_data_.input_number_of_channels,
+                                   /*has_keyboard=*/false);
 
-  // Prepare the float audio input data and metadata.
-  frame_data_.input_stream_config.set_sample_rate_hz(
-      frame_data_.input_sample_rate_hz);
-  frame_data_.input_stream_config.set_num_channels(
-      frame_data_.input_number_of_channels);
-  frame_data_.input_stream_config.set_has_keyboard(false);
+  PopulateAudioFrame(kCaptureInputFixLevel, input_stream_config.num_channels(),
+                     input_stream_config.num_frames(), frame_data_.frame,
+                     rand_gen_);
+
   PopulateAudioFrame(&frame_data_.input_frame[0], kCaptureInputFloatLevel,
-                     frame_data_.input_number_of_channels,
-                     frame_data_.input_samples_per_channel, rand_gen_);
-  frame_data_.input_channel_layout =
-      (frame_data_.input_number_of_channels == 1
-           ? AudioProcessing::ChannelLayout::kMono
-           : AudioProcessing::ChannelLayout::kStereo);
-
-  // Prepare the float audio output data and metadata.
-  frame_data_.output_samples_per_channel =
-      frame_data_.output_sample_rate_hz * AudioProcessing::kChunkSizeMs / 1000;
-  frame_data_.output_stream_config.set_sample_rate_hz(
-      frame_data_.output_sample_rate_hz);
-  frame_data_.output_stream_config.set_num_channels(
-      frame_data_.output_number_of_channels);
-  frame_data_.output_stream_config.set_has_keyboard(false);
-  frame_data_.output_channel_layout =
-      (frame_data_.output_number_of_channels == 1
-           ? AudioProcessing::ChannelLayout::kMono
-           : AudioProcessing::ChannelLayout::kStereo);
+                     input_stream_config.num_channels(),
+                     input_stream_config.num_frames(), rand_gen_);
 }
 
 // Applies the capture side processing API call.
@@ -695,22 +635,23 @@ void CaptureProcessor::CallApmCaptureSide() {
   apm_->set_stream_analog_level(80);
 
   // Call the specified capture side API processing method.
+  StreamConfig input_stream_config(frame_data_.input_sample_rate_hz,
+                                   frame_data_.input_number_of_channels,
+                                   /*has_keyboard=*/false);
+  StreamConfig output_stream_config(frame_data_.output_sample_rate_hz,
+                                    frame_data_.output_number_of_channels,
+                                    /*has_keyboard=*/false);
   int result = AudioProcessing::kNoError;
   switch (test_config_->capture_api_function) {
-    case CaptureApiImpl::ProcessStreamImpl1:
-      result = apm_->ProcessStream(&frame_data_.frame);
+    case CaptureApiImpl::ProcessStreamImplInteger:
+      result =
+          apm_->ProcessStream(frame_data_.frame.data(), input_stream_config,
+                              output_stream_config, frame_data_.frame.data());
       break;
-    case CaptureApiImpl::ProcessStreamImpl2:
-      result = apm_->ProcessStream(
-          &frame_data_.input_frame[0], frame_data_.input_samples_per_channel,
-          frame_data_.input_sample_rate_hz, frame_data_.input_channel_layout,
-          frame_data_.output_sample_rate_hz, frame_data_.output_channel_layout,
-          &frame_data_.output_frame[0]);
-      break;
-    case CaptureApiImpl::ProcessStreamImpl3:
-      result = apm_->ProcessStream(
-          &frame_data_.input_frame[0], frame_data_.input_stream_config,
-          frame_data_.output_stream_config, &frame_data_.output_frame[0]);
+    case CaptureApiImpl::ProcessStreamImplFloat:
+      result = apm_->ProcessStream(&frame_data_.input_frame[0],
+                                   input_stream_config, output_stream_config,
+                                   &frame_data_.output_frame[0]);
       break;
     default:
       FAIL();
@@ -830,15 +771,10 @@ void CaptureProcessor::ApplyRuntimeSettingScheme() {
         ASSERT_EQ(AudioProcessing::Error::kNoError,
                   apm_->set_stream_delay_ms(30));
         apm_->set_stream_key_pressed(true);
-        apm_->set_delay_offset_ms(15);
-        EXPECT_EQ(apm_->delay_offset_ms(), 15);
       } else {
         ASSERT_EQ(AudioProcessing::Error::kNoError,
                   apm_->set_stream_delay_ms(50));
         apm_->set_stream_key_pressed(false);
-        apm_->set_delay_offset_ms(20);
-        EXPECT_EQ(apm_->delay_offset_ms(), 20);
-        apm_->delay_offset_ms();
       }
       break;
     default:
@@ -905,51 +841,28 @@ void RenderProcessor::Process() {
 // Prepares the render side frame and the accompanying metadata
 // with the appropriate information.
 void RenderProcessor::PrepareFrame() {
-  // Restrict to a common fixed sample rate if the AudioFrame interface is
+  // Restrict to a common fixed sample rate if the integer interface is
   // used.
   if ((test_config_->render_api_function ==
-       RenderApiImpl::ProcessReverseStreamImpl1) ||
+       RenderApiImpl::ProcessReverseStreamImplInteger) ||
       (test_config_->aec_type !=
        AecType::BasicWebRtcAecSettingsWithAecMobile)) {
     frame_data_.input_sample_rate_hz = test_config_->initial_sample_rate_hz;
     frame_data_.output_sample_rate_hz = test_config_->initial_sample_rate_hz;
   }
 
-  // Prepare the audioframe data and metadata
-  frame_data_.input_samples_per_channel =
-      frame_data_.input_sample_rate_hz * AudioProcessing::kChunkSizeMs / 1000;
-  frame_data_.frame.sample_rate_hz_ = frame_data_.input_sample_rate_hz;
-  frame_data_.frame.num_channels_ = frame_data_.input_number_of_channels;
-  frame_data_.frame.samples_per_channel_ =
-      frame_data_.input_samples_per_channel;
-  PopulateAudioFrame(&frame_data_.frame, kRenderInputFixLevel, rand_gen_);
+  // Prepare the audio data.
+  StreamConfig input_stream_config(frame_data_.input_sample_rate_hz,
+                                   frame_data_.input_number_of_channels,
+                                   /*has_keyboard=*/false);
 
-  // Prepare the float audio input data and metadata.
-  frame_data_.input_stream_config.set_sample_rate_hz(
-      frame_data_.input_sample_rate_hz);
-  frame_data_.input_stream_config.set_num_channels(
-      frame_data_.input_number_of_channels);
-  frame_data_.input_stream_config.set_has_keyboard(false);
+  PopulateAudioFrame(kRenderInputFixLevel, input_stream_config.num_channels(),
+                     input_stream_config.num_frames(), frame_data_.frame,
+                     rand_gen_);
+
   PopulateAudioFrame(&frame_data_.input_frame[0], kRenderInputFloatLevel,
-                     frame_data_.input_number_of_channels,
-                     frame_data_.input_samples_per_channel, rand_gen_);
-  frame_data_.input_channel_layout =
-      (frame_data_.input_number_of_channels == 1
-           ? AudioProcessing::ChannelLayout::kMono
-           : AudioProcessing::ChannelLayout::kStereo);
-
-  // Prepare the float audio output data and metadata.
-  frame_data_.output_samples_per_channel =
-      frame_data_.output_sample_rate_hz * AudioProcessing::kChunkSizeMs / 1000;
-  frame_data_.output_stream_config.set_sample_rate_hz(
-      frame_data_.output_sample_rate_hz);
-  frame_data_.output_stream_config.set_num_channels(
-      frame_data_.output_number_of_channels);
-  frame_data_.output_stream_config.set_has_keyboard(false);
-  frame_data_.output_channel_layout =
-      (frame_data_.output_number_of_channels == 1
-           ? AudioProcessing::ChannelLayout::kMono
-           : AudioProcessing::ChannelLayout::kStereo);
+                     input_stream_config.num_channels(),
+                     input_stream_config.num_frames(), rand_gen_);
 }
 
 // Makes the render side processing API call.
@@ -958,20 +871,27 @@ void RenderProcessor::CallApmRenderSide() {
   PrepareFrame();
 
   // Call the specified render side API processing method.
+  StreamConfig input_stream_config(frame_data_.input_sample_rate_hz,
+                                   frame_data_.input_number_of_channels,
+                                   /*has_keyboard=*/false);
+  StreamConfig output_stream_config(frame_data_.output_sample_rate_hz,
+                                    frame_data_.output_number_of_channels,
+                                    /*has_keyboard=*/false);
   int result = AudioProcessing::kNoError;
   switch (test_config_->render_api_function) {
-    case RenderApiImpl::ProcessReverseStreamImpl1:
-      result = apm_->ProcessReverseStream(&frame_data_.frame);
-      break;
-    case RenderApiImpl::ProcessReverseStreamImpl2:
+    case RenderApiImpl::ProcessReverseStreamImplInteger:
       result = apm_->ProcessReverseStream(
-          &frame_data_.input_frame[0], frame_data_.input_stream_config,
-          frame_data_.output_stream_config, &frame_data_.output_frame[0]);
+          frame_data_.frame.data(), input_stream_config, output_stream_config,
+          frame_data_.frame.data());
       break;
-    case RenderApiImpl::AnalyzeReverseStreamImpl:
-      result = apm_->AnalyzeReverseStream(
-          &frame_data_.input_frame[0], frame_data_.input_samples_per_channel,
-          frame_data_.input_sample_rate_hz, frame_data_.input_channel_layout);
+    case RenderApiImpl::ProcessReverseStreamImplFloat:
+      result = apm_->ProcessReverseStream(
+          &frame_data_.input_frame[0], input_stream_config,
+          output_stream_config, &frame_data_.output_frame[0]);
+      break;
+    case RenderApiImpl::AnalyzeReverseStreamImplFloat:
+      result = apm_->AnalyzeReverseStream(&frame_data_.input_frame[0],
+                                          input_stream_config);
       break;
     default:
       FAIL();

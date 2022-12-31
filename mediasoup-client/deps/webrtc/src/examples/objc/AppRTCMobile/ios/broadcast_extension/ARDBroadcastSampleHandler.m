@@ -15,19 +15,19 @@
 #import "ARDExternalSampleCapturer.h"
 #import "ARDSettingsModel.h"
 
-#import <WebRTC/RTCCallbackLogger.h>
-#import <WebRTC/RTCLogging.h>
+#import "sdk/objc/api/logging/RTCCallbackLogger.h"
+#import "sdk/objc/base/RTCLogging.h"
 
 @implementation ARDBroadcastSampleHandler {
   ARDAppClient *_client;
-  RTCCallbackLogger *_callbackLogger;
+  RTC_OBJC_TYPE(RTCCallbackLogger) * _callbackLogger;
 }
 
 @synthesize capturer = _capturer;
 
 - (instancetype)init {
   if (self = [super init]) {
-    _callbackLogger = [[RTCCallbackLogger alloc] init];
+    _callbackLogger = [[RTC_OBJC_TYPE(RTCCallbackLogger) alloc] init];
     os_log_t rtc_os_log = os_log_create("com.google.AppRTCMobile", "RTCLog");
     [_callbackLogger start:^(NSString *logMessage) {
       os_log(rtc_os_log, "%{public}s", [logMessage cStringUsingEncoding:NSUTF8StringEncoding]);
@@ -104,7 +104,7 @@
 }
 
 - (void)appClient:(ARDAppClient *)client
-    didCreateLocalCapturer:(RTCCameraVideoCapturer *)localCapturer {
+    didCreateLocalCapturer:(RTC_OBJC_TYPE(RTCCameraVideoCapturer) *)localCapturer {
 }
 
 - (void)appClient:(ARDAppClient *)client
@@ -113,14 +113,14 @@
 }
 
 - (void)appClient:(ARDAppClient *)client
-    didReceiveLocalVideoTrack:(RTCVideoTrack *)localVideoTrack {
+    didReceiveLocalVideoTrack:(RTC_OBJC_TYPE(RTCVideoTrack) *)localVideoTrack {
 }
 
 - (void)appClient:(ARDAppClient *)client
-    didReceiveRemoteVideoTrack:(RTCVideoTrack *)remoteVideoTrack {
+    didReceiveRemoteVideoTrack:(RTC_OBJC_TYPE(RTCVideoTrack) *)remoteVideoTrack {
 }
 
-- (void)appClient:(ARDAppClient *)client didGetStats:(NSArray *)stats {
+- (void)appClient:(ARDAppClient *)client didGetStats:(RTC_OBJC_TYPE(RTCStatisticsReport) *)stats {
 }
 
 - (void)appClient:(ARDAppClient *)client didError:(NSError *)error {

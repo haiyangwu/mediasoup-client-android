@@ -10,10 +10,11 @@
 #ifndef MODULES_RTP_RTCP_SOURCE_RTP_DEPENDENCY_DESCRIPTOR_EXTENSION_H_
 #define MODULES_RTP_RTCP_SOURCE_RTP_DEPENDENCY_DESCRIPTOR_EXTENSION_H_
 
+#include <bitset>
 #include <cstdint>
 
 #include "api/array_view.h"
-#include "common_video/generic_frame_descriptor/generic_frame_info.h"
+#include "api/transport/rtp/dependency_descriptor.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 
 namespace webrtc {
@@ -26,18 +27,32 @@ class RtpDependencyDescriptorExtension {
   static constexpr RTPExtensionType kId = kRtpExtensionGenericFrameDescriptor02;
   // TODO(bugs.webrtc.org/10342): Use uri from the spec when there is one.
   static constexpr char kUri[] =
-      "http://www.webrtc.org/experiments/rtp-hdrext/"
-      "generic-frame-descriptor-02";
+      "https://aomediacodec.github.io/av1-rtp-spec/"
+      "#dependency-descriptor-rtp-header-extension";
 
   static bool Parse(rtc::ArrayView<const uint8_t> data,
                     const FrameDependencyStructure* structure,
                     DependencyDescriptor* descriptor);
 
   static size_t ValueSize(const FrameDependencyStructure& structure,
+                          const DependencyDescriptor& descriptor) {
+    return ValueSize(structure, kAllChainsAreActive, descriptor);
+  }
+  static size_t ValueSize(const FrameDependencyStructure& structure,
+                          std::bitset<32> active_chains,
                           const DependencyDescriptor& descriptor);
   static bool Write(rtc::ArrayView<uint8_t> data,
                     const FrameDependencyStructure& structure,
+                    const DependencyDescriptor& descriptor) {
+    return Write(data, structure, kAllChainsAreActive, descriptor);
+  }
+  static bool Write(rtc::ArrayView<uint8_t> data,
+                    const FrameDependencyStructure& structure,
+                    std::bitset<32> active_chains,
                     const DependencyDescriptor& descriptor);
+
+ private:
+  static constexpr std::bitset<32> kAllChainsAreActive = ~uint32_t{0};
 };
 
 }  // namespace webrtc

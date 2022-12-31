@@ -10,19 +10,22 @@
 
 #include "pc/rtp_sender.h"
 
+#include <algorithm>
 #include <atomic>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "api/audio_options.h"
 #include "api/media_stream_interface.h"
+#include "api/priority.h"
 #include "media/base/media_engine.h"
-#include "pc/peer_connection.h"
-#include "pc/stats_collector.h"
+#include "pc/stats_collector_interface.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/helpers.h"
 #include "rtc_base/location.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/ref_counted_object.h"
 #include "rtc_base/trace_event.h"
 
 namespace webrtc {
@@ -38,20 +41,6 @@ int GenerateUniqueId() {
   return ++g_unique_id;
 }
 
-// Returns an true if any RtpEncodingParameters member that isn't implemented
-// contains a value.
-bool UnimplementedRtpEncodingParameterHasValue(
-    const RtpEncodingParameters& encoding_params) {
-  if (encoding_params.codec_payload_type.has_value() ||
-      encoding_params.fec.has_value() || encoding_params.rtx.has_value() ||
-      encoding_params.dtx.has_value() || encoding_params.ptime.has_value() ||
-      encoding_params.scale_framerate_down_by.has_value() ||
-      !encoding_params.dependency_rids.empty()) {
-    return true;
-  }
-  return false;
-}
-
 // Returns true if a "per-sender" encoding parameter contains a value that isn't
 // its default. Currently max_bitrate_bps and bitrate_priority both are
 // implemented "per-sender," meaning that these encoding parameters
@@ -64,7 +53,7 @@ bool UnimplementedRtpEncodingParameterHasValue(
 bool PerSenderRtpEncodingParameterHasValue(
     const RtpEncodingParameters& encoding_params) {
   if (encoding_params.bitrate_priority != kDefaultBitratePriority ||
-      encoding_params.network_priority != kDefaultBitratePriority) {
+      encoding_params.network_priority != Priority::kLow) {
     return true;
   }
   return false;
@@ -109,9 +98,6 @@ bool UnimplementedRtpParameterHasValue(const RtpParameters& parameters) {
     return true;
   }
   for (size_t i = 0; i < parameters.encodings.size(); ++i) {
-    if (UnimplementedRtpEncodingParameterHasValue(parameters.encodings[i])) {
-      return true;
-    }
     // Encoding parameters that are per-sender should only contain value at
     // index 0.
     if (i != 0 &&
@@ -201,6 +187,15 @@ RTCError RtpSenderBase::SetParametersInternal(const RtpParameters& parameters) {
 
 RTCError RtpSenderBase::SetParameters(const RtpParameters& parameters) {
   TRACE_EVENT0("webrtc", "RtpSenderBase::SetParameters");
+  if (is_transceiver_stopped_) {
+    LOG_AND_RETURN_ERROR(
+        RTCErrorType::INVALID_STATE,
+        "Cannot set parameters on sender of a stopped transceiver.");
+  }
+  if (stopped_) {
+    LOG_AND_RETURN_ERROR(RTCErrorType::INVALID_STATE,
+                         "Cannot set parameters on a stopped sender.");
+  }
   if (stopped_) {
     LOG_AND_RETURN_ERROR(RTCErrorType::INVALID_STATE,
                          "Cannot set parameters on a stopped sender.");
@@ -314,6 +309,9 @@ void RtpSenderBase::SetSsrc(uint32_t ssrc) {
   if (frame_encryptor_) {
     SetFrameEncryptor(frame_encryptor_);
   }
+  if (frame_transformer_) {
+    SetEncoderToPacketizerFrameTransformer(frame_transformer_);
+  }
 }
 
 void RtpSenderBase::Stop() {
@@ -381,28 +379,42 @@ RTCError RtpSenderBase::DisableEncodingLayers(
   return result;
 }
 
+void RtpSenderBase::SetEncoderToPacketizerFrameTransformer(
+    rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {
+  frame_transformer_ = std::move(frame_transformer);
+  if (media_channel_ && ssrc_ && !stopped_) {
+    worker_thread_->Invoke<void>(RTC_FROM_HERE, [&] {
+      media_channel_->SetEncoderToPacketizerFrameTransformer(
+          ssrc_, frame_transformer_);
+    });
+  }
+}
+
 LocalAudioSinkAdapter::LocalAudioSinkAdapter() : sink_(nullptr) {}
 
 LocalAudioSinkAdapter::~LocalAudioSinkAdapter() {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&lock_);
   if (sink_)
     sink_->OnClose();
 }
 
-void LocalAudioSinkAdapter::OnData(const void* audio_data,
-                                   int bits_per_sample,
-                                   int sample_rate,
-                                   size_t number_of_channels,
-                                   size_t number_of_frames) {
-  rtc::CritScope lock(&lock_);
+void LocalAudioSinkAdapter::OnData(
+    const void* audio_data,
+    int bits_per_sample,
+    int sample_rate,
+    size_t number_of_channels,
+    size_t number_of_frames,
+    absl::optional<int64_t> absolute_capture_timestamp_ms) {
+  MutexLock lock(&lock_);
   if (sink_) {
     sink_->OnData(audio_data, bits_per_sample, sample_rate, number_of_channels,
-                  number_of_frames);
+                  number_of_frames, absolute_capture_timestamp_ms);
+    num_preferred_channels_ = sink_->NumPreferredChannels();
   }
 }
 
 void LocalAudioSinkAdapter::SetSink(cricket::AudioSource::Sink* sink) {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&lock_);
   RTC_DCHECK(!sink || !sink_);
   sink_ = sink;
 }
@@ -410,16 +422,15 @@ void LocalAudioSinkAdapter::SetSink(cricket::AudioSource::Sink* sink) {
 rtc::scoped_refptr<AudioRtpSender> AudioRtpSender::Create(
     rtc::Thread* worker_thread,
     const std::string& id,
-    StatsCollector* stats,
+    StatsCollectorInterface* stats,
     SetStreamsObserver* set_streams_observer) {
-  return rtc::scoped_refptr<AudioRtpSender>(
-      new rtc::RefCountedObject<AudioRtpSender>(worker_thread, id, stats,
-                                                set_streams_observer));
+  return rtc::make_ref_counted<AudioRtpSender>(worker_thread, id, stats,
+                                               set_streams_observer);
 }
 
 AudioRtpSender::AudioRtpSender(rtc::Thread* worker_thread,
                                const std::string& id,
-                               StatsCollector* stats,
+                               StatsCollectorInterface* stats,
                                SetStreamsObserver* set_streams_observer)
     : RtpSenderBase(worker_thread, id, set_streams_observer),
       stats_(stats),
@@ -527,7 +538,7 @@ void AudioRtpSender::SetSend() {
   }
 #endif
 
-  // |track_->enabled()| hops to the signaling thread, so call it before we hop
+  // `track_->enabled()` hops to the signaling thread, so call it before we hop
   // to the worker thread or else it will deadlock.
   bool track_enabled = track_->enabled();
   bool success = worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
@@ -559,9 +570,8 @@ rtc::scoped_refptr<VideoRtpSender> VideoRtpSender::Create(
     rtc::Thread* worker_thread,
     const std::string& id,
     SetStreamsObserver* set_streams_observer) {
-  return rtc::scoped_refptr<VideoRtpSender>(
-      new rtc::RefCountedObject<VideoRtpSender>(worker_thread, id,
-                                                set_streams_observer));
+  return rtc::make_ref_counted<VideoRtpSender>(worker_thread, id,
+                                               set_streams_observer);
 }
 
 VideoRtpSender::VideoRtpSender(rtc::Thread* worker_thread,
@@ -607,6 +617,7 @@ void VideoRtpSender::SetSend() {
     options.is_screencast = source->is_screencast();
     options.video_noise_reduction = source->needs_denoising();
   }
+  options.content_hint = cached_track_content_hint_;
   switch (cached_track_content_hint_) {
     case VideoTrackInterface::ContentHint::kNone:
       break;
@@ -631,7 +642,7 @@ void VideoRtpSender::ClearSend() {
     RTC_LOG(LS_WARNING) << "SetVideoSend: No video channel exists.";
     return;
   }
-  // Allow SetVideoSend to fail since |enable| is false and |source| is null.
+  // Allow SetVideoSend to fail since `enable` is false and `source` is null.
   // This the normal case when the underlying media channel has already been
   // deleted.
   worker_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {

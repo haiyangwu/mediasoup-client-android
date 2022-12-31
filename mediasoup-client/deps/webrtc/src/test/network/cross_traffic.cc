@@ -16,6 +16,7 @@
 
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
+#include "cross_traffic.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_minmax.h"
 
@@ -23,7 +24,7 @@ namespace webrtc {
 namespace test {
 
 RandomWalkCrossTraffic::RandomWalkCrossTraffic(RandomWalkConfig config,
-                                               TrafficRoute* traffic_route)
+                                               CrossTrafficRoute* traffic_route)
     : config_(config),
       traffic_route_(traffic_route),
       random_(config_.random_seed) {
@@ -55,6 +56,10 @@ void RandomWalkCrossTraffic::Process(Timestamp at_time) {
   }
 }
 
+TimeDelta RandomWalkCrossTraffic::GetProcessInterval() const {
+  return config_.min_packet_interval;
+}
+
 DataRate RandomWalkCrossTraffic::TrafficRate() const {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
   return config_.peak_rate * intensity_;
@@ -69,8 +74,9 @@ ColumnPrinter RandomWalkCrossTraffic::StatsPrinter() {
       32);
 }
 
-PulsedPeaksCrossTraffic::PulsedPeaksCrossTraffic(PulsedPeaksConfig config,
-                                                 TrafficRoute* traffic_route)
+PulsedPeaksCrossTraffic::PulsedPeaksCrossTraffic(
+    PulsedPeaksConfig config,
+    CrossTrafficRoute* traffic_route)
     : config_(config), traffic_route_(traffic_route) {
   sequence_checker_.Detach();
 }
@@ -101,6 +107,10 @@ void PulsedPeaksCrossTraffic::Process(Timestamp at_time) {
   }
 }
 
+TimeDelta PulsedPeaksCrossTraffic::GetProcessInterval() const {
+  return config_.min_packet_interval;
+}
+
 DataRate PulsedPeaksCrossTraffic::TrafficRate() const {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
   return sending_ ? config_.peak_rate : DataRate::Zero();
@@ -115,21 +125,137 @@ ColumnPrinter PulsedPeaksCrossTraffic::StatsPrinter() {
       32);
 }
 
-FakeTcpCrossTraffic::FakeTcpCrossTraffic(Clock* clock,
-                                         FakeTcpConfig config,
+TcpMessageRouteImpl::TcpMessageRouteImpl(Clock* clock,
+                                         TaskQueueBase* task_queue,
                                          EmulatedRoute* send_route,
                                          EmulatedRoute* ret_route)
-    : clock_(clock), conf_(config), route_(this, send_route, ret_route) {}
+    : clock_(clock),
+      task_queue_(task_queue),
+      request_route_(send_route,
+                     [this](TcpPacket packet, Timestamp) {
+                       OnRequest(std::move(packet));
+                     }),
+      response_route_(ret_route,
+                      [this](TcpPacket packet, Timestamp arrival_time) {
+                        OnResponse(std::move(packet), arrival_time);
+                      }) {}
 
-void FakeTcpCrossTraffic::Start(TaskQueueBase* task_queue) {
-  repeating_task_handle_ = RepeatingTaskHandle::Start(task_queue, [this] {
-    Process(clock_->CurrentTime());
-    return conf_.process_interval;
-  });
+void TcpMessageRouteImpl::SendMessage(size_t size,
+                                      std::function<void()> on_received) {
+  task_queue_->PostTask(
+      ToQueuedTask([this, size, handler = std::move(on_received)] {
+        // If we are currently sending a message we won't reset the connection,
+        // we'll act as if the messages are sent in the same TCP stream. This is
+        // intended to simulate recreation of a TCP session for each message
+        // in the typical case while avoiding the complexity overhead of
+        // maintaining multiple virtual TCP sessions in parallel.
+        if (pending_.empty() && in_flight_.empty()) {
+          cwnd_ = 10;
+          ssthresh_ = INFINITY;
+        }
+        int64_t data_left = static_cast<int64_t>(size);
+        int64_t kMaxPacketSize = 1200;
+        int64_t kMinPacketSize = 4;
+        Message message{std::move(handler)};
+        while (data_left > 0) {
+          int64_t packet_size = std::min(data_left, kMaxPacketSize);
+          int fragment_id = next_fragment_id_++;
+          pending_.push_back(MessageFragment{
+              fragment_id,
+              static_cast<size_t>(std::max(kMinPacketSize, packet_size))});
+          message.pending_fragment_ids.insert(fragment_id);
+          data_left -= packet_size;
+        }
+        messages_.emplace_back(message);
+        SendPackets(clock_->CurrentTime());
+      }));
 }
 
-void FakeTcpCrossTraffic::Stop() {
-  repeating_task_handle_.Stop();
+void TcpMessageRouteImpl::OnRequest(TcpPacket packet_info) {
+  for (auto it = messages_.begin(); it != messages_.end(); ++it) {
+    if (it->pending_fragment_ids.count(packet_info.fragment.fragment_id) != 0) {
+      it->pending_fragment_ids.erase(packet_info.fragment.fragment_id);
+      if (it->pending_fragment_ids.empty()) {
+        it->handler();
+        messages_.erase(it);
+      }
+      break;
+    }
+  }
+  const size_t kAckPacketSize = 20;
+  response_route_.SendPacket(kAckPacketSize, packet_info);
+}
+
+void TcpMessageRouteImpl::OnResponse(TcpPacket packet_info, Timestamp at_time) {
+  auto it = in_flight_.find(packet_info.sequence_number);
+  if (it != in_flight_.end()) {
+    last_rtt_ = at_time - packet_info.send_time;
+    in_flight_.erase(it);
+  }
+  auto lost_end = in_flight_.lower_bound(packet_info.sequence_number);
+  for (auto lost_it = in_flight_.begin(); lost_it != lost_end;
+       lost_it = in_flight_.erase(lost_it)) {
+    pending_.push_front(lost_it->second.fragment);
+  }
+
+  if (packet_info.sequence_number - last_acked_seq_num_ > 1) {
+    HandleLoss(at_time);
+  } else if (cwnd_ <= ssthresh_) {
+    cwnd_ += 1;
+  } else {
+    cwnd_ += 1.0f / cwnd_;
+  }
+  last_acked_seq_num_ =
+      std::max(packet_info.sequence_number, last_acked_seq_num_);
+  SendPackets(at_time);
+}
+
+void TcpMessageRouteImpl::HandleLoss(Timestamp at_time) {
+  if (at_time - last_reduction_time_ < last_rtt_)
+    return;
+  last_reduction_time_ = at_time;
+  ssthresh_ = std::max(static_cast<int>(in_flight_.size() / 2), 2);
+  cwnd_ = ssthresh_;
+}
+
+void TcpMessageRouteImpl::SendPackets(Timestamp at_time) {
+  const TimeDelta kPacketTimeout = TimeDelta::Seconds(1);
+  int cwnd = std::ceil(cwnd_);
+  int packets_to_send = std::max(cwnd - static_cast<int>(in_flight_.size()), 0);
+  while (packets_to_send-- > 0 && !pending_.empty()) {
+    auto seq_num = next_sequence_number_++;
+    TcpPacket send;
+    send.sequence_number = seq_num;
+    send.send_time = at_time;
+    send.fragment = pending_.front();
+    pending_.pop_front();
+    request_route_.SendPacket(send.fragment.size, send);
+    in_flight_.insert({seq_num, send});
+    task_queue_->PostDelayedTask(ToQueuedTask([this, seq_num] {
+                                   HandlePacketTimeout(seq_num,
+                                                       clock_->CurrentTime());
+                                 }),
+                                 kPacketTimeout.ms());
+  }
+}
+
+void TcpMessageRouteImpl::HandlePacketTimeout(int seq_num, Timestamp at_time) {
+  auto lost = in_flight_.find(seq_num);
+  if (lost != in_flight_.end()) {
+    pending_.push_front(lost->second.fragment);
+    in_flight_.erase(lost);
+    HandleLoss(at_time);
+    SendPackets(at_time);
+  }
+}
+
+FakeTcpCrossTraffic::FakeTcpCrossTraffic(FakeTcpConfig config,
+                                         EmulatedRoute* send_route,
+                                         EmulatedRoute* ret_route)
+    : conf_(config), route_(this, send_route, ret_route) {}
+
+TimeDelta FakeTcpCrossTraffic::GetProcessInterval() const {
+  return conf_.process_interval;
 }
 
 void FakeTcpCrossTraffic::Process(Timestamp at_time) {

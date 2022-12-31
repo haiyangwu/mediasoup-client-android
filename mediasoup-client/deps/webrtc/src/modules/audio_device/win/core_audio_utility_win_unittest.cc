@@ -11,10 +11,9 @@
 #include "modules/audio_device/win/core_audio_utility_win.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/win/scoped_com_initializer.h"
 #include "rtc_base/win/windows_version.h"
 #include "test/gtest.h"
-
-#include "system_wrappers/include/sleep.h"
 
 using Microsoft::WRL::ComPtr;
 using webrtc::AudioDeviceName;
@@ -56,8 +55,7 @@ bool ShouldAbortTest(bool requirements_satisfied,
 // CoreAudioUtilityWinTest test fixture.
 class CoreAudioUtilityWinTest : public ::testing::Test {
  protected:
-  CoreAudioUtilityWinTest()
-      : com_init_(webrtc_win::ScopedCOMInitializer::kMTA) {
+  CoreAudioUtilityWinTest() : com_init_(ScopedCOMInitializer::kMTA) {
     // We must initialize the COM library on a thread before we calling any of
     // the library functions. All COM functions will return CO_E_NOTINITIALIZED
     // otherwise.
@@ -80,6 +78,68 @@ class CoreAudioUtilityWinTest : public ::testing::Test {
  private:
   ScopedCOMInitializer com_init_;
 };
+
+TEST_F(CoreAudioUtilityWinTest, WaveFormatWrapper) {
+  // Use default constructor for WAVEFORMATEX and verify its size.
+  WAVEFORMATEX format = {};
+  core_audio_utility::WaveFormatWrapper wave_format(&format);
+  EXPECT_FALSE(wave_format.IsExtensible());
+  EXPECT_EQ(wave_format.size(), sizeof(WAVEFORMATEX));
+  EXPECT_EQ(wave_format->cbSize, 0);
+
+  // Ensure that the stand-alone WAVEFORMATEX structure has a valid format tag
+  // and that all accessors work.
+  format.wFormatTag = WAVE_FORMAT_PCM;
+  EXPECT_FALSE(wave_format.IsExtensible());
+  EXPECT_EQ(wave_format.size(), sizeof(WAVEFORMATEX));
+  EXPECT_EQ(wave_format.get()->wFormatTag, WAVE_FORMAT_PCM);
+  EXPECT_EQ(wave_format->wFormatTag, WAVE_FORMAT_PCM);
+
+  // Next, ensure that the size is valid. Stand-alone is not extended.
+  EXPECT_EQ(wave_format.size(), sizeof(WAVEFORMATEX));
+
+  // Verify format types for the stand-alone version.
+  EXPECT_TRUE(wave_format.IsPcm());
+  EXPECT_FALSE(wave_format.IsFloat());
+  format.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+  EXPECT_TRUE(wave_format.IsFloat());
+}
+
+TEST_F(CoreAudioUtilityWinTest, WaveFormatWrapperExtended) {
+  // Use default constructor for WAVEFORMATEXTENSIBLE and verify that it
+  // results in same size as for WAVEFORMATEX even if the size of `format_ex`
+  // equals the size of WAVEFORMATEXTENSIBLE.
+  WAVEFORMATEXTENSIBLE format_ex = {};
+  core_audio_utility::WaveFormatWrapper wave_format_ex(&format_ex);
+  EXPECT_FALSE(wave_format_ex.IsExtensible());
+  EXPECT_EQ(wave_format_ex.size(), sizeof(WAVEFORMATEX));
+  EXPECT_EQ(wave_format_ex->cbSize, 0);
+
+  // Ensure that the extended structure has a valid format tag and that all
+  // accessors work.
+  format_ex.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+  EXPECT_FALSE(wave_format_ex.IsExtensible());
+  EXPECT_EQ(wave_format_ex.size(), sizeof(WAVEFORMATEX));
+  EXPECT_EQ(wave_format_ex->wFormatTag, WAVE_FORMAT_EXTENSIBLE);
+  EXPECT_EQ(wave_format_ex.get()->wFormatTag, WAVE_FORMAT_EXTENSIBLE);
+
+  // Next, ensure that the size is valid (sum of stand-alone and extended).
+  // Now the structure qualifies as extended.
+  format_ex.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+  EXPECT_TRUE(wave_format_ex.IsExtensible());
+  EXPECT_EQ(wave_format_ex.size(), sizeof(WAVEFORMATEXTENSIBLE));
+  EXPECT_TRUE(wave_format_ex.GetExtensible());
+  EXPECT_EQ(wave_format_ex.GetExtensible()->Format.wFormatTag,
+            WAVE_FORMAT_EXTENSIBLE);
+
+  // Verify format types for the extended version.
+  EXPECT_FALSE(wave_format_ex.IsPcm());
+  format_ex.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+  EXPECT_TRUE(wave_format_ex.IsPcm());
+  EXPECT_FALSE(wave_format_ex.IsFloat());
+  format_ex.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+  EXPECT_TRUE(wave_format_ex.IsFloat());
+}
 
 TEST_F(CoreAudioUtilityWinTest, NumberOfActiveDevices) {
   ABORT_TEST_IF_NOT(DevicesAvailable());
@@ -259,7 +319,7 @@ TEST_F(CoreAudioUtilityWinTest, CreateSessionManager2) {
   EDataFlow data_flow[] = {eRender, eCapture};
 
   // Obtain reference to an IAudioSessionManager2 interface for a default audio
-  // endpoint device specified by two different data flows and the |eConsole|
+  // endpoint device specified by two different data flows and the `eConsole`
   // role.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
     ComPtr<IMMDevice> device(core_audio_utility::CreateDevice(
@@ -279,7 +339,7 @@ TEST_F(CoreAudioUtilityWinTest, CreateSessionEnumerator) {
 
   // Obtain reference to an IAudioSessionEnumerator interface for a default
   // audio endpoint device specified by two different data flows and the
-  // |eConsole| role.
+  // `eConsole` role.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
     ComPtr<IMMDevice> device(core_audio_utility::CreateDevice(
         AudioDeviceName::kDefaultDeviceId, data_flow[i], eConsole));
@@ -304,7 +364,7 @@ TEST_F(CoreAudioUtilityWinTest, NumberOfActiveSessions) {
   EDataFlow data_flow[] = {eRender, eCapture};
 
   // Count number of active audio session for a default audio endpoint device
-  // specified by two different data flows and the |eConsole| role.
+  // specified by two different data flows and the `eConsole` role.
   // Ensure that the number of active audio sessions is less than or equal to
   // the total number of audio sessions on that same device.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
@@ -334,7 +394,7 @@ TEST_F(CoreAudioUtilityWinTest, CreateClient) {
   EDataFlow data_flow[] = {eRender, eCapture};
 
   // Obtain reference to an IAudioClient interface for a default audio endpoint
-  // device specified by two different data flows and the |eConsole| role.
+  // device specified by two different data flows and the `eConsole` role.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
     ComPtr<IAudioClient> client = core_audio_utility::CreateClient(
         AudioDeviceName::kDefaultDeviceId, data_flow[i], eConsole);
@@ -349,7 +409,7 @@ TEST_F(CoreAudioUtilityWinTest, CreateClient2) {
   EDataFlow data_flow[] = {eRender, eCapture};
 
   // Obtain reference to an IAudioClient2 interface for a default audio endpoint
-  // device specified by two different data flows and the |eConsole| role.
+  // device specified by two different data flows and the `eConsole` role.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
     ComPtr<IAudioClient2> client2 = core_audio_utility::CreateClient2(
         AudioDeviceName::kDefaultDeviceId, data_flow[i], eConsole);
@@ -364,7 +424,7 @@ TEST_F(CoreAudioUtilityWinTest, CreateClient3) {
   EDataFlow data_flow[] = {eRender, eCapture};
 
   // Obtain reference to an IAudioClient3 interface for a default audio endpoint
-  // device specified by two different data flows and the |eConsole| role.
+  // device specified by two different data flows and the `eConsole` role.
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
     ComPtr<IAudioClient3> client3 = core_audio_utility::CreateClient3(
         AudioDeviceName::kDefaultDeviceId, data_flow[i], eConsole);
@@ -438,14 +498,20 @@ TEST_F(CoreAudioUtilityWinTest, GetSharedModeMixFormat) {
   EXPECT_TRUE(client.Get());
 
   // Perform a simple sanity test of the acquired format structure.
-  WAVEFORMATPCMEX format;
+  WAVEFORMATEXTENSIBLE format;
   EXPECT_TRUE(SUCCEEDED(
       core_audio_utility::GetSharedModeMixFormat(client.Get(), &format)));
-  EXPECT_GE(format.Format.nChannels, 1);
-  EXPECT_GE(format.Format.nSamplesPerSec, 8000u);
-  EXPECT_GE(format.Format.wBitsPerSample, 16);
-  EXPECT_GE(format.Samples.wValidBitsPerSample, 16);
-  EXPECT_EQ(format.Format.wFormatTag, WAVE_FORMAT_EXTENSIBLE);
+  core_audio_utility::WaveFormatWrapper wformat(&format);
+  EXPECT_GE(wformat->nChannels, 1);
+  EXPECT_GE(wformat->nSamplesPerSec, 8000u);
+  EXPECT_GE(wformat->wBitsPerSample, 16);
+  if (wformat.IsExtensible()) {
+    EXPECT_EQ(wformat->wFormatTag, WAVE_FORMAT_EXTENSIBLE);
+    EXPECT_GE(wformat->cbSize, 22);
+    EXPECT_GE(wformat.GetExtensible()->Samples.wValidBitsPerSample, 16);
+  } else {
+    EXPECT_EQ(wformat->cbSize, 0);
+  }
 }
 
 TEST_F(CoreAudioUtilityWinTest, IsFormatSupported) {
@@ -478,8 +544,8 @@ TEST_F(CoreAudioUtilityWinTest, GetDevicePeriod) {
 
   // Verify that the device periods are valid for the default render and
   // capture devices.
+  ComPtr<IAudioClient> client;
   for (size_t i = 0; i < arraysize(data_flow); ++i) {
-    ComPtr<IAudioClient> client;
     REFERENCE_TIME shared_time_period = 0;
     REFERENCE_TIME exclusive_time_period = 0;
     client = core_audio_utility::CreateClient(AudioDeviceName::kDefaultDeviceId,
@@ -498,25 +564,24 @@ TEST_F(CoreAudioUtilityWinTest, GetDevicePeriod) {
 TEST_F(CoreAudioUtilityWinTest, GetPreferredAudioParameters) {
   ABORT_TEST_IF_NOT(DevicesAvailable());
 
-  EDataFlow data_flow[] = {eRender, eCapture};
+  struct {
+    EDataFlow flow;
+    ERole role;
+  } data[] = {{eRender, eConsole},
+              {eRender, eCommunications},
+              {eCapture, eConsole},
+              {eCapture, eCommunications}};
 
-  // Verify that the preferred audio parameters are OK for the default render
-  // and capture devices.
-  for (size_t i = 0; i < arraysize(data_flow); ++i) {
-    webrtc::AudioParameters params;
+  // Verify that the preferred audio parameters are OK for all flow/role
+  // combinations above.
+  ComPtr<IAudioClient> client;
+  webrtc::AudioParameters params;
+  for (size_t i = 0; i < arraysize(data); ++i) {
+    client = core_audio_utility::CreateClient(AudioDeviceName::kDefaultDeviceId,
+                                              data[i].flow, data[i].role);
+    EXPECT_TRUE(client.Get());
     EXPECT_TRUE(SUCCEEDED(core_audio_utility::GetPreferredAudioParameters(
-        AudioDeviceName::kDefaultDeviceId, data_flow[i] == eRender, &params)));
-    EXPECT_TRUE(params.is_valid());
-    EXPECT_TRUE(params.is_complete());
-  }
-
-  // Verify that the preferred audio parameters are OK for the default
-  // communication devices.
-  for (size_t i = 0; i < arraysize(data_flow); ++i) {
-    webrtc::AudioParameters params;
-    EXPECT_TRUE(SUCCEEDED(core_audio_utility::GetPreferredAudioParameters(
-        AudioDeviceName::kDefaultCommunicationsDeviceId,
-        data_flow[i] == eRender, &params)));
+        client.Get(), &params)));
     EXPECT_TRUE(params.is_valid());
     EXPECT_TRUE(params.is_complete());
   }

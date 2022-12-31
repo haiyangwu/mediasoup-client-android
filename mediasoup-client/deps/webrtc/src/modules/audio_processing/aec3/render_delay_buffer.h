@@ -48,6 +48,9 @@ class RenderDelayBuffer {
   // an enum indicating whether there was a special event that occurred.
   virtual BufferingEvent PrepareCaptureProcessing() = 0;
 
+  // Called on capture blocks where PrepareCaptureProcessing is not called.
+  virtual void HandleSkippedCaptureProcessing() = 0;
+
   // Sets the buffer delay and returns a bool indicating whether the delay
   // changed.
   virtual bool AlignFromDelay(size_t delay) = 0;
@@ -71,7 +74,7 @@ class RenderDelayBuffer {
   static int DelayEstimatorOffset(const EchoCanceller3Config& config);
 
   // Provides an optional external estimate of the audio buffer delay.
-  virtual void SetAudioBufferDelay(size_t delay_ms) = 0;
+  virtual void SetAudioBufferDelay(int delay_ms) = 0;
 
   // Returns whether an external delay estimate has been reported via
   // SetAudioBufferDelay.

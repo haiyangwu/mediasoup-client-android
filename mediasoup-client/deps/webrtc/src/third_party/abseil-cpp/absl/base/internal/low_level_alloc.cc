@@ -332,7 +332,7 @@ size_t GetPageSize() {
 #elif defined(__wasm__) || defined(__asmjs__)
   return getpagesize();
 #else
-  return sysconf(_SC_PAGESIZE);
+  return static_cast<size_t>(sysconf(_SC_PAGESIZE));
 #endif
 }
 
@@ -364,7 +364,7 @@ LowLevelAlloc::Arena::Arena(uint32_t flags_value)
 }
 
 // L < meta_data_arena->mu
-LowLevelAlloc::Arena *LowLevelAlloc::NewArena(int32_t flags) {
+LowLevelAlloc::Arena *LowLevelAlloc::NewArena(uint32_t flags) {
   Arena *meta_data_arena = DefaultArena();
 #ifndef ABSL_LOW_LEVEL_ALLOC_ASYNC_SIGNAL_SAFE_MISSING
   if ((flags & LowLevelAlloc::kAsyncSignalSafe) != 0) {
@@ -598,7 +598,7 @@ static void *DoAllocWithArena(size_t request, LowLevelAlloc::Arena *arena) {
     section.Leave();
     result = &s->levels;
   }
-  ANNOTATE_MEMORY_IS_UNINITIALIZED(result, request);
+  ABSL_ANNOTATE_MEMORY_IS_UNINITIALIZED(result, request);
   return result;
 }
 

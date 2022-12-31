@@ -36,7 +36,7 @@ namespace {
 // window managers may re-parent them to add decorations. However,
 // XQueryPointer() expects to be passed children of the root. This function
 // searches up the list of the windows to find the root child that corresponds
-// to |window|.
+// to `window`.
 Window GetTopLevelWindow(Display* display, Window window) {
   while (true) {
     // If the window is in WithdrawnState then look at all of its children.
@@ -46,7 +46,7 @@ Window GetTopLevelWindow(Display* display, Window window) {
     if (!XQueryTree(display, window, &root, &parent, &children,
                     &num_children)) {
       RTC_LOG(LS_ERROR) << "Failed to query for child windows although window"
-                        << "does not have a valid WM_STATE.";
+                           "does not have a valid WM_STATE.";
       return None;
     }
     if (children)
@@ -153,17 +153,17 @@ void MouseCursorMonitorX11::Capture() {
       state = OUTSIDE;
     } else {
       // In screen mode (window_ == root_window) the mouse is always inside.
-      // XQueryPointer() sets |child_window| to None if the cursor is outside
-      // |window_|.
+      // XQueryPointer() sets `child_window` to None if the cursor is outside
+      // `window_`.
       state =
           (window_ == root_window || child_window != None) ? INSIDE : OUTSIDE;
     }
 
     // As the comments to GetTopLevelWindow() above indicate, in window capture,
-    // the cursor position capture happens in |window_|, while the frame catpure
-    // happens in |child_window|. These two windows are not alwyas same, as
-    // window manager may add some decorations to the |window_|. So translate
-    // the coordinate in |window_| to the coordinate space of |child_window|.
+    // the cursor position capture happens in `window_`, while the frame catpure
+    // happens in `child_window`. These two windows are not alwyas same, as
+    // window manager may add some decorations to the `window_`. So translate
+    // the coordinate in `window_` to the coordinate space of `child_window`.
     if (window_ != root_window && state == INSIDE) {
       int translated_x, translated_y;
       Window unused;

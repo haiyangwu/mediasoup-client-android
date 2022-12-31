@@ -8,7 +8,9 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -64,6 +66,7 @@ class FuzzRtpInput : public NetEqInput {
                                       std::numeric_limits<int64_t>::max()));
     packet_ = input_->PopPacket();
     FuzzHeader();
+    MaybeFuzzPayload();
   }
 
   absl::optional<int64_t> NextPacketTime() const override {
@@ -79,6 +82,7 @@ class FuzzRtpInput : public NetEqInput {
     std::unique_ptr<PacketData> packet_to_return = std::move(packet_);
     packet_ = input_->PopPacket();
     FuzzHeader();
+    MaybeFuzzPayload();
     return packet_to_return;
   }
 
@@ -116,6 +120,30 @@ class FuzzRtpInput : public NetEqInput {
     RTC_CHECK_EQ(data_ix_ - start_ix, kNumBytesToFuzz);
   }
 
+  void MaybeFuzzPayload() {
+    // Read one byte of fuzz data to determine how many payload bytes to fuzz.
+    if (data_ix_ + 1 > data_.size()) {
+      ended_ = true;
+      return;
+    }
+    size_t bytes_to_fuzz = data_[data_ix_++];
+
+    // Restrict number of bytes to fuzz to 16; a reasonably low number enough to
+    // cover a few RED headers. Also don't write outside the payload length.
+    bytes_to_fuzz = std::min(bytes_to_fuzz % 16, packet_->payload.size());
+
+    if (bytes_to_fuzz == 0)
+      return;
+
+    if (data_ix_ + bytes_to_fuzz > data_.size()) {
+      ended_ = true;
+      return;
+    }
+
+    std::memcpy(packet_->payload.data(), &data_[data_ix_], bytes_to_fuzz);
+    data_ix_ += bytes_to_fuzz;
+  }
+
   bool ended_ = false;
   rtc::ArrayView<const uint8_t> data_;
   size_t data_ix_ = 0;
@@ -138,7 +166,8 @@ void FuzzOneInputTest(const uint8_t* data, size_t size) {
   RTC_CHECK(it != codecs.end());
   RTC_CHECK(it->second == SdpAudioFormat("L16", 32000, 1));
 
-  NetEqTest test(config, CreateBuiltinAudioDecoderFactory(), codecs, nullptr,
+  NetEqTest test(config, CreateBuiltinAudioDecoderFactory(), codecs,
+                 /*text_log=*/nullptr, /*neteq_factory=*/nullptr,
                  std::move(input), std::move(output), callbacks);
   test.Run();
 }

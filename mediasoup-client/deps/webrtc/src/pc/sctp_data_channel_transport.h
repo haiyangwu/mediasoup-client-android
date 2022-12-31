@@ -11,8 +11,11 @@
 #ifndef PC_SCTP_DATA_CHANNEL_TRANSPORT_H_
 #define PC_SCTP_DATA_CHANNEL_TRANSPORT_H_
 
+#include "api/rtc_error.h"
 #include "api/transport/data_channel_transport_interface.h"
+#include "media/base/media_channel.h"
 #include "media/sctp/sctp_transport_internal.h"
+#include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
 
 namespace webrtc {
@@ -38,6 +41,7 @@ class SctpDataChannelTransport : public DataChannelTransportInterface,
                       const rtc::CopyOnWriteBuffer& buffer);
   void OnClosingProcedureStartedRemotely(int channel_id);
   void OnClosingProcedureComplete(int channel_id);
+  void OnClosedAbruptly(RTCError error);
 
   cricket::SctpTransportInternal* const sctp_transport_;
 

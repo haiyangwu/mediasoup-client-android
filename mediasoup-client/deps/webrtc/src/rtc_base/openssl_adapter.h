@@ -11,6 +11,7 @@
 #ifndef RTC_BASE_OPENSSL_ADAPTER_H_
 #define RTC_BASE_OPENSSL_ADAPTER_H_
 
+#include <openssl/ossl_typ.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,8 +22,11 @@
 #include "rtc_base/async_socket.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/message_handler.h"
-#include "rtc_base/message_queue.h"
+#ifdef OPENSSL_IS_BORINGSSL
+#include "rtc_base/boringssl_identity.h"
+#else
 #include "rtc_base/openssl_identity.h"
+#endif
 #include "rtc_base/openssl_session_cache.h"
 #include "rtc_base/socket.h"
 #include "rtc_base/socket_address.h"
@@ -33,7 +37,8 @@
 
 namespace rtc {
 
-class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
+class OpenSSLAdapter final : public SSLAdapter,
+                             public MessageHandlerAutoCleanup {
  public:
   static bool InitializeSSL();
   static bool CleanupSSL();
@@ -54,10 +59,10 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   void SetEllipticCurves(const std::vector<std::string>& curves) override;
   void SetMode(SSLMode mode) override;
   void SetCertVerifier(SSLCertificateVerifier* ssl_cert_verifier) override;
-  void SetIdentity(SSLIdentity* identity) override;
+  void SetIdentity(std::unique_ptr<SSLIdentity> identity) override;
   void SetRole(SSLRole role) override;
   AsyncSocket* Accept(SocketAddress* paddr) override;
-  int StartSSL(const char* hostname, bool restartable) override;
+  int StartSSL(const char* hostname) override;
   int Send(const void* pv, size_t cb) override;
   int SendTo(const void* pv, size_t cb, const SocketAddress& addr) override;
   int Recv(void* pv, size_t cb, int64_t* timestamp) override;
@@ -70,7 +75,7 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   ConnState GetState() const override;
   bool IsResumedSession() override;
   // Creates a new SSL_CTX object, configured for client-to-server usage
-  // with SSLMode |mode|, and if |enable_cache| is true, with support for
+  // with SSLMode `mode`, and if `enable_cache` is true, with support for
   // storing successful sessions so that they can be later resumed.
   // OpenSSLAdapterFactory will call this method to create its own internal
   // SSL_CTX, and OpenSSLAdapter will also call this when used without a
@@ -84,6 +89,16 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   void OnCloseEvent(AsyncSocket* socket, int err) override;
 
  private:
+  class EarlyExitCatcher {
+   public:
+    EarlyExitCatcher(OpenSSLAdapter& adapter_ptr);
+    void disable();
+    ~EarlyExitCatcher();
+
+   private:
+    bool disabled_ = false;
+    OpenSSLAdapter& adapter_ptr_;
+  };
   enum SSLState {
     SSL_NONE,
     SSL_WAIT,
@@ -99,7 +114,7 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   void Error(const char* context, int err, bool signal = true);
   void Cleanup();
 
-  // Return value and arguments have the same meanings as for Send; |error| is
+  // Return value and arguments have the same meanings as for Send; `error` is
   // an output parameter filled with the result of SSL_get_error.
   int DoSslWrite(const void* pv, size_t cb, int* error);
   void OnMessage(Message* msg) override;
@@ -109,10 +124,19 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   // In debug builds, logs info about the state of the SSL connection.
   static void SSLInfoCallback(const SSL* ssl, int where, int ret);
 #endif
+
+#if defined(OPENSSL_IS_BORINGSSL) && \
+    defined(WEBRTC_EXCLUDE_BUILT_IN_SSL_ROOT_CERTS)
+  static enum ssl_verify_result_t SSLVerifyCallback(SSL* ssl,
+                                                    uint8_t* out_alert);
+  enum ssl_verify_result_t SSLVerifyInternal(SSL* ssl, uint8_t* out_alert);
+#else
   static int SSLVerifyCallback(int ok, X509_STORE_CTX* store);
+  int SSLVerifyInternal(int ok, SSL* ssl, X509_STORE_CTX* store);
+#endif
   friend class OpenSSLStreamAdapter;  // for custom_verify_callback_;
 
-  // If the SSL_CTX was created with |enable_cache| set to true, this callback
+  // If the SSL_CTX was created with `enable_cache` set to true, this callback
   // will be called when a SSL session has been successfully established,
   // to allow its SSL_SESSION* to be cached for later resumption.
   static int NewSSLSessionCallback(SSL* ssl, SSL_SESSION* session);
@@ -123,14 +147,16 @@ class OpenSSLAdapter final : public SSLAdapter, public MessageHandler {
   SSLCertificateVerifier* ssl_cert_verifier_ = nullptr;
   // The current connection state of the (d)TLS connection.
   SSLState state_;
+
+#ifdef OPENSSL_IS_BORINGSSL
+  std::unique_ptr<BoringSSLIdentity> identity_;
+#else
   std::unique_ptr<OpenSSLIdentity> identity_;
+#endif
   // Indicates whethere this is a client or a server.
   SSLRole role_;
   bool ssl_read_needs_write_;
   bool ssl_write_needs_read_;
-  // If true, socket will retain SSL configuration after Close.
-  // TODO(juberti): Remove this unused flag.
-  bool restartable_;
   // This buffer is used if SSL_write fails with SSL_ERROR_WANT_WRITE, which
   // means we need to keep retrying with *the same exact data* until it
   // succeeds. Afterwards it will be cleared.
@@ -185,6 +211,10 @@ class OpenSSLAdapterFactory : public SSLAdapterFactory {
   // Hold a friend class to the OpenSSLAdapter to retrieve the context.
   friend class OpenSSLAdapter;
 };
+
+// The EarlyExitCatcher is responsible for calling OpenSSLAdapter::Cleanup on
+// destruction. By doing this we have scoped cleanup which can be disabled if
+// there were no errors, aka early exits.
 
 std::string TransformAlpnProtocols(const std::vector<std::string>& protos);
 

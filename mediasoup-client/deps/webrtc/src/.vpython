@@ -9,7 +9,7 @@
 # CIPD (the "Chrome Infrastructure Package Deployer" service). Unlike `pip`,
 # this never requires the end-user machine to have a working python extension
 # compilation environment. All of these packages are built using:
-#   https://chromium.googlesource.com/infra/infra/+/master/infra/tools/dockerbuild/
+#   https://chromium.googlesource.com/infra/infra/+/main/infra/tools/dockerbuild/
 #
 # All python scripts in the repo share this same spec, to avoid dependency
 # fragmentation.
@@ -20,7 +20,7 @@
 #   vpython path/to/script.py some --arguments
 #
 # Read more about `vpython` and how to modify this file here:
-#   https://chromium.googlesource.com/infra/infra/+/master/doc/users/vpython.md
+#   https://chromium.googlesource.com/infra/infra/+/main/doc/users/vpython.md
 
 python_version: "2.7"
 
@@ -29,6 +29,12 @@ python_version: "2.7"
 wheel: <
   name: "infra/python/wheels/psutil/${platform}_${py_python}_${py_abi}"
   version: "version:5.2.2"
+>
+
+# Used by tools_webrtc/perf/webrtc_dashboard_upload.py.
+wheel: <
+  name: "infra/python/wheels/httplib2-py2_py3"
+  version: "version:0.10.3"
 >
 
 # Used by:
@@ -46,7 +52,7 @@ wheel: <
 
 wheel: <
   name: "infra/python/wheels/six-py2_py3"
-  version: "version:1.10.0"
+  version: "version:1.15.0"
 >
 wheel: <
   name: "infra/python/wheels/pbr-py2_py3"
@@ -59,4 +65,12 @@ wheel: <
 wheel: <
   name: "infra/python/wheels/mock-py2_py3"
   version: "version:2.0.0"
+>
+wheel: <
+  name: "infra/python/wheels/protobuf-py2_py3"
+  version: "version:3.13.0"
+>
+wheel: <
+  name: "infra/python/wheels/requests-py2_py3"
+  version: "version:2.13.0"
 >

@@ -39,7 +39,9 @@ class ResidualEchoEstimator {
       const RenderBuffer& render_buffer,
       rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> S2_linear,
       rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> Y2,
-      rtc::ArrayView<std::array<float, kFftLengthBy2Plus1>> R2);
+      bool dominant_nearend,
+      rtc::ArrayView<std::array<float, kFftLengthBy2Plus1>> R2,
+      rtc::ArrayView<std::array<float, kFftLengthBy2Plus1>> R2_unbounded);
 
  private:
   enum class ReverbType { kLinear, kNonLinear };
@@ -51,15 +53,27 @@ class ResidualEchoEstimator {
   // render signal.
   void UpdateRenderNoisePower(const RenderBuffer& render_buffer);
 
+  // Updates the reverb estimation.
+  void UpdateReverb(ReverbType reverb_type,
+                    const AecState& aec_state,
+                    const RenderBuffer& render_buffer);
+
   // Adds the estimated unmodelled echo power to the residual echo power
   // estimate.
-  void AddReverb(ReverbType reverb_type,
-                 const AecState& aec_state,
-                 const RenderBuffer& render_buffer,
-                 rtc::ArrayView<std::array<float, kFftLengthBy2Plus1>> R2);
+  void AddReverb(
+      rtc::ArrayView<std::array<float, kFftLengthBy2Plus1>> R2) const;
+
+  // Gets the echo path gain to apply.
+  float GetEchoPathGain(const AecState& aec_state,
+                        bool gain_for_early_reflections) const;
 
   const EchoCanceller3Config config_;
   const size_t num_render_channels_;
+  const float early_reflections_transparent_mode_gain_;
+  const float late_reflections_transparent_mode_gain_;
+  const float early_reflections_general_gain_;
+  const float late_reflections_general_gain_;
+  const bool erle_onset_compensation_in_dominant_nearend_;
   std::array<float, kFftLengthBy2Plus1> X2_noise_floor_;
   std::array<int, kFftLengthBy2Plus1> X2_noise_floor_counter_;
   ReverbModel echo_reverb_;

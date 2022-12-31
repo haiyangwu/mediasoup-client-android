@@ -129,7 +129,7 @@ uint16_t TransportFeedback::LastChunk::Emit() {
   }
   RTC_DCHECK_GE(size_, kMaxTwoBitCapacity);
   uint16_t chunk = EncodeTwoBit(kMaxTwoBitCapacity);
-  // Remove |kMaxTwoBitCapacity| encoded delta sizes:
+  // Remove `kMaxTwoBitCapacity` encoded delta sizes:
   // Shift remaining delta sizes and recalculate all_same_ && has_large_delta_.
   size_ -= kMaxTwoBitCapacity;
   all_same_ = true;
@@ -153,7 +153,7 @@ uint16_t TransportFeedback::LastChunk::EncodeLast() const {
   return EncodeOneBit();
 }
 
-// Appends content of the Lastchunk to |deltas|.
+// Appends content of the Lastchunk to `deltas`.
 void TransportFeedback::LastChunk::AppendTo(
     std::vector<DeltaSize>* deltas) const {
   if (all_same_) {
@@ -262,7 +262,7 @@ void TransportFeedback::LastChunk::DecodeRunLength(uint16_t chunk,
 }
 
 TransportFeedback::TransportFeedback()
-    : TransportFeedback(/*include_timestamps=*/true, /*include_lost*/ false) {}
+    : TransportFeedback(/*include_timestamps=*/true, /*include_lost=*/true) {}
 
 TransportFeedback::TransportFeedback(bool include_timestamps, bool include_lost)
     : include_lost_(include_lost),
@@ -335,9 +335,12 @@ bool TransportFeedback::AddReceivedPacket(uint16_t sequence_number,
     uint16_t last_seq_no = next_seq_no - 1;
     if (!IsNewerSequenceNumber(sequence_number, last_seq_no))
       return false;
-    for (; next_seq_no != sequence_number; ++next_seq_no)
+    for (; next_seq_no != sequence_number; ++next_seq_no) {
       if (!AddDeltaSize(0))
         return false;
+      if (include_lost_)
+        all_packets_.emplace_back(next_seq_no);
+    }
   }
 
   DeltaSize delta_size = (delta >= 0 && delta <= 0xff) ? 1 : 2;
@@ -345,6 +348,8 @@ bool TransportFeedback::AddReceivedPacket(uint16_t sequence_number,
     return false;
 
   received_packets_.emplace_back(sequence_number, delta);
+  if (include_lost_)
+    all_packets_.emplace_back(sequence_number, delta);
   last_timestamp_us_ += delta * kDeltaScaleFactor;
   if (include_timestamps_) {
     size_bytes_ += delta_size;
@@ -371,6 +376,10 @@ int64_t TransportFeedback::GetBaseTimeUs() const {
   return static_cast<int64_t>(base_time_ticks_) * kBaseScaleFactor;
 }
 
+TimeDelta TransportFeedback::GetBaseTime() const {
+  return TimeDelta::Micros(GetBaseTimeUs());
+}
+
 int64_t TransportFeedback::GetBaseDeltaUs(int64_t prev_timestamp_us) const {
   int64_t delta = GetBaseTimeUs() - prev_timestamp_us;
 
@@ -381,6 +390,10 @@ int64_t TransportFeedback::GetBaseDeltaUs(int64_t prev_timestamp_us) const {
     delta += kTimeWrapPeriodUs;  // Wrap forwards.
   }
   return delta;
+}
+
+TimeDelta TransportFeedback::GetBaseDelta(TimeDelta prev_timestamp) const {
+  return TimeDelta::Micros(GetBaseDeltaUs(prev_timestamp.us()));
 }
 
 // De-serialize packet.
@@ -428,7 +441,7 @@ bool TransportFeedback::Parse(const CommonHeader& packet) {
     last_chunk_.Decode(chunk, status_count - delta_sizes.size());
     last_chunk_.AppendTo(&delta_sizes);
   }
-  // Last chunk is stored in the |last_chunk_|.
+  // Last chunk is stored in the `last_chunk_`.
   encoded_chunks_.pop_back();
   RTC_DCHECK_EQ(delta_sizes.size(), status_count);
   num_seq_no_ = status_count;

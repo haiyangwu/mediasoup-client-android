@@ -25,6 +25,7 @@ namespace mediasoupclient
 			  const nlohmann::json& iceCandidates,
 			  const nlohmann::json& dtlsParameters,
 			  const nlohmann::json& sctpParameters);
+			~RemoteSdp();
 
 		public:
 			Sdp::RemoteSdp::MediaSectionIdx GetNextMediaSectionIdx();
@@ -34,6 +35,10 @@ namespace mediasoupclient
 			  nlohmann::json& offerRtpParameters,
 			  nlohmann::json& answerRtpParameters,
 			  const nlohmann::json* codecOptions);
+
+			void SendSctpAssociation(nlohmann::json& offerMediaObject);
+			void RecvSctpAssociation();
+
 			void Receive(
 			  const std::string& mid,
 			  const std::string& kind,

@@ -1,28 +1,5 @@
 # WebRTC iOS development
 
-## Using Cocoapods
-
-The WebRTC framework  is published on [cocoapods.org][cocoapods].
-The framework is built from tip-of-tree.
-
-_NOTICE_: The pod version of the framework doesn't support bitcode currently.
-If you need bitcode support, you'll need to manually build the framework.
-The process is described in detail in the following sections.
-
-To integrate it into your project add the following lines to your Podfile
-
-```
-source 'https://github.com/CocoaPods/Specs.git'
-target 'YOUR_APPLICATION_TARGET_NAME_HERE' do
-  platform :ios, '9.0'
-  pod 'GoogleWebRTC'
-end
-```
-
-The versioning system used is *1.1.cr-commit-position*, where *cr-commit-position* can
-be used to identify the exact WebRTC revision the pod was built from. You can check the
-revision at crrev.com/CR_COMMIT_POSITION_HERE.
-
 ## Development Environment
 
 In case you need to build the framework manually
@@ -196,7 +173,7 @@ a script is available [here][framework-script]
 To build the framework with bitcode support, pass the `--bitcode` flag to the script like so
 
 ```
-$ python build_ios_libs.py --bitcode
+$ python tools_webrtc/ios/build_ios_libs.py --bitcode
 ```
 The resulting framework can be found in out_ios_libs/.
 
@@ -208,10 +185,10 @@ For instructions on how to do this see [here][strip-arch].
 
 
 [cocoapods]: https://cocoapods.org/pods/GoogleWebRTC
-[webrtc-prerequisite-sw]: https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/development/prerequisite-sw/index.md
-[webrtc-development]: https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/development/index.md
-[framework-script]: https://chromium.googlesource.com/external/webrtc/+/master/tools_webrtc/ios/build_ios_libs.py
+[webrtc-prerequisite-sw]: https://webrtc.googlesource.com/src/+/main/docs/native-code/development/prerequisite-sw/index.md
+[webrtc-development]: https://webrtc.googlesource.com/src/+/main/docs/native-code/development/index.md
+[framework-script]: https://webrtc.googlesource.com/src/+/main/tools_webrtc/ios/build_ios_libs.py
 [ninja]: https://ninja-build.org/
-[gn]: https://gn.googlesource.com/gn/+/master/README.md
+[gn]: https://gn.googlesource.com/gn/+/main/README.md
 [ios-deploy]: https://github.com/phonegap/ios-deploy
 [strip-arch]: http://ikennd.ac/blog/2015/02/stripping-unwanted-architectures-from-dynamic-libraries-in-xcode/

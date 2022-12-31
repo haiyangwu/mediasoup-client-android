@@ -169,10 +169,10 @@ void AudioFrameOperations::UpmixChannels(size_t target_number_of_channels,
   if (!frame->muted()) {
     // Up-mixing done in place. Going backwards through the frame ensure nothing
     // is irrevocably overwritten.
+    int16_t* frame_data = frame->mutable_data();
     for (int i = frame->samples_per_channel_ - 1; i >= 0; i--) {
       for (size_t j = 0; j < target_number_of_channels; ++j) {
-        frame->mutable_data()[target_number_of_channels * i + j] =
-            frame->data()[i];
+        frame_data[target_number_of_channels * i + j] = frame_data[i];
       }
     }
   }
@@ -222,14 +222,14 @@ void AudioFrameOperations::Mute(AudioFrame* frame,
     size_t end = count;
     float start_g = 0.0f;
     if (current_frame_muted) {
-      // Fade out the last |count| samples of frame.
+      // Fade out the last `count` samples of frame.
       RTC_DCHECK(!previous_frame_muted);
       start = frame->samples_per_channel_ - count;
       end = frame->samples_per_channel_;
       start_g = 1.0f;
       inc = -inc;
     } else {
-      // Fade in the first |count| samples of frame.
+      // Fade in the first `count` samples of frame.
       RTC_DCHECK(previous_frame_muted);
     }
 

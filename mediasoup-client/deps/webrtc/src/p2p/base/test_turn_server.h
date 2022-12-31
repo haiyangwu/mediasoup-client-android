@@ -14,14 +14,14 @@
 #include <string>
 #include <vector>
 
+#include "api/sequence_checker.h"
+#include "api/transport/stun.h"
 #include "p2p/base/basic_packet_socket_factory.h"
-#include "p2p/base/stun.h"
 #include "p2p/base/turn_server.h"
 #include "rtc_base/async_udp_socket.h"
 #include "rtc_base/ssl_adapter.h"
 #include "rtc_base/ssl_identity.h"
 #include "rtc_base/thread.h"
-#include "rtc_base/thread_checker.h"
 
 namespace cricket {
 
@@ -109,7 +109,7 @@ class TestTurnServer : public TurnAuthInterface {
         rtc::SSLAdapter* adapter = rtc::SSLAdapter::Create(socket);
         adapter->SetRole(rtc::SSL_SERVER);
         adapter->SetIdentity(
-            rtc::SSLIdentity::Generate(common_name, rtc::KeyParams()));
+            rtc::SSLIdentity::Create(common_name, rtc::KeyParams()));
         adapter->SetIgnoreBadCert(ignore_bad_cert);
         socket = adapter;
       }
@@ -147,7 +147,7 @@ class TestTurnServer : public TurnAuthInterface {
 
   TurnServer server_;
   rtc::Thread* thread_;
-  rtc::ThreadChecker thread_checker_;
+  webrtc::SequenceChecker thread_checker_;
 };
 
 }  // namespace cricket

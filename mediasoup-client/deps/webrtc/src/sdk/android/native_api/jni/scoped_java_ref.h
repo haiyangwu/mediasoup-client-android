@@ -74,7 +74,7 @@ class JavaRef : public JavaRef<jobject> {
 template <typename T>
 class JavaParamRef : public JavaRef<T> {
  public:
-  // Assumes that |obj| is a parameter passed to a JNI method from Java.
+  // Assumes that `obj` is a parameter passed to a JNI method from Java.
   // Does not assume ownership as parameters should not be deleted.
   explicit JavaParamRef(T obj) : JavaRef<T>(obj) {}
   JavaParamRef(JNIEnv*, T obj) : JavaRef<T>(obj) {}
@@ -112,7 +112,7 @@ class ScopedJavaLocalRef : public JavaRef<T> {
     Reset(other.obj(), OwnershipPolicy::RETAIN);
   }
 
-  // Assumes that |obj| is a reference to a Java object and takes
+  // Assumes that `obj` is a reference to a Java object and takes
   // ownership  of this  reference. This should preferably not be used
   // outside of JNI helper functions.
   ScopedJavaLocalRef(JNIEnv* env, T obj) : JavaRef<T>(obj), env_(env) {}
@@ -172,6 +172,7 @@ class ScopedJavaGlobalRef : public JavaRef<T> {
  public:
   using JavaRef<T>::obj_;
 
+  ScopedJavaGlobalRef() = default;
   explicit constexpr ScopedJavaGlobalRef(std::nullptr_t) {}
   ScopedJavaGlobalRef(JNIEnv* env, const JavaRef<T>& other)
       : JavaRef<T>(static_cast<T>(env->NewGlobalRef(other.obj()))) {}
@@ -183,6 +184,21 @@ class ScopedJavaGlobalRef : public JavaRef<T> {
   ~ScopedJavaGlobalRef() {
     if (obj_ != nullptr)
       AttachCurrentThreadIfNeeded()->DeleteGlobalRef(obj_);
+  }
+
+  void operator=(const JavaRef<T>& other) {
+    JNIEnv* env = AttachCurrentThreadIfNeeded();
+    if (obj_ != nullptr) {
+      env->DeleteGlobalRef(obj_);
+    }
+    obj_ = other.is_null() ? nullptr : env->NewGlobalRef(other.obj());
+  }
+
+  void operator=(std::nullptr_t) {
+    if (obj_ != nullptr) {
+      AttachCurrentThreadIfNeeded()->DeleteGlobalRef(obj_);
+    }
+    obj_ = nullptr;
   }
 
   // Releases the reference to the caller. The caller *must* delete the

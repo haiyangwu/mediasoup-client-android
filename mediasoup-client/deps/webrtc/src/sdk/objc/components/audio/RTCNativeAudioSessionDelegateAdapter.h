@@ -19,11 +19,11 @@ class AudioSessionObserver;
 /** Adapter that forwards RTCAudioSessionDelegate calls to the appropriate
  *  methods on the AudioSessionObserver.
  */
-@interface RTCNativeAudioSessionDelegateAdapter : NSObject <RTCAudioSessionDelegate>
+@interface RTCNativeAudioSessionDelegateAdapter : NSObject <RTC_OBJC_TYPE (RTCAudioSessionDelegate)>
 
 - (instancetype)init NS_UNAVAILABLE;
 
-/** |observer| is a raw pointer and should be kept alive
+/** `observer` is a raw pointer and should be kept alive
  *  for this object's lifetime.
  */
 - (instancetype)initWithObserver:(webrtc::AudioSessionObserver *)observer NS_DESIGNATED_INITIALIZER;

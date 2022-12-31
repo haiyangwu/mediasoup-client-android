@@ -30,12 +30,35 @@ public class RecvTransport extends Transport {
     }
   }
 
+  /**
+   * Instructs the transport to receive an audio or video track to the mediasoup router.
+   *
+   * @param listener Consumer listener.
+   * @param id The identifier of the server side consumer.
+   * @param producerId The identifier of the server side producer being consumed.
+   * @param kind Media kind (“audio” or “video”).
+   * @param rtpParameters Receive RTP parameters.
+   * @return {@link Consumer}
+   * @throws MediasoupException
+   */
   public Consumer consume(
       Consumer.Listener listener, String id, String producerId, String kind, String rtpParameters)
       throws MediasoupException {
     return consume(listener, id, producerId, kind, rtpParameters, null);
   }
 
+  /**
+   * Instructs the transport to receive an audio or video track to the mediasoup router.
+   *
+   * @param listener Consumer listener.
+   * @param id The identifier of the server side consumer.
+   * @param producerId The identifier of the server side producer being consumed.
+   * @param kind Media kind (“audio” or “video”).
+   * @param rtpParameters Receive RTP parameters.
+   * @param appData Custom application data.
+   * @return {@link Consumer}
+   * @throws MediasoupException
+   */
   public Consumer consume(
       Consumer.Listener listener,
       String id,

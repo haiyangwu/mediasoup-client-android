@@ -9,7 +9,7 @@
 import("../../webrtc.gni")
 
 if (rtc_include_tests) {
-  rtc_source_set("peer_scenario") {
+  rtc_library("peer_scenario") {
     testonly = true
     sources = [
       "peer_scenario.cc",
@@ -24,16 +24,20 @@ if (rtc_include_tests) {
       "signaling_route.h",
     ]
     deps = [
+      "..:fake_video_codecs",
       "..:fileutils",
       "..:test_support",
       "../:video_test_common",
+      "../../api:create_time_controller",
       "../../api:libjingle_peerconnection_api",
       "../../api:network_emulation_manager_api",
       "../../api:rtc_stats_api",
+      "../../api:time_controller",
       "../../api/audio_codecs:builtin_audio_decoder_factory",
       "../../api/audio_codecs:builtin_audio_encoder_factory",
       "../../api/rtc_event_log:rtc_event_log_factory",
       "../../api/task_queue:default_task_queue_factory",
+      "../../api/transport:field_trial_based_config",
       "../../api/video_codecs:builtin_video_decoder_factory",
       "../../api/video_codecs:builtin_video_encoder_factory",
       "../../media:rtc_audio_video",
@@ -43,10 +47,16 @@ if (rtc_include_tests) {
       "../../p2p:rtc_p2p",
       "../../pc:pc_test_utils",
       "../../pc:rtc_pc_base",
+      "../../pc:session_description",
+      "../../rtc_base",
+      "../../rtc_base:null_socket_server",
       "../../rtc_base:stringutils",
-      "..//network:emulated_network",
       "../logging:log_writer",
+      "../network:emulated_network",
       "../scenario",
+      "../time_controller",
+    ]
+    absl_deps = [
       "//third_party/abseil-cpp/absl/flags:flag",
       "//third_party/abseil-cpp/absl/memory",
     ]

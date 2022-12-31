@@ -13,12 +13,9 @@ package org.webrtc;
 import static org.junit.Assert.assertEquals;
 
 import android.support.annotation.Nullable;
-import android.support.test.filters.SmallTest;
-import android.util.Log;
+import androidx.test.filters.SmallTest;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import org.chromium.base.test.BaseJUnit4ClassRunner;
 import org.junit.Before;
 import org.junit.Test;
@@ -73,13 +70,14 @@ public class DefaultVideoEncoderFactoryTest {
     VideoEncoderFactory hwFactory = new CustomHardwareVideoEncoderFactory(true, true);
     DefaultVideoEncoderFactory dvef = new DefaultVideoEncoderFactory(hwFactory);
     VideoCodecInfo[] videoCodecs = dvef.getSupportedCodecs();
-    assertEquals(4, videoCodecs.length);
+    assertEquals(5, videoCodecs.length);
     assertEquals("VP8", videoCodecs[0].name);
     assertEquals("VP9", videoCodecs[1].name);
-    assertEquals("H264", videoCodecs[2].name);
-    assertEquals("42e01f", videoCodecs[2].params.get("profile-level-id"));
+    assertEquals("AV1X", videoCodecs[2].name);
     assertEquals("H264", videoCodecs[3].name);
-    assertEquals("640c1f", videoCodecs[3].params.get("profile-level-id"));
+    assertEquals("42e01f", videoCodecs[3].params.get("profile-level-id"));
+    assertEquals("H264", videoCodecs[4].name);
+    assertEquals("640c1f", videoCodecs[4].params.get("profile-level-id"));
   }
 
   @SmallTest
@@ -88,11 +86,12 @@ public class DefaultVideoEncoderFactoryTest {
     VideoEncoderFactory hwFactory = new CustomHardwareVideoEncoderFactory(true, false);
     DefaultVideoEncoderFactory dvef = new DefaultVideoEncoderFactory(hwFactory);
     VideoCodecInfo[] videoCodecs = dvef.getSupportedCodecs();
-    assertEquals(3, videoCodecs.length);
+    assertEquals(4, videoCodecs.length);
     assertEquals("VP8", videoCodecs[0].name);
     assertEquals("VP9", videoCodecs[1].name);
-    assertEquals("H264", videoCodecs[2].name);
-    assertEquals("42e01f", videoCodecs[2].params.get("profile-level-id"));
+    assertEquals("AV1X", videoCodecs[2].name);
+    assertEquals("H264", videoCodecs[3].name);
+    assertEquals("42e01f", videoCodecs[3].params.get("profile-level-id"));
   }
 
   @SmallTest
@@ -101,12 +100,13 @@ public class DefaultVideoEncoderFactoryTest {
     VideoEncoderFactory hwFactory = new CustomHardwareVideoEncoderFactory(false, true);
     DefaultVideoEncoderFactory dvef = new DefaultVideoEncoderFactory(hwFactory);
     VideoCodecInfo[] videoCodecs = dvef.getSupportedCodecs();
-    assertEquals(4, videoCodecs.length);
+    assertEquals(5, videoCodecs.length);
     assertEquals("VP8", videoCodecs[0].name);
     assertEquals("VP9", videoCodecs[1].name);
-    assertEquals("H264", videoCodecs[2].name);
-    assertEquals("42e01f", videoCodecs[2].params.get("profile-level-id"));
+    assertEquals("AV1X", videoCodecs[2].name);
     assertEquals("H264", videoCodecs[3].name);
-    assertEquals("640c1f", videoCodecs[3].params.get("profile-level-id"));
+    assertEquals("42e01f", videoCodecs[3].params.get("profile-level-id"));
+    assertEquals("H264", videoCodecs[4].name);
+    assertEquals("640c1f", videoCodecs[4].params.get("profile-level-id"));
   }
 }

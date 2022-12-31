@@ -99,7 +99,7 @@ class RegKey {
     }
   }
 
-  // Reads a REG_DWORD (uint32_t) into |out_value|. If |name| is null or empty,
+  // Reads a REG_DWORD (uint32_t) into `out_value`. If `name` is null or empty,
   // reads the key's default value, if any.
   LONG ReadValueDW(const wchar_t* name, DWORD* out_value) const {
     RTC_DCHECK(out_value);
@@ -117,7 +117,7 @@ class RegKey {
     return result;
   }
 
-  // Reads a string into |out_value|. If |name| is null or empty, reads
+  // Reads a string into `out_value`. If `name` is null or empty, reads
   // the key's default value, if any.
   LONG ReadValue(const wchar_t* name, std::wstring* out_value) const {
     RTC_DCHECK(out_value);
@@ -203,8 +203,12 @@ Version MajorMinorBuildToVersion(int major, int minor, int build) {
       return VERSION_WIN10_RS2;
     } else if (build < 17134) {
       return VERSION_WIN10_RS3;
-    } else {
+    } else if (build < 17763) {
       return VERSION_WIN10_RS4;
+    } else if (build < 18362) {
+      return VERSION_WIN10_RS5;
+    } else {
+      return VERSION_WIN10_19H1;
     }
   } else if (major > 6) {
     RTC_NOTREACHED();

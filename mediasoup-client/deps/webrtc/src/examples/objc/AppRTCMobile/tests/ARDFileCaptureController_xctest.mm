@@ -14,7 +14,7 @@
 
 #import "ARDFileCaptureController.h"
 
-#import <WebRTC/RTCFileVideoCapturer.h>
+#import "sdk/objc/components/capturer/RTCFileVideoCapturer.h"
 
 NS_CLASS_AVAILABLE_IOS(10)
 @interface ARDFileCaptureControllerTests : XCTestCase
@@ -31,7 +31,7 @@ NS_CLASS_AVAILABLE_IOS(10)
 
 - (void)setUp {
   [super setUp];
-  self.fileCapturerMock = OCMClassMock([RTCFileVideoCapturer class]);
+  self.fileCapturerMock = OCMClassMock([RTC_OBJC_TYPE(RTCFileVideoCapturer) class]);
   self.fileCaptureController =
       [[ARDFileCaptureController alloc] initWithCapturer:self.fileCapturerMock];
 }

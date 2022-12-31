@@ -14,7 +14,6 @@
 
 #include "modules/audio_device/audio_device_buffer.h"
 #include "modules/audio_device/fine_audio_buffer.h"
-#include "rtc_base/bind.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/time_utils.h"
@@ -61,12 +60,16 @@ int CoreAudioOutput::NumDevices() const {
 
 int CoreAudioOutput::SetDevice(int index) {
   RTC_DLOG(INFO) << __FUNCTION__ << ": " << index;
+  RTC_DCHECK_GE(index, 0);
   RTC_DCHECK_RUN_ON(&thread_checker_);
   return CoreAudioBase::SetDevice(index);
 }
 
 int CoreAudioOutput::SetDevice(AudioDeviceModule::WindowsDeviceType device) {
-  RTC_DLOG(INFO) << __FUNCTION__ << ": " << device;
+  RTC_DLOG(INFO) << __FUNCTION__ << ": "
+                 << ((device == AudioDeviceModule::kDefaultDevice)
+                         ? "Default"
+                         : "DefaultCommunication");
   RTC_DCHECK_RUN_ON(&thread_checker_);
   return SetDevice((device == AudioDeviceModule::kDefaultDevice) ? 0 : 1);
 }
@@ -99,17 +102,17 @@ int CoreAudioOutput::InitPlayout() {
   RTC_DCHECK(!audio_render_client_);
 
   // Creates an IAudioClient instance and stores the valid interface pointer in
-  // |audio_client3_|, |audio_client2_|, or |audio_client_| depending on
+  // `audio_client3_`, `audio_client2_`, or `audio_client_` depending on
   // platform support. The base class will use optimal output parameters and do
   // an event driven shared mode initialization. The utilized format will be
-  // stored in |format_| and can be used for configuration and allocation of
+  // stored in `format_` and can be used for configuration and allocation of
   // audio buffers.
   if (!CoreAudioBase::Init()) {
     return -1;
   }
   RTC_DCHECK(audio_client_);
 
-  // Configure the playout side of the audio device buffer using |format_|
+  // Configure the playout side of the audio device buffer using `format_`
   // after a trivial sanity check of the format structure.
   RTC_DCHECK(audio_device_buffer_);
   WAVEFORMATEX* format = &format_.Format;
@@ -331,7 +334,7 @@ bool CoreAudioOutput::OnDataCallback(uint64_t device_frequency) {
   }
 
   // Get audio data from WebRTC and write it to the allocated buffer in
-  // |audio_data|. The playout latency is not updated for each callback.
+  // `audio_data`. The playout latency is not updated for each callback.
   fine_audio_buffer_->GetPlayoutData(
       rtc::MakeArrayView(reinterpret_cast<int16_t*>(audio_data),
                          num_requested_frames * format_.Format.nChannels),
@@ -357,7 +360,7 @@ int CoreAudioOutput::EstimateOutputLatencyMillis(uint64_t device_frequency) {
   UINT64 position = 0;
   UINT64 qpc_position = 0;
   int delay_ms = 0;
-  // Get the device position through output parameter |position|. This is the
+  // Get the device position through output parameter `position`. This is the
   // stream position of the sample that is currently playing through the
   // speakers.
   _com_error error = audio_clock_->GetPosition(&position, &qpc_position);
@@ -373,8 +376,8 @@ int CoreAudioOutput::EstimateOutputLatencyMillis(uint64_t device_frequency) {
 
     // Convert latency in number of frames into milliseconds.
     webrtc::TimeDelta delay =
-        webrtc::TimeDelta::us(delay_frames * rtc::kNumMicrosecsPerSec /
-                              format_.Format.nSamplesPerSec);
+        webrtc::TimeDelta::Micros(delay_frames * rtc::kNumMicrosecsPerSec /
+                                  format_.Format.nSamplesPerSec);
     delay_ms = delay.ms();
   }
   return delay_ms;

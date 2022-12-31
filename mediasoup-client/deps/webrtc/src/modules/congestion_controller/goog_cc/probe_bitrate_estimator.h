@@ -33,8 +33,6 @@ class ProbeBitrateEstimator {
 
   absl::optional<DataRate> FetchAndResetLastEstimatedBitrate();
 
-  absl::optional<DataRate> last_estimate() const;
-
  private:
   struct AggregatedCluster {
     int num_probes = 0;
@@ -47,13 +45,12 @@ class ProbeBitrateEstimator {
     DataSize size_total = DataSize::Zero();
   };
 
-  // Erases old cluster data that was seen before |timestamp|.
+  // Erases old cluster data that was seen before `timestamp`.
   void EraseOldClusters(Timestamp timestamp);
 
   std::map<int, AggregatedCluster> clusters_;
   RtcEventLog* const event_log_;
   absl::optional<DataRate> estimated_data_rate_;
-  absl::optional<DataRate> last_estimate_;
 };
 
 }  // namespace webrtc

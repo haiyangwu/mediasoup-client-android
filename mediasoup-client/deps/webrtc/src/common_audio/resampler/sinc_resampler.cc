@@ -80,7 +80,7 @@
 // 8) Else, if we're not on the second load, goto (4).
 //
 // Note: we're glossing over how the sub-sample handling works with
-// |virtual_source_idx_|, etc.
+// `virtual_source_idx_`, etc.
 
 // MSVC++ requires this to be set before any other includes to get M_PI.
 #define _USE_MATH_DEFINES
@@ -102,7 +102,7 @@ namespace webrtc {
 namespace {
 
 double SincScaleFactor(double io_ratio) {
-  // |sinc_scale_factor| is basically the normalized cutoff frequency of the
+  // `sinc_scale_factor` is basically the normalized cutoff frequency of the
   // low-pass filter.
   double sinc_scale_factor = io_ratio > 1.0 ? 1.0 / io_ratio : 1.0;
 
@@ -122,28 +122,22 @@ double SincScaleFactor(double io_ratio) {
 const size_t SincResampler::kKernelSize;
 
 // If we know the minimum architecture at compile time, avoid CPU detection.
-#if defined(WEBRTC_ARCH_X86_FAMILY)
-#if defined(__SSE2__)
-#define CONVOLVE_FUNC Convolve_SSE
-void SincResampler::InitializeCPUSpecificFeatures() {}
-#else
-// x86 CPU detection required.  Function will be set by
-// InitializeCPUSpecificFeatures().
-// TODO(dalecurtis): Once Chrome moves to an SSE baseline this can be removed.
-#define CONVOLVE_FUNC convolve_proc_
-
 void SincResampler::InitializeCPUSpecificFeatures() {
-  convolve_proc_ = WebRtc_GetCPUInfo(kSSE2) ? Convolve_SSE : Convolve_C;
-}
-#endif
-#elif defined(WEBRTC_HAS_NEON)
-#define CONVOLVE_FUNC Convolve_NEON
-void SincResampler::InitializeCPUSpecificFeatures() {}
+#if defined(WEBRTC_HAS_NEON)
+  convolve_proc_ = Convolve_NEON;
+#elif defined(WEBRTC_ARCH_X86_FAMILY)
+  // Using AVX2 instead of SSE2 when AVX2 supported.
+  if (GetCPUInfo(kAVX2))
+    convolve_proc_ = Convolve_AVX2;
+  else if (GetCPUInfo(kSSE2))
+    convolve_proc_ = Convolve_SSE;
+  else
+    convolve_proc_ = Convolve_C;
 #else
-// Unknown architecture.
-#define CONVOLVE_FUNC Convolve_C
-void SincResampler::InitializeCPUSpecificFeatures() {}
+  // Unknown architecture.
+  convolve_proc_ = Convolve_C;
 #endif
+}
 
 SincResampler::SincResampler(double io_sample_rate_ratio,
                              size_t request_frames,
@@ -152,24 +146,20 @@ SincResampler::SincResampler(double io_sample_rate_ratio,
       read_cb_(read_cb),
       request_frames_(request_frames),
       input_buffer_size_(request_frames_ + kKernelSize),
-      // Create input buffers with a 16-byte alignment for SSE optimizations.
+      // Create input buffers with a 32-byte alignment for SIMD optimizations.
       kernel_storage_(static_cast<float*>(
-          AlignedMalloc(sizeof(float) * kKernelStorageSize, 16))),
+          AlignedMalloc(sizeof(float) * kKernelStorageSize, 32))),
       kernel_pre_sinc_storage_(static_cast<float*>(
-          AlignedMalloc(sizeof(float) * kKernelStorageSize, 16))),
+          AlignedMalloc(sizeof(float) * kKernelStorageSize, 32))),
       kernel_window_storage_(static_cast<float*>(
-          AlignedMalloc(sizeof(float) * kKernelStorageSize, 16))),
+          AlignedMalloc(sizeof(float) * kKernelStorageSize, 32))),
       input_buffer_(static_cast<float*>(
-          AlignedMalloc(sizeof(float) * input_buffer_size_, 16))),
-#if defined(WEBRTC_ARCH_X86_FAMILY) && !defined(__SSE2__)
+          AlignedMalloc(sizeof(float) * input_buffer_size_, 32))),
       convolve_proc_(nullptr),
-#endif
       r1_(input_buffer_.get()),
       r2_(input_buffer_.get() + kKernelSize / 2) {
-#if defined(WEBRTC_ARCH_X86_FAMILY) && !defined(__SSE2__)
   InitializeCPUSpecificFeatures();
   RTC_DCHECK(convolve_proc_);
-#endif
   RTC_DCHECK_GT(request_frames_, 0);
   Flush();
   RTC_DCHECK_GT(block_size_, kKernelSize);
@@ -248,7 +238,7 @@ void SincResampler::SetRatio(double io_sample_rate_ratio) {
   io_sample_rate_ratio_ = io_sample_rate_ratio;
 
   // Optimize reinitialization by reusing values which are independent of
-  // |sinc_scale_factor|.  Provides a 3x speedup.
+  // `sinc_scale_factor`.  Provides a 3x speedup.
   const double sinc_scale_factor = SincScaleFactor(io_sample_rate_ratio_);
   for (size_t offset_idx = 0; offset_idx <= kKernelOffsetCount; ++offset_idx) {
     for (size_t i = 0; i < kKernelSize; ++i) {
@@ -278,8 +268,8 @@ void SincResampler::Resample(size_t frames, float* destination) {
   const double current_io_ratio = io_sample_rate_ratio_;
   const float* const kernel_ptr = kernel_storage_.get();
   while (remaining_frames) {
-    // |i| may be negative if the last Resample() call ended on an iteration
-    // that put |virtual_source_idx_| over the limit.
+    // `i` may be negative if the last Resample() call ended on an iteration
+    // that put `virtual_source_idx_` over the limit.
     //
     // Note: The loop construct here can severely impact performance on ARM
     // or when built with clang.  See https://codereview.chromium.org/18566009/
@@ -288,7 +278,7 @@ void SincResampler::Resample(size_t frames, float* destination) {
          i > 0; --i) {
       RTC_DCHECK_LT(virtual_source_idx_, block_size_);
 
-      // |virtual_source_idx_| lies in between two kernel offsets so figure out
+      // `virtual_source_idx_` lies in between two kernel offsets so figure out
       // what they are.
       const int source_idx = static_cast<int>(virtual_source_idx_);
       const double subsample_remainder = virtual_source_idx_ - source_idx;
@@ -298,23 +288,23 @@ void SincResampler::Resample(size_t frames, float* destination) {
       const int offset_idx = static_cast<int>(virtual_offset_idx);
 
       // We'll compute "convolutions" for the two kernels which straddle
-      // |virtual_source_idx_|.
+      // `virtual_source_idx_`.
       const float* const k1 = kernel_ptr + offset_idx * kKernelSize;
       const float* const k2 = k1 + kKernelSize;
 
-      // Ensure |k1|, |k2| are 16-byte aligned for SIMD usage.  Should always be
-      // true so long as kKernelSize is a multiple of 16.
-      RTC_DCHECK_EQ(0, reinterpret_cast<uintptr_t>(k1) % 16);
-      RTC_DCHECK_EQ(0, reinterpret_cast<uintptr_t>(k2) % 16);
+      // Ensure `k1`, `k2` are 32-byte aligned for SIMD usage.  Should always be
+      // true so long as kKernelSize is a multiple of 32.
+      RTC_DCHECK_EQ(0, reinterpret_cast<uintptr_t>(k1) % 32);
+      RTC_DCHECK_EQ(0, reinterpret_cast<uintptr_t>(k2) % 32);
 
-      // Initialize input pointer based on quantized |virtual_source_idx_|.
+      // Initialize input pointer based on quantized `virtual_source_idx_`.
       const float* const input_ptr = r1_ + source_idx;
 
       // Figure out how much to weight each kernel's "convolution".
       const double kernel_interpolation_factor =
           virtual_offset_idx - offset_idx;
       *destination++ =
-          CONVOLVE_FUNC(input_ptr, k1, k2, kernel_interpolation_factor);
+          convolve_proc_(input_ptr, k1, k2, kernel_interpolation_factor);
 
       // Advance the virtual index.
       virtual_source_idx_ += current_io_ratio;

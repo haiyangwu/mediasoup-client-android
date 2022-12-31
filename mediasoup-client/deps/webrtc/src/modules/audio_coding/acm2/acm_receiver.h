@@ -26,7 +26,7 @@
 #include "modules/audio_coding/acm2/acm_resampler.h"
 #include "modules/audio_coding/acm2/call_statistics.h"
 #include "modules/audio_coding/include/audio_coding_module.h"
-#include "rtc_base/critical_section.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
 
 namespace webrtc {
@@ -138,7 +138,8 @@ class AcmReceiver {
   // Output:
   //   - statistics           : The current network statistics.
   //
-  void GetNetworkStatistics(NetworkStatistics* statistics) const;
+  void GetNetworkStatistics(NetworkStatistics* statistics,
+                            bool get_and_clear_legacy_stats = true) const;
 
   //
   // Flushes the NetEq packet and speech buffers.
@@ -176,10 +177,10 @@ class AcmReceiver {
   // enabled then the maximum NACK list size is modified accordingly.
   //
   // If the sequence number of last received packet is N, the sequence numbers
-  // of NACK list are in the range of [N - |max_nack_list_size|, N).
+  // of NACK list are in the range of [N - `max_nack_list_size`, N).
   //
-  // |max_nack_list_size| should be positive (none zero) and less than or
-  // equal to |Nack::kNackListSizeLimit|. Otherwise, No change is applied and -1
+  // `max_nack_list_size` should be positive (none zero) and less than or
+  // equal to `Nack::kNackListSizeLimit`. Otherwise, No change is applied and -1
   // is returned. 0 is returned at success.
   //
   int EnableNack(size_t max_nack_list_size);
@@ -188,12 +189,12 @@ class AcmReceiver {
   void DisableNack();
 
   //
-  // Get a list of packets to be retransmitted. |round_trip_time_ms| is an
+  // Get a list of packets to be retransmitted. `round_trip_time_ms` is an
   // estimate of the round-trip-time (in milliseconds). Missing packets which
   // will be playout in a shorter time than the round-trip-time (with respect
   // to the time this API is called) will not be included in the list.
   //
-  // Negative |round_trip_time_ms| results is an error message and empty list
+  // Negative `round_trip_time_ms` results is an error message and empty list
   // is returned.
   //
   std::vector<uint16_t> GetNackList(int64_t round_trip_time_ms) const;
@@ -212,14 +213,14 @@ class AcmReceiver {
 
   uint32_t NowInTimestamp(int decoder_sampling_rate) const;
 
-  rtc::CriticalSection crit_sect_;
-  absl::optional<DecoderInfo> last_decoder_ RTC_GUARDED_BY(crit_sect_);
-  ACMResampler resampler_ RTC_GUARDED_BY(crit_sect_);
-  std::unique_ptr<int16_t[]> last_audio_buffer_ RTC_GUARDED_BY(crit_sect_);
-  CallStatistics call_stats_ RTC_GUARDED_BY(crit_sect_);
+  mutable Mutex mutex_;
+  absl::optional<DecoderInfo> last_decoder_ RTC_GUARDED_BY(mutex_);
+  ACMResampler resampler_ RTC_GUARDED_BY(mutex_);
+  std::unique_ptr<int16_t[]> last_audio_buffer_ RTC_GUARDED_BY(mutex_);
+  CallStatistics call_stats_ RTC_GUARDED_BY(mutex_);
   const std::unique_ptr<NetEq> neteq_;  // NetEq is thread-safe; no lock needed.
   Clock* const clock_;
-  bool resampled_last_output_frame_ RTC_GUARDED_BY(crit_sect_);
+  bool resampled_last_output_frame_ RTC_GUARDED_BY(mutex_);
 };
 
 }  // namespace acm2

@@ -27,7 +27,7 @@ AdaptedVideoTrackSource::AdaptedVideoTrackSource(int required_alignment)
 AdaptedVideoTrackSource::~AdaptedVideoTrackSource() = default;
 
 bool AdaptedVideoTrackSource::GetStats(Stats* stats) {
-  rtc::CritScope lock(&stats_crit_);
+  webrtc::MutexLock lock(&stats_mutex_);
 
   if (!stats_) {
     return false;
@@ -80,8 +80,7 @@ bool AdaptedVideoTrackSource::apply_rotation() {
 
 void AdaptedVideoTrackSource::OnSinkWantsChanged(
     const rtc::VideoSinkWants& wants) {
-  video_adapter_.OnResolutionFramerateRequest(
-      wants.target_pixel_count, wants.max_pixel_count, wants.max_framerate_fps);
+  video_adapter_.OnSinkWants(wants);
 }
 
 bool AdaptedVideoTrackSource::AdaptFrame(int width,
@@ -94,7 +93,7 @@ bool AdaptedVideoTrackSource::AdaptFrame(int width,
                                          int* crop_x,
                                          int* crop_y) {
   {
-    rtc::CritScope lock(&stats_crit_);
+    webrtc::MutexLock lock(&stats_mutex_);
     stats_ = Stats{width, height};
   }
 

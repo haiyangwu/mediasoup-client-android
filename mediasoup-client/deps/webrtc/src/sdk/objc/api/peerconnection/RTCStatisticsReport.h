@@ -10,25 +10,29 @@
 
 #import <Foundation/Foundation.h>
 
-@class RTCStatistics;
+#import "RTCMacros.h"
+
+@class RTC_OBJC_TYPE(RTCStatistics);
 
 NS_ASSUME_NONNULL_BEGIN
 
 /** A statistics report. Encapsulates a number of RTCStatistics objects. */
-@interface RTCStatisticsReport : NSObject
+RTC_OBJC_EXPORT
+@interface RTC_OBJC_TYPE (RTCStatisticsReport) : NSObject
 
 /** The timestamp of the report in microseconds since 1970-01-01T00:00:00Z. */
 @property(nonatomic, readonly) CFTimeInterval timestamp_us;
 
 /** RTCStatistics objects by id. */
-@property(nonatomic, readonly) NSDictionary<NSString *, RTCStatistics *> *statistics;
+@property(nonatomic, readonly) NSDictionary<NSString *, RTC_OBJC_TYPE(RTCStatistics) *> *statistics;
 
 - (instancetype)init NS_UNAVAILABLE;
 
 @end
 
 /** A part of a report (a subreport) covering a certain area. */
-@interface RTCStatistics : NSObject
+RTC_OBJC_EXPORT
+@interface RTC_OBJC_TYPE (RTCStatistics) : NSObject
 
 /** The id of this subreport, e.g. "RTCMediaStreamTrack_receiver_2". */
 @property(nonatomic, readonly) NSString *id;
@@ -40,8 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSString *type;
 
 /** The keys and values of the subreport, e.g. "totalFramesDuration = 5.551".
-    The values are either NSNumbers or NSStrings, or NSArrays encapsulating NSNumbers
-    or NSStrings. */
+    The values are either NSNumbers or NSStrings or NSArrays encapsulating NSNumbers
+    or NSStrings, or NSDictionary of NSString keys to NSNumber values. */
 @property(nonatomic, readonly) NSDictionary<NSString *, NSObject *> *values;
 
 - (instancetype)init NS_UNAVAILABLE;

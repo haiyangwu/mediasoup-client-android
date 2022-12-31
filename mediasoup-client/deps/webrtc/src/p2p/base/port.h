@@ -22,6 +22,7 @@
 #include "api/candidate.h"
 #include "api/packet_socket_factory.h"
 #include "api/rtc_error.h"
+#include "api/transport/stun.h"
 #include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair.h"
 #include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair_config.h"
 #include "logging/rtc_event_log/ice_logger.h"
@@ -30,9 +31,9 @@
 #include "p2p/base/connection_info.h"
 #include "p2p/base/p2p_constants.h"
 #include "p2p/base/port_interface.h"
-#include "p2p/base/stun.h"
 #include "p2p/base/stun_request.h"
 #include "rtc_base/async_packet_socket.h"
+#include "rtc_base/callback_list.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/net_helper.h"
 #include "rtc_base/network.h"
@@ -56,11 +57,6 @@ extern const int DISCARD_PORT;
 extern const char TCPTYPE_ACTIVE_STR[];
 extern const char TCPTYPE_PASSIVE_STR[];
 extern const char TCPTYPE_SIMOPEN_STR[];
-
-enum RelayType {
-  RELAY_GTURN,  // Legacy google relay service.
-  RELAY_TURN    // Standard (TURN) relay service.
-};
 
 enum IcePriorityValue {
   ICE_TYPE_PREFERENCE_RELAY_TLS = 0,
@@ -103,14 +99,24 @@ class StunStats {
 // Stats that we can return about a candidate.
 class CandidateStats {
  public:
-  CandidateStats();
-  explicit CandidateStats(Candidate candidate);
-  CandidateStats(const CandidateStats&);
-  ~CandidateStats();
+  CandidateStats() = default;
+  CandidateStats(const CandidateStats&) = default;
+  CandidateStats(CandidateStats&&) = default;
+  CandidateStats(Candidate candidate,
+                 absl::optional<StunStats> stats = absl::nullopt)
+      : candidate_(std::move(candidate)), stun_stats_(std::move(stats)) {}
+  ~CandidateStats() = default;
 
-  Candidate candidate;
+  CandidateStats& operator=(const CandidateStats& other) = default;
+
+  const Candidate& candidate() const { return candidate_; }
+
+  const absl::optional<StunStats>& stun_stats() const { return stun_stats_; }
+
+ private:
+  Candidate candidate_;
   // STUN port stats if this candidate is a STUN candidate.
-  absl::optional<StunStats> stun_stats;
+  absl::optional<StunStats> stun_stats_;
 };
 
 typedef std::vector<CandidateStats> CandidateStatsList;
@@ -133,16 +139,19 @@ struct ProtocolAddress {
 
 struct IceCandidateErrorEvent {
   IceCandidateErrorEvent() = default;
-  IceCandidateErrorEvent(std::string host_candidate,
+  IceCandidateErrorEvent(std::string address,
+                         int port,
                          std::string url,
                          int error_code,
                          std::string error_text)
-      : host_candidate(std::move(host_candidate)),
+      : address(std::move(address)),
+        port(port),
         url(std::move(url)),
         error_code(error_code),
         error_text(std::move(error_text)) {}
 
-  std::string host_candidate;
+  std::string address;
+  int port = 0;
   std::string url;
   int error_code = 0;
   std::string error_text;
@@ -152,6 +161,8 @@ struct CandidatePairChangeEvent {
   CandidatePair selected_candidate_pair;
   int64_t last_data_received_ms;
   std::string reason;
+  // How long do we estimate that we've been disconnected.
+  int64_t estimated_disconnected_time_ms;
 };
 
 typedef std::set<rtc::SocketAddress> ServerAddresses;
@@ -209,14 +220,14 @@ class Port : public PortInterface,
   // Allows a port to be destroyed if no connection is using it.
   void Prune();
 
+  // Call to stop any currently pending operations from running.
+  void CancelPendingTasks();
+
   // The thread on which this port performs its I/O.
   rtc::Thread* thread() { return thread_; }
 
   // The factory used to create the sockets of this port.
   rtc::PacketSocketFactory* socket_factory() const { return factory_; }
-  void set_socket_factory(rtc::PacketSocketFactory* factory) {
-    factory_ = factory;
-  }
 
   // For debugging purposes.
   const std::string& content_name() const { return content_name_; }
@@ -266,6 +277,9 @@ class Port : public PortInterface,
   // connection.
   sigslot::signal1<Port*> SignalPortError;
 
+  void SubscribePortDestroyed(
+      std::function<void(PortInterface*)> callback) override;
+  void SendPortDestroyed(Port* port);
   // Returns a map containing all of the connections of this port, keyed by the
   // remote address.
   typedef std::map<rtc::SocketAddress, Connection*> AddressMap;
@@ -278,7 +292,7 @@ class Port : public PortInterface,
   sigslot::signal2<Port*, Connection*> SignalConnectionCreated;
 
   // In a shared socket mode each port which shares the socket will decide
-  // to accept the packet based on the |remote_addr|. Currently only UDP
+  // to accept the packet based on the `remote_addr`. Currently only UDP
   // port implemented this method.
   // TODO(mallinath) - Make it pure virtual.
   virtual bool HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
@@ -287,20 +301,20 @@ class Port : public PortInterface,
                                     const rtc::SocketAddress& remote_addr,
                                     int64_t packet_time_us);
 
-  // Shall the port handle packet from this |remote_addr|.
+  // Shall the port handle packet from this `remote_addr`.
   // This method is overridden by TurnPort.
   virtual bool CanHandleIncomingPacketsFrom(
       const rtc::SocketAddress& remote_addr) const;
 
-  // Sends a response message (normal or error) to the given request.  One of
-  // these methods should be called as a response to SignalUnknownAddress.
-  // NOTE: You MUST call CreateConnection BEFORE SendBindingResponse.
-  void SendBindingResponse(StunMessage* request,
-                           const rtc::SocketAddress& addr) override;
+  // Sends a response error to the given request.
   void SendBindingErrorResponse(StunMessage* request,
                                 const rtc::SocketAddress& addr,
                                 int error_code,
                                 const std::string& reason) override;
+  void SendUnknownAttributesErrorResponse(
+      StunMessage* request,
+      const rtc::SocketAddress& addr,
+      const std::vector<uint16_t>& unknown_types);
 
   void set_proxy(const std::string& user_agent, const rtc::ProxyInfo& proxy) {
     user_agent_ = user_agent;
@@ -322,7 +336,7 @@ class Port : public PortInterface,
   uint16_t max_port() { return max_port_; }
 
   // Timeout shortening function to speed up unit tests.
-  void set_timeout_delay(int delay) { timeout_delay_ = delay; }
+  void set_timeout_delay(int delay);
 
   // This method will return local and remote username fragements from the
   // stun username attribute if present.
@@ -371,19 +385,6 @@ class Port : public PortInterface,
   virtual void UpdateNetworkCost();
 
   void set_type(const std::string& type) { type_ = type; }
-
-  // Deprecated. Use the AddAddress() method below with "url" instead.
-  // TODO(zhihuang): Remove this after downstream applications stop using it.
-  void AddAddress(const rtc::SocketAddress& address,
-                  const rtc::SocketAddress& base_address,
-                  const rtc::SocketAddress& related_address,
-                  const std::string& protocol,
-                  const std::string& relay_protocol,
-                  const std::string& tcptype,
-                  const std::string& type,
-                  uint32_t type_preference,
-                  uint32_t relay_preference,
-                  bool is_final);
 
   void AddAddress(const rtc::SocketAddress& address,
                   const rtc::SocketAddress& base_address,
@@ -450,8 +451,8 @@ class Port : public PortInterface,
 
   void OnNetworkTypeChanged(const rtc::Network* network);
 
-  rtc::Thread* thread_;
-  rtc::PacketSocketFactory* factory_;
+  rtc::Thread* const thread_;
+  rtc::PacketSocketFactory* const factory_;
   std::string type_;
   bool send_retransmit_count_attribute_;
   rtc::Network* network_;
@@ -466,7 +467,7 @@ class Port : public PortInterface,
   // PortAllocatorSession will provide these username_fragment and password.
   //
   // Note: we should always use username_fragment() instead of using
-  // |ice_username_fragment_| directly. For the details see the comment on
+  // `ice_username_fragment_` directly. For the details see the comment on
   // username_fragment().
   std::string ice_username_fragment_;
   std::string password_;
@@ -497,6 +498,7 @@ class Port : public PortInterface,
                              bool is_final);
 
   friend class Connection;
+  webrtc::CallbackList<PortInterface*> port_destroyed_callback_list_;
 };
 
 }  // namespace cricket

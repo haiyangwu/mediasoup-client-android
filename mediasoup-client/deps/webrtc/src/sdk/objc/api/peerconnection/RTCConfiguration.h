@@ -14,8 +14,7 @@
 #import "RTCCryptoOptions.h"
 #import "RTCMacros.h"
 
-@class RTCIceServer;
-@class RTCIntervalRange;
+@class RTC_OBJC_TYPE(RTCIceServer);
 
 /**
  * Represents the ice transport policy. This exposes the same states in C++,
@@ -71,16 +70,21 @@ typedef NS_ENUM(NSInteger, RTCSdpSemantics) {
 NS_ASSUME_NONNULL_BEGIN
 
 RTC_OBJC_EXPORT
-@interface RTCConfiguration : NSObject
+@interface RTC_OBJC_TYPE (RTCConfiguration) : NSObject
+
+/** If true, allows DSCP codes to be set on outgoing packets, configured using
+ *  networkPriority field of RTCRtpEncodingParameters. Defaults to false.
+ */
+@property(nonatomic, assign) BOOL enableDscp;
 
 /** An array of Ice Servers available to be used by ICE. */
-@property(nonatomic, copy) NSArray<RTCIceServer *> *iceServers;
+@property(nonatomic, copy) NSArray<RTC_OBJC_TYPE(RTCIceServer) *> *iceServers;
 
 /** An RTCCertificate for 're' use. */
-@property(nonatomic, nullable) RTCCertificate *certificate;
+@property(nonatomic, nullable) RTC_OBJC_TYPE(RTCCertificate) * certificate;
 
 /** Which candidates the ICE agent is allowed to use. The W3C calls it
- * |iceTransportPolicy|, while in C++ it is called |type|. */
+ * `iceTransportPolicy`, while in C++ it is called `type`. */
 @property(nonatomic, assign) RTCIceTransportPolicy iceTransportPolicy;
 
 /** The media-bundling policy to use when gathering ICE candidates. */
@@ -140,7 +144,7 @@ RTC_OBJC_EXPORT
  */
 @property(nonatomic, assign) BOOL shouldPresumeWritableWhenFullyRelayed;
 
-/* This flag is only effective when |continualGatheringPolicy| is
+/* This flag is only effective when `continualGatheringPolicy` is
  * RTCContinualGatheringPolicyGatherContinually.
  *
  * If YES, after the ICE transport type is changed such that new types of
@@ -157,13 +161,6 @@ RTC_OBJC_EXPORT
  */
 @property(nonatomic, copy, nullable) NSNumber *iceCheckMinInterval;
 
-/** ICE Periodic Regathering
- *  If set, WebRTC will periodically create and propose candidates without
- *  starting a new ICE generation. The regathering happens continuously with
- *  interval specified in milliseconds by the uniform distribution [a, b].
- */
-@property(nonatomic, strong, nullable) RTCIntervalRange *iceRegatherIntervalRange;
-
 /** Configure the SDP semantics used by this PeerConnection. Note that the
  *  WebRTC 1.0 specification requires UnifiedPlan semantics. The
  *  RTCRtpTransceiver API is only available with UnifiedPlan semantics.
@@ -176,9 +173,9 @@ RTC_OBJC_EXPORT
  *
  *  UnifiedPlan will cause RTCPeerConnection to create offers and answers with
  *  multiple m= sections where each m= section maps to one RTCRtpSender and one
- *  RTCRtpReceiver (an RTCRtpTransceiver), either both audio or both video. This
- *  will also cause RTCPeerConnection to ignore all but the first a=ssrc lines
- *  that form a Plan B stream.
+ *  RTCRtpReceiver (an RTCRtpTransceiver), either both audio or both
+ *  video. This will also cause RTCPeerConnection) to ignore all but the first a=ssrc
+ *  lines that form a Plan B stream.
  *
  *  For users who wish to send multiple audio/video streams and need to stay
  *  interoperable with legacy WebRTC implementations or use legacy APIs,
@@ -194,24 +191,24 @@ RTC_OBJC_EXPORT
  */
 @property(nonatomic, assign) BOOL activeResetSrtpParams;
 
-/**
- * If MediaTransportFactory is provided in PeerConnectionFactory, this flag informs PeerConnection
- * that it should use the MediaTransportInterface.
+/** If the remote side support mid-stream codec switches then allow encoder
+ *  switching to be performed.
  */
-@property(nonatomic, assign) BOOL useMediaTransport;
 
-/**
- * If MediaTransportFactory is provided in PeerConnectionFactory, this flag informs PeerConnection
- * that it should use the MediaTransportInterface for data channels.
- */
-@property(nonatomic, assign) BOOL useMediaTransportForDataChannels;
+@property(nonatomic, assign) BOOL allowCodecSwitching;
 
 /**
  * Defines advanced optional cryptographic settings related to SRTP and
  * frame encryption for native WebRTC. Setting this will overwrite any
  * options set through the PeerConnectionFactory (which is deprecated).
  */
-@property(nonatomic, nullable) RTCCryptoOptions *cryptoOptions;
+@property(nonatomic, nullable) RTC_OBJC_TYPE(RTCCryptoOptions) * cryptoOptions;
+
+/**
+ * An optional string that will be attached to the TURN_ALLOCATE_REQUEST which
+ * which can be used to correlate client logs with backend logs.
+ */
+@property(nonatomic, nullable, copy) NSString *turnLoggingId;
 
 /**
  * Time interval between audio RTCP reports.
@@ -222,6 +219,54 @@ RTC_OBJC_EXPORT
  * Time interval between video RTCP reports.
  */
 @property(nonatomic, assign) int rtcpVideoReportIntervalMs;
+
+/**
+ * Allow implicit rollback of local description when remote description
+ * conflicts with local description.
+ * See: https://w3c.github.io/webrtc-pc/#dom-peerconnection-setremotedescription
+ */
+@property(nonatomic, assign) BOOL enableImplicitRollback;
+
+/**
+ * Control if "a=extmap-allow-mixed" is included in the offer.
+ * See: https://www.chromestatus.com/feature/6269234631933952
+ */
+@property(nonatomic, assign) BOOL offerExtmapAllowMixed;
+
+/**
+ * Defines the interval applied to ALL candidate pairs
+ * when ICE is strongly connected, and it overrides the
+ * default value of this interval in the ICE implementation;
+ */
+@property(nonatomic, copy, nullable) NSNumber *iceCheckIntervalStrongConnectivity;
+
+/**
+ * Defines the counterpart for ALL pairs when ICE is
+ * weakly connected, and it overrides the default value of
+ * this interval in the ICE implementation
+ */
+@property(nonatomic, copy, nullable) NSNumber *iceCheckIntervalWeakConnectivity;
+
+/**
+ * The min time period for which a candidate pair must wait for response to
+ * connectivity checks before it becomes unwritable. This parameter
+ * overrides the default value in the ICE implementation if set.
+ */
+@property(nonatomic, copy, nullable) NSNumber *iceUnwritableTimeout;
+
+/**
+ * The min number of connectivity checks that a candidate pair must sent
+ * without receiving response before it becomes unwritable. This parameter
+ * overrides the default value in the ICE implementation if set.
+ */
+@property(nonatomic, copy, nullable) NSNumber *iceUnwritableMinChecks;
+
+/**
+ * The min time period for which a candidate pair must wait for response to
+ * connectivity checks it becomes inactive. This parameter overrides the
+ * default value in the ICE implementation if set.
+ */
+@property(nonatomic, copy, nullable) NSNumber *iceInactiveTimeout;
 
 - (instancetype)init;
 

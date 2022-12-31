@@ -35,13 +35,13 @@ class RtpPacketizerGeneric : public RtpPacketizer {
  public:
   // Initialize with payload from encoder.
   // The payload_data must be exactly one encoded generic frame.
-  // Packets returned by |NextPacket| will contain the generic payload header.
+  // Packets returned by `NextPacket` will contain the generic payload header.
   RtpPacketizerGeneric(rtc::ArrayView<const uint8_t> payload,
                        PayloadSizeLimits limits,
                        const RTPVideoHeader& rtp_video_header);
   // Initialize with payload from encoder.
   // The payload_data must be exactly one encoded generic frame.
-  // Packets returned by |NextPacket| will contain raw payload without the
+  // Packets returned by `NextPacket` will contain raw payload without the
   // generic payload header.
   RtpPacketizerGeneric(rtc::ArrayView<const uint8_t> payload,
                        PayloadSizeLimits limits);
@@ -51,7 +51,7 @@ class RtpPacketizerGeneric : public RtpPacketizer {
   size_t NumPackets() const override;
 
   // Get the next payload.
-  // Write payload and set marker bit of the |packet|.
+  // Write payload and set marker bit of the `packet`.
   // Returns true on success, false otherwise.
   bool NextPacket(RtpPacketToSend* packet) override;
 
@@ -66,22 +66,6 @@ class RtpPacketizerGeneric : public RtpPacketizer {
   std::vector<int>::const_iterator current_packet_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(RtpPacketizerGeneric);
-};
-
-// Depacketizer for generic codec.
-class RtpDepacketizerGeneric : public RtpDepacketizer {
- public:
-  // Parses the generic payload header if |generic_header_enabled| is true,
-  // returns raw payload otherwise.
-  explicit RtpDepacketizerGeneric(bool generic_header_enabled);
-  ~RtpDepacketizerGeneric() override;
-
-  bool Parse(ParsedPayload* parsed_payload,
-             const uint8_t* payload_data,
-             size_t payload_data_length) override;
-
- private:
-  bool generic_header_enabled_;
 };
 }  // namespace webrtc
 #endif  // MODULES_RTP_RTCP_SOURCE_RTP_FORMAT_VIDEO_GENERIC_H_

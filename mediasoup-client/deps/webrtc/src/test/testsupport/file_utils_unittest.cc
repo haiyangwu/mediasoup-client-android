@@ -39,7 +39,7 @@ std::string Path(const std::string& path) {
 }
 
 // Remove files and directories in a directory non-recursively and writes the
-// number of deleted items in |num_deleted_entries|.
+// number of deleted items in `num_deleted_entries`.
 void CleanDir(const std::string& dir, size_t* num_deleted_entries) {
   RTC_DCHECK(num_deleted_entries);
   *num_deleted_entries = 0;
@@ -173,8 +173,9 @@ TEST_F(FileUtilsTest, ResourcePathReturnsCorrectPath) {
 #endif
 
   ASSERT_THAT(result, EndsWith(expected_end));
-  ASSERT_TRUE(FileExists(result)) << "Expected " << result << " to exist; did "
-                                  << "ResourcePath return an incorrect path?";
+  ASSERT_TRUE(FileExists(result)) << "Expected " << result
+                                  << " to exist; did "
+                                     "ResourcePath return an incorrect path?";
 }
 
 TEST_F(FileUtilsTest, ResourcePathFromRootWorkingDir) {

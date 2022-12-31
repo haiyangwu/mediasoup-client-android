@@ -56,7 +56,7 @@ class RtpPacketPacer {
 
   // Set the average upper bound on pacer queuing delay. The pacer may send at
   // a higher rate than what was configured via SetPacingRates() in order to
-  // keep ExpectedQueueTimeMs() below |limit_ms| on average.
+  // keep ExpectedQueueTimeMs() below `limit_ms` on average.
   virtual void SetQueueTimeLimit(TimeDelta limit) = 0;
 
   // Currently audio traffic is not accounted by pacer and passed through.
@@ -64,6 +64,8 @@ class RtpPacketPacer {
   // the pacer budget calculation. The audio traffic still will be injected
   // at high priority.
   virtual void SetAccountForAudioPackets(bool account_for_audio) = 0;
+  virtual void SetIncludeOverhead() = 0;
+  virtual void SetTransportOverhead(DataSize overhead_per_packet) = 0;
 };
 
 }  // namespace webrtc

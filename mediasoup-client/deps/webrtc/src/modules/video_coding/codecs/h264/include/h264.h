@@ -13,9 +13,11 @@
 #define MODULES_VIDEO_CODING_CODECS_H264_INCLUDE_H264_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "media/base/codec.h"
+#include "media/base/h264_profile_level_id.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "rtc_base/system/rtc_export.h"
 
@@ -23,8 +25,14 @@ namespace webrtc {
 
 struct SdpVideoFormat;
 
+// Creates an H264 SdpVideoFormat entry with specified paramters.
+RTC_EXPORT SdpVideoFormat
+CreateH264Format(H264Profile profile,
+                 H264Level level,
+                 const std::string& packetization_mode);
+
 // Set to disable the H.264 encoder/decoder implementations that are provided if
-// |rtc_use_h264| build flag is true (if false, this function does nothing).
+// `rtc_use_h264` build flag is true (if false, this function does nothing).
 // This function should only be called before or during WebRTC initialization
 // and is not thread-safe.
 RTC_EXPORT void DisableRtcUseH264();

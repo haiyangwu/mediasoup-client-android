@@ -10,12 +10,10 @@
 
 #include "pc/session_description.h"
 
-#include <algorithm>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "pc/media_protocol_names.h"
 #include "rtc_base/checks.h"
 
 namespace cricket {
@@ -85,6 +83,18 @@ bool ContentGroup::RemoveContentName(const std::string& content_name) {
   }
   content_names_.erase(iter);
   return true;
+}
+
+std::string ContentGroup::ToString() const {
+  rtc::StringBuilder acc;
+  acc << semantics_ << "(";
+  if (!content_names_.empty()) {
+    for (const auto& name : content_names_) {
+      acc << name << " ";
+    }
+  }
+  acc << ")";
+  return acc.Release();
 }
 
 SessionDescription::SessionDescription() = default;
@@ -261,14 +271,18 @@ const ContentGroup* SessionDescription::GetGroupByName(
   return NULL;
 }
 
-ContentInfo::~ContentInfo() {
-  if (description_ && description_.get() != description) {
-    // If description_ is null, we assume that a move operator
-    // has been applied.
-    RTC_LOG(LS_ERROR) << "ContentInfo::description has been updated by "
-                      << "assignment. This usage is deprecated.";
-    description_.reset(description);  // ensure that it is destroyed.
+std::vector<const ContentGroup*> SessionDescription::GetGroupsByName(
+    const std::string& name) const {
+  std::vector<const ContentGroup*> content_groups;
+  for (const ContentGroup& content_group : content_groups_) {
+    if (content_group.semantics() == name) {
+      content_groups.push_back(&content_group);
+    }
   }
+  return content_groups;
+}
+
+ContentInfo::~ContentInfo() {
 }
 
 // Copy operator.
@@ -277,8 +291,7 @@ ContentInfo::ContentInfo(const ContentInfo& o)
       type(o.type),
       rejected(o.rejected),
       bundle_only(o.bundle_only),
-      description_(o.description_->Clone()),
-      description(description_.get()) {}
+      description_(o.description_->Clone()) {}
 
 ContentInfo& ContentInfo::operator=(const ContentInfo& o) {
   name = o.name;
@@ -286,29 +299,14 @@ ContentInfo& ContentInfo::operator=(const ContentInfo& o) {
   rejected = o.rejected;
   bundle_only = o.bundle_only;
   description_ = o.description_->Clone();
-  description = description_.get();
   return *this;
 }
 
 const MediaContentDescription* ContentInfo::media_description() const {
-  if (description_.get() != description) {
-    // Someone's updated |description|, or used a move operator
-    // on the record.
-    RTC_LOG(LS_ERROR) << "ContentInfo::description has been updated by "
-                      << "assignment. This usage is deprecated.";
-    const_cast<ContentInfo*>(this)->description_.reset(description);
-  }
   return description_.get();
 }
 
 MediaContentDescription* ContentInfo::media_description() {
-  if (description_.get() != description) {
-    // Someone's updated |description|, or used a move operator
-    // on the record.
-    RTC_LOG(LS_ERROR) << "ContentInfo::description has been updated by "
-                      << "assignment. This usage is deprecated.";
-    description_.reset(description);
-  }
   return description_.get();
 }
 

@@ -85,14 +85,14 @@ void DxgiDuplicatorController::Release() {
 }
 
 bool DxgiDuplicatorController::IsSupported() {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   return Initialize();
 }
 
 bool DxgiDuplicatorController::RetrieveD3dInfo(D3dInfo* info) {
   bool result = false;
   {
-    rtc::CritScope lock(&lock_);
+    MutexLock lock(&mutex_);
     result = Initialize();
     *info = d3d_info_;
   }
@@ -116,7 +116,7 @@ DxgiDuplicatorController::Result DxgiDuplicatorController::DuplicateMonitor(
 }
 
 DesktopVector DxgiDuplicatorController::dpi() {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   if (Initialize()) {
     return dpi_;
   }
@@ -124,7 +124,7 @@ DesktopVector DxgiDuplicatorController::dpi() {
 }
 
 int DxgiDuplicatorController::ScreenCount() {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   if (Initialize()) {
     return ScreenCountUnlocked();
   }
@@ -133,7 +133,7 @@ int DxgiDuplicatorController::ScreenCount() {
 
 bool DxgiDuplicatorController::GetDeviceNames(
     std::vector<std::string>* output) {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   if (Initialize()) {
     GetDeviceNamesUnlocked(output);
     return true;
@@ -145,7 +145,7 @@ DxgiDuplicatorController::Result DxgiDuplicatorController::DoDuplicate(
     DxgiFrame* frame,
     int monitor_id) {
   RTC_DCHECK(frame);
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
 
   // The dxgi components and APIs do not update the screen resolution without
   // a reinitialization. So we use the GetDC() function to retrieve the screen
@@ -186,24 +186,24 @@ DxgiDuplicatorController::Result DxgiDuplicatorController::DoDuplicate(
     return Result::SUCCEEDED;
   }
   if (monitor_id >= ScreenCountUnlocked()) {
-    // It's a user error to provide a |monitor_id| larger than screen count. We
+    // It's a user error to provide a `monitor_id` larger than screen count. We
     // do not need to deinitialize.
     return Result::INVALID_MONITOR_ID;
   }
 
-  // If the |monitor_id| is valid, but DoDuplicateUnlocked() failed, something
+  // If the `monitor_id` is valid, but DoDuplicateUnlocked() failed, something
   // must be wrong from capturer APIs. We should Deinitialize().
   Deinitialize();
   return Result::DUPLICATION_FAILED;
 }
 
 void DxgiDuplicatorController::Unload() {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   Deinitialize();
 }
 
 void DxgiDuplicatorController::Unregister(const Context* const context) {
-  rtc::CritScope lock(&lock_);
+  MutexLock lock(&mutex_);
   if (ContextExpired(context)) {
     // The Context has not been setup after a recent initialization, so it
     // should not been registered in duplicators.
@@ -440,8 +440,8 @@ bool DxgiDuplicatorController::EnsureFrameCaptured(Context* context,
   SharedDesktopFrame* shared_frame = nullptr;
   if (target->size().width() >= desktop_size().width() &&
       target->size().height() >= desktop_size().height()) {
-    // |target| is large enough to cover entire screen, we do not need to use
-    // |fallback_frame|.
+    // `target` is large enough to cover entire screen, we do not need to use
+    // `fallback_frame`.
     shared_frame = target;
   } else {
     fallback_frame = SharedDesktopFrame::Wrap(
@@ -453,7 +453,7 @@ bool DxgiDuplicatorController::EnsureFrameCaptured(Context* context,
   int64_t last_frame_start_ms = 0;
   while (GetNumFramesCaptured() < frames_to_skip) {
     if (GetNumFramesCaptured() > 0) {
-      // Sleep |ms_per_frame| before capturing next frame to ensure the screen
+      // Sleep `ms_per_frame` before capturing next frame to ensure the screen
       // has been updated by the video adapter.
       webrtc::SleepMs(ms_per_frame - (rtc::TimeMillis() - last_frame_start_ms));
     }

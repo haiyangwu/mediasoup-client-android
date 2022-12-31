@@ -15,6 +15,7 @@
 
 #include <stdint.h>
 #include <ctime>
+#include <memory>
 #include <string>
 
 #include "rtc_base/system/rtc_export.h"
@@ -84,7 +85,7 @@ class RTC_EXPORT KeyParams {
 // appropriately we can change KeyType enum -> class without breaking Chromium.
 KeyType IntKeyTypeFamilyToKeyType(int key_type_family);
 
-// Parameters for generating a certificate. If |common_name| is non-empty, it
+// Parameters for generating a certificate. If `common_name` is non-empty, it
 // will be used for the certificate's subject and issuer name, otherwise a
 // random string will be used.
 struct SSLIdentityParams {
@@ -100,41 +101,40 @@ struct SSLIdentityParams {
 class RTC_EXPORT SSLIdentity {
  public:
   // Generates an identity (keypair and self-signed certificate). If
-  // |common_name| is non-empty, it will be used for the certificate's subject
+  // `common_name` is non-empty, it will be used for the certificate's subject
   // and issuer name, otherwise a random string will be used. The key type and
-  // parameters are defined in |key_param|. The certificate's lifetime in
-  // seconds from the current time is defined in |certificate_lifetime|; it
+  // parameters are defined in `key_param`. The certificate's lifetime in
+  // seconds from the current time is defined in `certificate_lifetime`; it
   // should be a non-negative number.
   // Returns null on failure.
   // Caller is responsible for freeing the returned object.
-  static SSLIdentity* GenerateWithExpiration(const std::string& common_name,
+  static std::unique_ptr<SSLIdentity> Create(const std::string& common_name,
                                              const KeyParams& key_param,
                                              time_t certificate_lifetime);
-  static SSLIdentity* Generate(const std::string& common_name,
-                               const KeyParams& key_param);
-  static SSLIdentity* Generate(const std::string& common_name,
-                               KeyType key_type);
+  static std::unique_ptr<SSLIdentity> Create(const std::string& common_name,
+                                             const KeyParams& key_param);
+  static std::unique_ptr<SSLIdentity> Create(const std::string& common_name,
+                                             KeyType key_type);
 
-  // Generates an identity with the specified validity period.
-  // TODO(torbjorng): Now that Generate() accepts relevant params, make tests
-  // use that instead of this function.
-  static SSLIdentity* GenerateForTest(const SSLIdentityParams& params);
+  // Allows fine-grained control over expiration time.
+  static std::unique_ptr<SSLIdentity> CreateForTest(
+      const SSLIdentityParams& params);
 
   // Construct an identity from a private key and a certificate.
-  static SSLIdentity* FromPEMStrings(const std::string& private_key,
-                                     const std::string& certificate);
+  static std::unique_ptr<SSLIdentity> CreateFromPEMStrings(
+      const std::string& private_key,
+      const std::string& certificate);
 
   // Construct an identity from a private key and a certificate chain.
-  static SSLIdentity* FromPEMChainStrings(const std::string& private_key,
-                                          const std::string& certificate_chain);
+  static std::unique_ptr<SSLIdentity> CreateFromPEMChainStrings(
+      const std::string& private_key,
+      const std::string& certificate_chain);
 
   virtual ~SSLIdentity() {}
 
   // Returns a new SSLIdentity object instance wrapping the same
   // identity information.
-  // Caller is responsible for freeing the returned object.
-  // TODO(hbos,torbjorng): Rename to a less confusing name.
-  virtual SSLIdentity* GetReference() const = 0;
+  std::unique_ptr<SSLIdentity> Clone() const { return CloneInternal(); }
 
   // Returns a temporary reference to the end-entity (leaf) certificate.
   virtual const SSLCertificate& certificate() const = 0;
@@ -150,6 +150,9 @@ class RTC_EXPORT SSLIdentity {
   static std::string DerToPem(const std::string& pem_type,
                               const unsigned char* data,
                               size_t length);
+
+ protected:
+  virtual std::unique_ptr<SSLIdentity> CloneInternal() const = 0;
 };
 
 bool operator==(const SSLIdentity& a, const SSLIdentity& b);
@@ -157,7 +160,7 @@ bool operator!=(const SSLIdentity& a, const SSLIdentity& b);
 
 // Convert from ASN1 time as restricted by RFC 5280 to seconds from 1970-01-01
 // 00.00 ("epoch").  If the ASN1 time cannot be read, return -1.  The data at
-// |s| is not 0-terminated; its char count is defined by |length|.
+// `s` is not 0-terminated; its char count is defined by `length`.
 int64_t ASN1TimeToSec(const unsigned char* s, size_t length, bool long_format);
 
 extern const char kPemTypeCertificate[];

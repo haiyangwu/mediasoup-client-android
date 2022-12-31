@@ -121,7 +121,7 @@ class NetEqTestFactory {
     // Prints concealment events.
     bool concealment_events = false;
     // Maximum allowed number of packets in the buffer.
-    static constexpr int default_max_nr_packets_in_buffer() { return 50; }
+    static constexpr int default_max_nr_packets_in_buffer() { return 200; }
     int max_nr_packets_in_buffer = default_max_nr_packets_in_buffer();
     // Number of dummy packets to put in the packet buffer at the start of the
     // simulation.
@@ -132,8 +132,10 @@ class NetEqTestFactory {
     int skip_get_audio_events = default_skip_get_audio_events();
     // Enables jitter buffer fast accelerate.
     bool enable_fast_accelerate = false;
-    // Path to the output text log file that describes the simulation on a
-    // step-by-step basis.
+    // Dumps events that describes the simulation on a step-by-step basis.
+    bool textlog = false;
+    // If specified and `textlog` is true, the output of `textlog` is written to
+    // the specified file name.
     absl::optional<std::string> textlog_filename;
     // Base name for the output script files for plotting the delay profile.
     absl::optional<std::string> plot_scripts_basename;
@@ -145,13 +147,16 @@ class NetEqTestFactory {
 
   std::unique_ptr<NetEqTest> InitializeTestFromFile(
       const std::string& input_filename,
+      NetEqFactory* neteq_factory,
       const Config& config);
   std::unique_ptr<NetEqTest> InitializeTestFromString(
       const std::string& input_string,
+      NetEqFactory* neteq_factory,
       const Config& config);
 
  private:
   std::unique_ptr<NetEqTest> InitializeTest(std::unique_ptr<NetEqInput> input,
+                                            NetEqFactory* neteq_factory,
                                             const Config& config);
   std::unique_ptr<SsrcSwitchDetector> ssrc_switch_detector_;
   std::unique_ptr<NetEqStatsPlotter> stats_plotter_;

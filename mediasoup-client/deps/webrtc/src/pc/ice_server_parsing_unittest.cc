@@ -23,7 +23,7 @@ namespace webrtc {
 class IceServerParsingTest : public ::testing::Test {
  public:
   // Convenience functions for parsing a single URL. Result is stored in
-  // |stun_servers_| and |turn_servers_|.
+  // `stun_servers_` and `turn_servers_`.
   bool ParseUrl(const std::string& url) {
     return ParseUrl(url, std::string(), std::string());
   }
@@ -182,6 +182,11 @@ TEST_F(IceServerParsingTest, ParseHostnameAndPort) {
   EXPECT_FALSE(ParseUrl("stun:[1:2:3:4:5:6:7:8]junk:1000"));
   EXPECT_FALSE(ParseUrl("stun::5555"));
   EXPECT_FALSE(ParseUrl("stun:"));
+  // Test illegal URLs according to RFC 3986 (URI generic syntax)
+  // and RFC 7064 (URI schemes for STUN and TURN)
+  EXPECT_FALSE(ParseUrl("stun:/hostname"));  // / is not allowed
+  EXPECT_FALSE(ParseUrl("stun:?hostname"));  // ? is not allowed
+  EXPECT_FALSE(ParseUrl("stun:#hostname"));  // # is not allowed
 }
 
 // Test parsing the "?transport=xxx" part of the URL.

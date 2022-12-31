@@ -8,10 +8,11 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#import <WebRTC/RTCVideoCodecInfo.h>
+#import "sdk/objc/base/RTCVideoCodecInfo.h"
 
-@interface RTCVideoCodecInfo (HumanReadable)
+@interface RTC_OBJC_TYPE (RTCVideoCodecInfo)
+(HumanReadable)
 
-- (NSString *)humanReadableDescription;
+    - (NSString *)humanReadableDescription;
 
 @end

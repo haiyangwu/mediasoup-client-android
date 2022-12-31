@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "rtc_base/critical_section.h"
+#include <string>
 
 // Implementation that can read (exclusive) or write from/to a file.
 
@@ -32,20 +32,19 @@ class FileWrapper final {
  public:
   // Opens a file, in read or write mode. Use the is_open() method on the
   // returned object to check if the open operation was successful. On failure,
-  // and if |error| is non-null, the system errno value is stored at |*error|.
+  // and if `error` is non-null, the system errno value is stored at |*error|.
   // The file is closed by the destructor.
   static FileWrapper OpenReadOnly(const char* file_name_utf8);
   static FileWrapper OpenReadOnly(const std::string& file_name_utf8);
   static FileWrapper OpenWriteOnly(const char* file_name_utf8,
                                    int* error = nullptr);
-
   static FileWrapper OpenWriteOnly(const std::string& file_name_utf8,
                                    int* error = nullptr);
 
   FileWrapper() = default;
 
-  // Takes over ownership of |file|, closing it on destruction. Calling with
-  // null |file| is allowed, and results in a FileWrapper with is_open() false.
+  // Takes over ownership of `file`, closing it on destruction. Calling with
+  // null `file` is allowed, and results in a FileWrapper with is_open() false.
   explicit FileWrapper(FILE* file) : file_(file) {}
   ~FileWrapper() { Close(); }
 
@@ -66,6 +65,12 @@ class FileWrapper final {
   // Calling Close on an already closed file does nothing and returns success.
   bool Close();
 
+  // Releases and returns the wrapped file without closing it. This call passes
+  // the ownership of the file to the caller, and the wrapper is no longer
+  // responsible for closing it. Similarly the previously wrapped file is no
+  // longer available for the wrapper to use in any aspect.
+  FILE* Release();
+
   // Write any buffered data to the underlying file. Returns true on success,
   // false on write error. Note: Flushing when closing, is not required.
   bool Flush();
@@ -80,6 +85,11 @@ class FileWrapper final {
   bool SeekRelative(int64_t offset);
   // Seek to given position.
   bool SeekTo(int64_t position);
+
+  // Returns the file size or -1 if a size could not be determined.
+  // (A file size might not exists for non-seekable files or file-like
+  // objects, for example /dev/tty on unix.)
+  long FileSize();
 
   // Returns number of bytes read. Short count indicates EOF or error.
   size_t Read(void* buf, size_t length);

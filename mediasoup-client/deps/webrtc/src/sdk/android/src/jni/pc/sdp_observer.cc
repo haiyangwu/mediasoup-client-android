@@ -31,8 +31,11 @@ CreateSdpObserverJni::~CreateSdpObserverJni() = default;
 
 void CreateSdpObserverJni::OnSuccess(SessionDescriptionInterface* desc) {
   JNIEnv* env = AttachCurrentThreadIfNeeded();
-  Java_SdpObserver_onCreateSuccess(env, j_observer_global_,
-                                   NativeToJavaSessionDescription(env, desc));
+  std::string sdp;
+  RTC_CHECK(desc->ToString(&sdp)) << "got so far: " << sdp;
+  Java_SdpObserver_onCreateSuccess(
+      env, j_observer_global_,
+      NativeToJavaSessionDescription(env, sdp, desc->type()));
   // OnSuccess transfers ownership of the description (there's a TODO to make
   // it use unique_ptr...).
   delete desc;
@@ -44,24 +47,34 @@ void CreateSdpObserverJni::OnFailure(webrtc::RTCError error) {
                                    NativeToJavaString(env, error.message()));
 }
 
-SetSdpObserverJni::SetSdpObserverJni(
+SetLocalSdpObserverJni::SetLocalSdpObserverJni(
     JNIEnv* env,
-    const JavaRef<jobject>& j_observer,
-    std::unique_ptr<MediaConstraints> constraints)
-    : j_observer_global_(env, j_observer),
-      constraints_(std::move(constraints)) {}
+    const JavaRef<jobject>& j_observer)
+    : j_observer_global_(env, j_observer) {}
 
-SetSdpObserverJni::~SetSdpObserverJni() = default;
-
-void SetSdpObserverJni::OnSuccess() {
+void SetLocalSdpObserverJni::OnSetLocalDescriptionComplete(RTCError error) {
   JNIEnv* env = AttachCurrentThreadIfNeeded();
-  Java_SdpObserver_onSetSuccess(env, j_observer_global_);
+  if (error.ok()) {
+    Java_SdpObserver_onSetSuccess(env, j_observer_global_);
+  } else {
+    Java_SdpObserver_onSetFailure(env, j_observer_global_,
+                                  NativeToJavaString(env, error.message()));
+  }
 }
 
-void SetSdpObserverJni::OnFailure(webrtc::RTCError error) {
+SetRemoteSdpObserverJni::SetRemoteSdpObserverJni(
+    JNIEnv* env,
+    const JavaRef<jobject>& j_observer)
+    : j_observer_global_(env, j_observer) {}
+
+void SetRemoteSdpObserverJni::OnSetRemoteDescriptionComplete(RTCError error) {
   JNIEnv* env = AttachCurrentThreadIfNeeded();
-  Java_SdpObserver_onSetFailure(env, j_observer_global_,
-                                NativeToJavaString(env, error.message()));
+  if (error.ok()) {
+    Java_SdpObserver_onSetSuccess(env, j_observer_global_);
+  } else {
+    Java_SdpObserver_onSetFailure(env, j_observer_global_,
+                                  NativeToJavaString(env, error.message()));
+  }
 }
 
 }  // namespace jni

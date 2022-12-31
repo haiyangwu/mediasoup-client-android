@@ -27,9 +27,9 @@
 #endif
 
 #include "absl/base/attributes.h"
-#include "rtc_base/critical_section.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/strings/string_builder.h"
+#include "rtc_base/synchronization/mutex.h"
 
 namespace webrtc {
 
@@ -92,18 +92,22 @@ struct SignalHandlerOutputState {
 };
 
 // Global lock to ensure only one thread gets interrupted at a time.
-ABSL_CONST_INIT rtc::GlobalLock g_signal_handler_lock;
+ABSL_CONST_INIT GlobalMutex g_signal_handler_lock(absl::kConstInit);
 // Argument passed to the ThreadSignalHandler() from the sampling thread to the
 // sampled (stopped) thread. This value is set just before sending signal to the
 // thread and reset when handler is done.
 SignalHandlerOutputState* volatile g_signal_handler_output_state;
 
 // This function is called iteratively for each stack trace element and stores
-// the element in the array from |unwind_output_state|.
+// the element in the array from `unwind_output_state`.
 _Unwind_Reason_Code UnwindBacktrace(struct _Unwind_Context* unwind_context,
                                     void* unwind_output_state) {
   SignalHandlerOutputState* const output_state =
       static_cast<SignalHandlerOutputState*>(unwind_output_state);
+
+  // Abort if output state is corrupt.
+  if (output_state == nullptr)
+    return _URC_END_OF_STACK;
 
   // Avoid overflowing the stack trace array.
   if (output_state->stack_size_counter >= kMaxStackSize)
@@ -121,13 +125,18 @@ _Unwind_Reason_Code UnwindBacktrace(struct _Unwind_Context* unwind_context,
 
 // This signal handler is exectued on the interrupted thread.
 void SignalHandler(int signum, siginfo_t* info, void* ptr) {
-  _Unwind_Backtrace(&UnwindBacktrace, g_signal_handler_output_state);
-  g_signal_handler_output_state->signal_handler_finish_event.Signal();
+  // This should have been set by the thread requesting the stack trace.
+  SignalHandlerOutputState* signal_handler_output_state =
+      g_signal_handler_output_state;
+  if (signal_handler_output_state != nullptr) {
+    _Unwind_Backtrace(&UnwindBacktrace, signal_handler_output_state);
+    signal_handler_output_state->signal_handler_finish_event.Signal();
+  }
 }
 
 // Temporarily change the signal handler to a function that records a raw stack
 // trace and interrupt the given tid. This function will block until the output
-// thread stack trace has been stored in |params|. The return value is an error
+// thread stack trace has been stored in `params`. The return value is an error
 // string on failure and null on success.
 const char* CaptureRawStacktrace(int pid,
                                  int tid,
@@ -144,7 +153,7 @@ const char* CaptureRawStacktrace(int pid,
   act.sa_flags = SA_RESTART | SA_SIGINFO;
   sigemptyset(&act.sa_mask);
 
-  rtc::GlobalLockScope ls(&g_signal_handler_lock);
+  GlobalMutexLock ls(&g_signal_handler_lock);
   g_signal_handler_output_state = params;
 
   if (sigaction(kSignal, &act, &old_act) != 0)
@@ -197,8 +206,8 @@ std::vector<StackTraceElement> FormatStackTrace(
 std::vector<StackTraceElement> GetStackTrace(int tid) {
   // Only a thread itself can unwind its stack, so we will interrupt the given
   // tid with a custom signal handler in order to unwind its stack. The stack
-  // will be recorded to |params| through the use of the global pointer
-  // |g_signal_handler_param|.
+  // will be recorded to `params` through the use of the global pointer
+  // `g_signal_handler_param`.
   SignalHandlerOutputState params;
 
   const char* error_string = CaptureRawStacktrace(getpid(), tid, &params);

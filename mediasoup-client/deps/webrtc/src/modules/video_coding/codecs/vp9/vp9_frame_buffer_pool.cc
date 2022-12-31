@@ -15,7 +15,6 @@
 
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
-#include "rtc_base/ref_counted_object.h"
 #include "vpx/vpx_codec.h"
 #include "vpx/vpx_decoder.h"
 #include "vpx/vpx_frame_buffer.h"
@@ -45,7 +44,7 @@ bool Vp9FrameBufferPool::InitializeVpxUsePool(
           &Vp9FrameBufferPool::VpxGetFrameBuffer,
           // Called by libvpx when it no longer uses a frame buffer.
           &Vp9FrameBufferPool::VpxReleaseFrameBuffer,
-          // |this| will be passed as |user_priv| to VpxGetFrameBuffer.
+          // `this` will be passed as `user_priv` to VpxGetFrameBuffer.
           this)) {
     // Failed to configure libvpx to use Vp9FrameBufferPool.
     return false;
@@ -58,7 +57,7 @@ Vp9FrameBufferPool::GetFrameBuffer(size_t min_size) {
   RTC_DCHECK_GT(min_size, 0);
   rtc::scoped_refptr<Vp9FrameBuffer> available_buffer = nullptr;
   {
-    rtc::CritScope cs(&buffers_lock_);
+    MutexLock lock(&buffers_lock_);
     // Do we have a buffer we can recycle?
     for (const auto& buffer : allocated_buffers_) {
       if (buffer->HasOneRef()) {
@@ -68,13 +67,15 @@ Vp9FrameBufferPool::GetFrameBuffer(size_t min_size) {
     }
     // Otherwise create one.
     if (available_buffer == nullptr) {
-      available_buffer = new rtc::RefCountedObject<Vp9FrameBuffer>();
+      available_buffer = new Vp9FrameBuffer();
       allocated_buffers_.push_back(available_buffer);
       if (allocated_buffers_.size() > max_num_buffers_) {
         RTC_LOG(LS_WARNING)
-            << allocated_buffers_.size() << " Vp9FrameBuffers have been "
-            << "allocated by a Vp9FrameBufferPool (exceeding what is "
-            << "considered reasonable, " << max_num_buffers_ << ").";
+            << allocated_buffers_.size()
+            << " Vp9FrameBuffers have been "
+               "allocated by a Vp9FrameBufferPool (exceeding what is "
+               "considered reasonable, "
+            << max_num_buffers_ << ").";
 
         // TODO(phoglund): this limit is being hit in tests since Oct 5 2016.
         // See https://bugs.chromium.org/p/webrtc/issues/detail?id=6484.
@@ -89,7 +90,7 @@ Vp9FrameBufferPool::GetFrameBuffer(size_t min_size) {
 
 int Vp9FrameBufferPool::GetNumBuffersInUse() const {
   int num_buffers_in_use = 0;
-  rtc::CritScope cs(&buffers_lock_);
+  MutexLock lock(&buffers_lock_);
   for (const auto& buffer : allocated_buffers_) {
     if (!buffer->HasOneRef())
       ++num_buffers_in_use;
@@ -97,8 +98,38 @@ int Vp9FrameBufferPool::GetNumBuffersInUse() const {
   return num_buffers_in_use;
 }
 
+bool Vp9FrameBufferPool::Resize(size_t max_number_of_buffers) {
+  MutexLock lock(&buffers_lock_);
+  size_t used_buffers_count = 0;
+  for (const auto& buffer : allocated_buffers_) {
+    // If the buffer is in use, the ref count will be >= 2, one from the list we
+    // are looping over and one from the application. If the ref count is 1,
+    // then the list we are looping over holds the only reference and it's safe
+    // to reuse.
+    if (!buffer->HasOneRef()) {
+      used_buffers_count++;
+    }
+  }
+  if (used_buffers_count > max_number_of_buffers) {
+    return false;
+  }
+  max_num_buffers_ = max_number_of_buffers;
+
+  size_t buffers_to_purge = allocated_buffers_.size() - max_num_buffers_;
+  auto iter = allocated_buffers_.begin();
+  while (iter != allocated_buffers_.end() && buffers_to_purge > 0) {
+    if ((*iter)->HasOneRef()) {
+      iter = allocated_buffers_.erase(iter);
+      buffers_to_purge--;
+    } else {
+      ++iter;
+    }
+  }
+  return true;
+}
+
 void Vp9FrameBufferPool::ClearPool() {
-  rtc::CritScope cs(&buffers_lock_);
+  MutexLock lock(&buffers_lock_);
   allocated_buffers_.clear();
 }
 
@@ -121,11 +152,11 @@ int32_t Vp9FrameBufferPool::VpxGetFrameBuffer(void* user_priv,
   rtc::scoped_refptr<Vp9FrameBuffer> buffer = pool->GetFrameBuffer(min_size);
   fb->data = buffer->GetData();
   fb->size = buffer->GetDataSize();
-  // Store Vp9FrameBuffer* in |priv| for use in VpxReleaseFrameBuffer.
-  // This also makes vpx_codec_get_frame return images with their |fb_priv| set
-  // to |buffer| which is important for external reference counting.
-  // Release from refptr so that the buffer's |ref_count_| remains 1 when
-  // |buffer| goes out of scope.
+  // Store Vp9FrameBuffer* in `priv` for use in VpxReleaseFrameBuffer.
+  // This also makes vpx_codec_get_frame return images with their `fb_priv` set
+  // to `buffer` which is important for external reference counting.
+  // Release from refptr so that the buffer's `ref_count_` remains 1 when
+  // `buffer` goes out of scope.
   fb->priv = static_cast<void*>(buffer.release());
   return 0;
 }
@@ -140,7 +171,7 @@ int32_t Vp9FrameBufferPool::VpxReleaseFrameBuffer(void* user_priv,
     buffer->Release();
     // When libvpx fails to decode and you continue to try to decode (and fail)
     // libvpx can for some reason try to release the same buffer multiple times.
-    // Setting |priv| to null protects against trying to Release multiple times.
+    // Setting `priv` to null protects against trying to Release multiple times.
     fb->priv = nullptr;
   }
   return 0;

@@ -12,12 +12,11 @@
 
 #include <memory>
 
+#include "absl/base/macros.h"
 #include "api/video/video_bitrate_allocator.h"
 #include "api/video_codecs/video_codec.h"
-#include "modules/video_coding/codecs/vp9/svc_rate_allocator.h"
-#include "modules/video_coding/utility/default_video_bitrate_allocator.h"
+#include "modules/video_coding/svc/svc_rate_allocator.h"
 #include "modules/video_coding/utility/simulcast_rate_allocator.h"
-#include "rtc_base/system/fallthrough.h"
 
 namespace webrtc {
 
@@ -31,20 +30,13 @@ class BuiltinVideoBitrateAllocatorFactory
 
   std::unique_ptr<VideoBitrateAllocator> CreateVideoBitrateAllocator(
       const VideoCodec& codec) override {
-    std::unique_ptr<VideoBitrateAllocator> rate_allocator;
     switch (codec.codecType) {
-      case kVideoCodecVP8:
-        RTC_FALLTHROUGH();
-      case kVideoCodecH264:
-        rate_allocator.reset(new SimulcastRateAllocator(codec));
-        break;
+      case kVideoCodecAV1:
       case kVideoCodecVP9:
-        rate_allocator.reset(new SvcRateAllocator(codec));
-        break;
+        return std::make_unique<SvcRateAllocator>(codec);
       default:
-        rate_allocator.reset(new DefaultVideoBitrateAllocator(codec));
+        return std::make_unique<SimulcastRateAllocator>(codec);
     }
-    return rate_allocator;
   }
 };
 
