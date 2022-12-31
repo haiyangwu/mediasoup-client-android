@@ -11,7 +11,9 @@ public class Consumer {
   public interface Listener {
 
     /**
-     * Executed when the transport this consumer belongs to is closed for whatever reason. The consumer itself is also closed.
+     * Executed when the transport this consumer belongs to is closed for whatever reason. The
+     * consumer itself is also closed.
+     *
      * @param consumer The consumer instance executing this method.
      */
     @CalledByNative("Listener")
@@ -86,28 +88,32 @@ public class Consumer {
   }
 
   /**
-   * @return Custom data Object provided by the application in the consumer factory method. The app can modify its content at any time.
+   * @return Custom data Object provided by the application in the consumer factory method. The app
+   *     can modify its content at any time.
    */
   public String getAppData() {
     return nativeGetAppData(mNativeConsumer);
   }
 
   /**
-   * Resumes the consumer Internally the library executes track->set_enabled(true) in the remote track.
+   * Resumes the consumer Internally the library executes track->set_enabled(true) in the remote
+   * track.
    */
   public void resume() {
     nativeResume(mNativeConsumer);
   }
 
   /**
-   * Pauses the consumer. Internally the library executes track->set_enabled(false) in the remote track.
+   * Pauses the consumer. Internally the library executes track->set_enabled(false) in the remote
+   * track.
    */
   public void pause() {
     nativePause(mNativeConsumer);
   }
 
   /**
-   * Gets the local RTP receiver statistics by calling getStats() in the underlying RTCRtpReceiver instance.
+   * Gets the local RTP receiver statistics by calling getStats() in the underlying RTCRtpReceiver
+   * instance.
    *
    * @throws MediasoupException
    */
@@ -116,8 +122,8 @@ public class Consumer {
   }
 
   /**
-   * Closes the consumer.
-   * This method should be called when the server side consumer has been closed (and vice-versa).
+   * Closes the consumer. This method should be called when the server side consumer has been closed
+   * (and vice-versa).
    */
   public void close() {
     nativeClose(mNativeConsumer);

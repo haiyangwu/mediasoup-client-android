@@ -141,8 +141,7 @@ public class PeerConnection {
       throw new IllegalArgumentException("given sessionDescription is null");
     }
 
-    nativeSetLocalDescription(
-        sessionDescription.type.ordinal(), sessionDescription.description);
+    nativeSetLocalDescription(sessionDescription.type.ordinal(), sessionDescription.description);
   }
 
   public void setRemoteDescription(SessionDescription sessionDescription)
@@ -151,8 +150,7 @@ public class PeerConnection {
       throw new IllegalArgumentException("given sessionDescription is null");
     }
 
-    nativeSetRemoteDescription(
-        sessionDescription.type.ordinal(), sessionDescription.description);
+    nativeSetRemoteDescription(sessionDescription.type.ordinal(), sessionDescription.description);
   }
 
   public String getLocalDescription() {

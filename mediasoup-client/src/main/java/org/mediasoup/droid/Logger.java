@@ -27,11 +27,11 @@ public class Logger {
 
     LogLevel(int value) {
       this.value = value;
-    };
+    }
 
     int getValue() {
       return value;
-    };
+    }
 
     @CalledByNative("LogLevel")
     public static LogLevel getLogLevel(int level) {

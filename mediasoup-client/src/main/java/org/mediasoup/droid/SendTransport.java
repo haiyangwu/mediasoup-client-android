@@ -38,7 +38,12 @@ public class SendTransport extends Transport {
      * @return std::future<std::string> ID of the data producer created in server side mediasoup
      */
     @CalledByNative("Listener")
-    String onProduceData(Transport transport, String sctpStreamParameters, String label, String protocol, String appData);
+    String onProduceData(
+        Transport transport,
+        String sctpStreamParameters,
+        String label,
+        String protocol,
+        String appData);
   }
 
   private long mNativeTransport;

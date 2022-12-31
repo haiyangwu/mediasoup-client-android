@@ -11,7 +11,8 @@ public class Producer {
   public interface Listener {
 
     /**
-     * Executed when the transport this producer belongs to is closed for whatever reason. The producer itself is also closed.
+     * Executed when the transport this producer belongs to is closed for whatever reason. The
+     * producer itself is also closed.
      *
      * @param producer The producer instance executing this method.
      */
@@ -65,46 +66,48 @@ public class Producer {
   }
 
   /**
-   * In case of simulcast, this value determines the highest stream (from 0 to N-1) being transmitted. See the SetMaxSpatialLayer() method for more about this.
+   * In case of simulcast, this value determines the highest stream (from 0 to N-1) being
+   * transmitted. See the SetMaxSpatialLayer() method for more about this.
    */
   public int getMaxSpatialLayer() {
     return nativeGetMaxSpatialLayer(mNativeProducer);
   }
 
   /**
-   * Custom data Object provided by the application in the producer factory method. The app can modify its content at any time.
+   * Custom data Object provided by the application in the producer factory method. The app can
+   * modify its content at any time.
    */
   public String getAppData() {
     return nativeGetAppData(mNativeProducer);
   }
 
   /**
-   * @return Producer RTP parameters. These parameters are internally built by the library and conform to the syntax and requirements of mediasoup, thus they can be transmitted to the server to invoke transport.produce() with them.
+   * @return Producer RTP parameters. These parameters are internally built by the library and
+   *     conform to the syntax and requirements of mediasoup, thus they can be transmitted to the
+   *     server to invoke transport.produce() with them.
    */
   public String getRtpParameters() {
     return nativeGetRtpParameters(mNativeProducer);
   }
 
-  /**
-   * Resumes the producer (RTP is sent again to the server).
-   */
+  /** Resumes the producer (RTP is sent again to the server). */
   public void resume() {
     nativeResume(mNativeProducer);
   }
 
   /**
-   * In case of simulcast, this method limits the highest RTP stream being transmitted to the server.
+   * In case of simulcast, this method limits the highest RTP stream being transmitted to the
+   * server.
    *
-   * @param layer The index of the entry in encodings representing the highest RTP stream that will be transmitted.
+   * @param layer The index of the entry in encodings representing the highest RTP stream that will
+   *     be transmitted.
    * @throws MediasoupException
    */
   public void setMaxSpatialLayer(int layer) throws MediasoupException {
     nativeSetMaxSpatialLayer(mNativeProducer, layer);
   }
 
-  /**
-   * Pauses the producer (no RTP is sent to the server).
-   */
+  /** Pauses the producer (no RTP is sent to the server). */
   public void pause() {
     nativePause(mNativeProducer);
   }
@@ -122,15 +125,14 @@ public class Producer {
   }
 
   /**
-   * Gets the local RTP sender statistics by calling getStats() in the underlying RTCRtpSender instance.
+   * Gets the local RTP sender statistics by calling getStats() in the underlying RTCRtpSender
+   * instance.
    */
   public String getStats() throws MediasoupException {
     return nativeGetStats(mNativeProducer);
   }
 
-  /**
-   * Closes the producer. No more media is transmitted.
-   */
+  /** Closes the producer. No more media is transmitted. */
   public void close() {
     nativeClose(mNativeProducer);
   }
