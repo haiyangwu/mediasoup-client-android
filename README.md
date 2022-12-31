@@ -1,7 +1,6 @@
 # mediasoup-client-android
 
 [![maven][shield-mediasoup-client-android]][maven-mediasoup-client-android]
-[![Codacy Badge][codacy-grade-shield-mediasoup-client-android]][codacy-grade-mediasoup-client-android]
 
 mediasoup android client side library https://mediasoup.org
 
@@ -112,8 +111,6 @@ Haiyang Wu([@haiyangwu](https://github.com/haiyangwu/) at Github)
 [maven-mediasoup-client-android]: https://ossindex.sonatype.org/component/pkg:maven/io.github.haiyangwu/mediasoup-client
 [shield-mediasoup-client-android]: https://img.shields.io/maven-central/v/io.github.haiyangwu/mediasoup-client
 
-[codacy-grade-shield-mediasoup-client-android]: https://api.codacy.com/project/badge/Grade/506c48c5457b462a82afe786762956dc
-[codacy-grade-mediasoup-client-android]: https://app.codacy.com/manual/haiyangwu/mediasoup-client-android?utm_source=github.com&utm_medium=referral&utm_content=haiyangwu/mediasoup-client-android&utm_campaign=Badge_Grade_Dashboard
 
 [libmediasoupclient]: https://github.com/versatica/libmediasoupclient
 [webrtc-android-build]: https://github.com/haiyangwu/webrtc-android-build
