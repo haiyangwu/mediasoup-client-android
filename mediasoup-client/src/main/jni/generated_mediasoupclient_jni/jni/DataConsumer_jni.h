@@ -24,7 +24,7 @@ const char kClassPath_org_mediasoup_droid_DataConsumer[] = "org/mediasoup/droid/
 JNI_REGISTRATION_EXPORT extern const char
     kClassPath_org_mediasoup_droid_DataConsumer_00024DataConsumerListener[];
 const char kClassPath_org_mediasoup_droid_DataConsumer_00024DataConsumerListener[] =
-    "org/mediasoup/droid/DataConsumer$DataConsumerListener";
+    "org/mediasoup/droid/DataConsumer$Listener";
 // Leaking this jclass as we cannot use LazyInstance from some threads.
 JNI_REGISTRATION_EXPORT std::atomic<jclass> g_org_mediasoup_droid_DataConsumer_clazz(nullptr);
 #ifndef org_mediasoup_droid_DataConsumer_clazz_defined

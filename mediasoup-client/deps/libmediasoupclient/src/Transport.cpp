@@ -271,7 +271,8 @@ namespace mediasoupclient
 		{
 			MSC_THROW_ERROR("Cannot set both maxRetransmits and maxPacketLifeTime");
 		}
-		if (maxRetransmits != 0)
+        // TODO(haiyangwu): PR ?
+		if (maxRetransmits != -1)
 		{
 			dataChannelInit.maxRetransmits = maxRetransmits;
 		}
