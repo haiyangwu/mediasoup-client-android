@@ -69,8 +69,10 @@ protected:
 // Takes ownership of the |obj| reference passed; requires it to be a local
 // reference type.
 #if RTC_DCHECK_IS_ON
+
 	// Implementation contains a DCHECK; implement out-of-line when DCHECK_IS_ON.
 	JavaRef(JNIEnv* env, jobject obj);
+
 #else
 	JavaRef(JNIEnv* env, jobject obj) : obj_(obj)
 	{
@@ -87,9 +89,13 @@ protected:
 	// The following are implementation detail convenience methods, for
 	// use by the sub-classes.
 	JNIEnv* SetNewLocalRef(JNIEnv* env, jobject obj);
+
 	void SetNewGlobalRef(JNIEnv* env, jobject obj);
+
 	void ResetLocalRef(JNIEnv* env);
+
 	void ResetGlobalRef();
+
 	jobject ReleaseInternal();
 
 private:
@@ -108,9 +114,11 @@ public:
 	constexpr JavaRef()
 	{
 	}
+
 	constexpr JavaRef(std::nullptr_t)
 	{
 	}
+
 	~JavaRef()
 	{
 	}
@@ -191,6 +199,7 @@ public:
 	constexpr ScopedJavaLocalRef()
 	{
 	}
+
 	constexpr ScopedJavaLocalRef(std::nullptr_t)
 	{
 	}
@@ -306,6 +315,7 @@ public:
 	constexpr ScopedJavaGlobalRef()
 	{
 	}
+
 	constexpr ScopedJavaGlobalRef(std::nullptr_t)
 	{
 	}

@@ -173,7 +173,6 @@ static ScopedJavaLocalRef<jobject> JNI_PeerConnection_GetSenders(
 
 static ScopedJavaLocalRef<jobject> JNI_PeerConnection_GetTransceivers(
   JNIEnv* env, const JavaParamRef<jobject>& j_pc)
-
 {
 	MSC_TRACE();
 

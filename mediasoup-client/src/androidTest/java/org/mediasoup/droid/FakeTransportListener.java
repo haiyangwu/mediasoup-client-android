@@ -43,9 +43,14 @@ public class FakeTransportListener {
 
     @Override
     public String onProduceData(
-        Transport transport, String sctpStreamParameters, String label, String protocol, String appData
-    ) {
-      Logger.v(TAG, "onProduceData() " + sctpStreamParameters + "," + label + "," + protocol + "," + appData);
+        Transport transport,
+        String sctpStreamParameters,
+        String label,
+        String protocol,
+        String appData) {
+      Logger.v(
+          TAG,
+          "onProduceData() " + sctpStreamParameters + "," + label + "," + protocol + "," + appData);
       mOnProduceDataTimesCalled++;
       mDataProducerId = Parameters.nativeGenProducerRemoteId();
       mAppData = appData;

@@ -3,6 +3,7 @@
 #include <sdk/android/native_api/jni/java_types.h>
 
 #include "generated_mediasoupclient_jni/jni/Logger_jni.h"
+
 #define TAG "mediasoupclient-jni"
 
 namespace mediasoupclient
@@ -16,6 +17,7 @@ public:
 	{
 		assert(!j_handler_interface_.is_null());
 	}
+
 	virtual ~LogHandlerInterfaceJNI() = default;
 
 public:

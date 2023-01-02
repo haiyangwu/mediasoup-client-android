@@ -1,9 +1,14 @@
 package org.mediasoup.droid;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.mediasoup.droid.Utils.exceptionException;
+
 import android.content.Context;
-import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.ext.junit.runners.AndroidJUnit4;
 import android.text.TextUtils;
+
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.After;
 import org.junit.Before;
@@ -16,12 +21,8 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.mediasoup.droid.Utils.exceptionException;
-
 @RunWith(AndroidJUnit4.class)
-public class PeerConnectionTest extends BaseTest{
+public class PeerConnectionTest extends BaseTest {
 
   private PeerConnection.PrivateListener mListener;
   private PeerConnection.Options mPeerConnectionOptions;

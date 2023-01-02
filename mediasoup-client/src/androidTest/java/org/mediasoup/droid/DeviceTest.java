@@ -1,7 +1,13 @@
 package org.mediasoup.droid;
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mediasoup.droid.Utils.exceptionException;
+import static org.mediasoup.droid.data.Parameters.nativeGenTransportRemoteParameters;
+
 import android.text.TextUtils;
+
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -10,11 +16,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mediasoup.droid.data.Parameters;
-
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.mediasoup.droid.Utils.exceptionException;
-import static org.mediasoup.droid.data.Parameters.nativeGenTransportRemoteParameters;
 
 @RunWith(AndroidJUnit4.class)
 public class DeviceTest extends BaseTest {
@@ -97,7 +98,7 @@ public class DeviceTest extends BaseTest {
 
     // device.Load() fails if already loaded"
     {
-      exceptionException(()->mDevice.load(routerRtpCapabilities, null), "already loaded");
+      exceptionException(() -> mDevice.load(routerRtpCapabilities, null), "already loaded");
     }
 
     // device.CanProduce() with 'audio'/'video' kind returns true

@@ -9,6 +9,7 @@ namespace mediasoupclient
 using webrtc::AttachCurrentThreadIfNeeded;
 
 #if RTC_DCHECK_IS_ON
+
 // This constructor is inlined when DCHECKs are disabled; don't add anything
 // else here.
 JavaRef<jobject>::JavaRef(JNIEnv* env, jobject obj) : obj_(obj)
@@ -20,6 +21,7 @@ JavaRef<jobject>::JavaRef(JNIEnv* env, jobject obj) : obj_(obj)
 		          env->GetObjectRefType(obj) == JNIGlobalRefType));
 	}
 }
+
 #endif
 
 JNIEnv* JavaRef<jobject>::SetNewLocalRef(JNIEnv* env, jobject obj)
