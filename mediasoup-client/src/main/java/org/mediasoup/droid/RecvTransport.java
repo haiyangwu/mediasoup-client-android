@@ -71,11 +71,33 @@ public class RecvTransport extends Transport {
     return nativeConsume(mNativeTransport, listener, id, producerId, kind, rtpParameters, appData);
   }
 
+  /**
+   * Instructs the transport to receive data via DataChannel from the mediasoup router.
+   *
+   * @param listener Consumer listener.
+   * @param id The identifier of the server side consumer.
+   * @param producerId The identifier of the server side producer being consumed.
+   * @param streamId streamId.
+   * @param label A label which can be used to distinguish this DataChannel from others.
+   * @return {@link DataConsumer}
+   */
   public DataConsumer consumeData(
       DataConsumer.Listener listener, String id, String producerId, long streamId, String label) {
     return consumeData(listener, id, producerId, streamId, label, null, null);
   }
 
+  /**
+   * Instructs the transport to receive data via DataChannel from the mediasoup router.
+   *
+   * @param listener Consumer listener.
+   * @param id The identifier of the server side consumer.
+   * @param producerId The identifier of the server side producer being consumed.
+   * @param streamId streamId.
+   * @param label A label which can be used to distinguish this DataChannel from others.
+   * @param protocol Name of the sub-protocol used by this DataChannel.
+   * @param appData Custom application data.
+   * @return {@link DataConsumer}
+   */
   public DataConsumer consumeData(
       DataConsumer.Listener listener,
       String id,

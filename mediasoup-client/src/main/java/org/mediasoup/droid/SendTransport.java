@@ -123,6 +123,31 @@ public class SendTransport extends Transport {
         mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, codec, appData);
   }
 
+  /**
+   * Instructs the transport to send data via DataChannel to the mediasoup router.
+   *
+   * @param listener DataProducer listener.
+   * @return {@link DataProducer}
+   */
+  public DataProducer produceData(DataProducer.Listener listener) {
+    return nativeProduceData(mNativeTransport, listener, null, null, true, 0, 0, null);
+  }
+
+  /**
+   * Instructs the transport to send data via DataChannel to the mediasoup router.
+   *
+   * @param listener DataProducer listener.
+   * @param label A label which can be used to distinguish this DataChannel from others.
+   * @param protocol Name of the sub-protocol used by this DataChannel.
+   * @param ordered Whether data messages must be received in order. if true the messages will be
+   *     sent reliably.
+   * @param maxRetransmits When ordered is false indicates the time (in milliseconds) after which a
+   *     SCTP packet will stop being retransmitted.
+   * @param maxPacketLifeTime When ordered is false indicates the maximum number of times a packet
+   *     will be retransmitted.
+   * @param appData Custom application data.
+   * @return {@link DataProducer}
+   */
   public DataProducer produceData(
       DataProducer.Listener listener,
       String label,
