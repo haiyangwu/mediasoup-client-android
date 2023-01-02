@@ -123,6 +123,25 @@ public class SendTransport extends Transport {
         mNativeTransport, listener, nativeTrack, pEncodings, codecOptions, codec, appData);
   }
 
+  public DataProducer produceData(
+      DataProducer.Listener listener,
+      String label,
+      String protocol,
+      boolean ordered,
+      int maxRetransmits,
+      int maxPacketLifeTime,
+      String appData) {
+    return nativeProduceData(
+        mNativeTransport,
+        listener,
+        label,
+        protocol,
+        ordered,
+        maxRetransmits,
+        maxPacketLifeTime,
+        appData);
+  }
+
   private static native long nativeGetNativeTransport(long transport);
 
   // may throws MediasoupException
@@ -133,6 +152,17 @@ public class SendTransport extends Transport {
       RtpParameters.Encoding[] encodings,
       String codecOptions,
       String codec,
+      String appData);
+
+  // may throws MediasoupException
+  private static native DataProducer nativeProduceData(
+      long transport,
+      DataProducer.Listener listener,
+      String label,
+      String protocol,
+      boolean ordered,
+      int maxRetransmits,
+      int maxPacketLifeTime,
       String appData);
 
   private static native void nativeFreeTransport(long transport);

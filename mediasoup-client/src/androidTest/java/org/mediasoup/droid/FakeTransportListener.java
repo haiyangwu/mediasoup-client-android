@@ -47,8 +47,9 @@ public class FakeTransportListener {
     ) {
       Logger.v(TAG, "onProduceData() " + sctpStreamParameters + "," + label + "," + protocol + "," + appData);
       mOnProduceDataTimesCalled++;
+      mDataProducerId = Parameters.nativeGenProducerRemoteId();
       mAppData = appData;
-      return mId;
+      return mDataProducerId;
     }
 
     public String mId;
@@ -59,15 +60,18 @@ public class FakeTransportListener {
     public String mVideoProducerLocalParameters;
     public String mVideoProducerId;
     public String mAppData;
+    public String mDataProducerId;
 
     public int mOnProduceTimesCalled = 0;
-    public int mOnProduceDataTimesCalled = 0;
     public int mOnConnectTimesCalled = 0;
     public int mOnConnectionStateChangeTimesCalled = 0;
 
     public int mOnProduceExpectedTimesCalled = 0;
     public int mOnConnectExpectedTimesCalled = 0;
     public int mOnConnectionStateChangeExpectedTimesCalled = 0;
+
+    public int mOnProduceDataTimesCalled = 0;
+    public int mOnProduceDataExpectedTimesCalled = 0;
   }
 
   public static class FakeRecvTransportListener implements RecvTransport.Listener {
@@ -98,7 +102,7 @@ public class FakeTransportListener {
     public int mOnConnectionStateChangeExpectedTimesCalled = 0;
   }
 
-  public static class FakeProducerListener implements Producer.Listener {
+  public static class FakeProducerListener implements Producer.Listener, DataProducer.Listener {
 
     private static final String TAG = "FakeProducerListener";
 
@@ -108,8 +112,20 @@ public class FakeTransportListener {
       ++mOnTransportCloseTimesCalled;
     }
 
+    @Override
+    public void onOpen(DataProducer dataProducer) {}
+
+    @Override
+    public void onClose(DataProducer dataProducer) {}
+
+    @Override
+    public void onBufferedAmountChange(DataProducer dataProducer, long sentDataSize) {}
+
+    @Override
+    public void onTransportClose(DataProducer dataProducer) {}
+
     public int mOnTransportCloseTimesCalled = 0;
-    public int mOnTransportCloseExpetecTimesCalled = 0;
+    public int mOnTransportCloseExpectedTimesCalled = 0;
   }
 
   public static class FakeConsumerListener implements Consumer.Listener {

@@ -79,6 +79,8 @@ public class MediasoupClientTest extends BaseTest {
     Consumer videoConsumer;
     Consumer audioConsumer2;
 
+    DataProducer dataProducer;
+
     // create a Device succeeds.
     {
       device = new Device();
@@ -278,6 +280,27 @@ public class MediasoupClientTest extends BaseTest {
       assertFalse(videoProducer.isPaused());
       assertEquals(2, videoProducer.getMaxSpatialLayer());
       assertEquals("{}", videoProducer.getAppData());
+    }
+
+    // "transport.produceData() succeeds
+    {
+      String appData = "{\"tdr\":\"TDR\"}";
+      dataProducer = sendTransport.produceData(producerListener, "", "", true, 0, 0, appData);
+
+      // connect has already been called for Producer
+      assertEquals(
+          sendTransportListener.mOnConnectTimesCalled,
+          sendTransportListener.mOnConnectExpectedTimesCalled);
+
+      assertEquals(sendTransportListener.mId, sendTransport.getId());
+
+      assertEquals(
+          ++sendTransportListener.mOnProduceDataExpectedTimesCalled,
+          sendTransportListener.mOnProduceDataExpectedTimesCalled);
+
+      assertEquals(dataProducer.getId(), sendTransportListener.mDataProducerId);
+      assertFalse(dataProducer.isClosed());
+      assertEquals(dataProducer.getAppData(), appData);
     }
 
     // transport.produce() without track throws.
@@ -615,7 +638,7 @@ public class MediasoupClientTest extends BaseTest {
       assertTrue(videoProducer.isClosed());
       // Audio Producer was already closed.
       assertEquals(
-          ++producerListener.mOnTransportCloseExpetecTimesCalled,
+          ++producerListener.mOnTransportCloseExpectedTimesCalled,
           producerListener.mOnTransportCloseTimesCalled);
 
       // Audio Consumer was already closed.

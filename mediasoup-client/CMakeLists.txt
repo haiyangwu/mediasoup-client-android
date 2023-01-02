@@ -23,6 +23,7 @@ set(
 	${SOURCE_DIR}/scoped_java_ref.cpp
 	${SOURCE_DIR}/java_types.cpp
 	${SOURCE_DIR}/consumer_jni.cpp
+	${SOURCE_DIR}/data_producer_jni.cpp
 	${SOURCE_DIR}/device_jni.cpp
 	${SOURCE_DIR}/logger_jni.cpp
 	${SOURCE_DIR}/mediasoup_client_jni.cpp

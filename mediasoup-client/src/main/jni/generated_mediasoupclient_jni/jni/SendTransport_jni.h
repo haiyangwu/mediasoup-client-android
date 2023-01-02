@@ -88,6 +88,33 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_SendTransport_nativeProduc
       appData)).Release();
 }
 
+static base::android::ScopedJavaLocalRef<jobject> JNI_SendTransport_ProduceData(JNIEnv* env, jlong
+    transport,
+    const base::android::JavaParamRef<jobject>& listener,
+    const base::android::JavaParamRef<jstring>& label,
+    const base::android::JavaParamRef<jstring>& protocol,
+    jboolean ordered,
+    jint maxRetransmits,
+    jint maxPacketLifeTime,
+    const base::android::JavaParamRef<jstring>& appData);
+
+JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_SendTransport_nativeProduceData(
+    JNIEnv* env,
+    jclass jcaller,
+    jlong transport,
+    jobject listener,
+    jstring label,
+    jstring protocol,
+    jboolean ordered,
+    jint maxRetransmits,
+    jint maxPacketLifeTime,
+    jstring appData) {
+  return JNI_SendTransport_ProduceData(env, transport, base::android::JavaParamRef<jobject>(env,
+      listener), base::android::JavaParamRef<jstring>(env, label),
+      base::android::JavaParamRef<jstring>(env, protocol), ordered, maxRetransmits,
+      maxPacketLifeTime, base::android::JavaParamRef<jstring>(env, appData)).Release();
+}
+
 static void JNI_SendTransport_FreeTransport(JNIEnv* env, jlong transport);
 
 JNI_GENERATOR_EXPORT void Java_org_mediasoup_droid_SendTransport_nativeFreeTransport(

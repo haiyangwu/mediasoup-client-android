@@ -160,10 +160,10 @@ static void JNI_Producer_Close(JNIEnv* env, jlong j_producer)
 ScopedJavaLocalRef<jobject> NativeToJavaProducer(
   JNIEnv* env, Producer* producer, ProducerListenerJni* listener)
 {
-	OwnedProducer* owned_producer = new OwnedProducer(producer, listener);
+	auto* owned_producer = new OwnedProducer(producer, listener);
 	auto j_producer = Java_Producer_Constructor(env, webrtc::NativeToJavaPointer(owned_producer));
 	listener->SetJProducer(env, j_producer);
-	return ScopedJavaLocalRef<jobject>(env, j_producer.Release());
+	return { env, j_producer.Release() };
 }
 
 } // namespace mediasoupclient
