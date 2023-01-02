@@ -71,6 +71,24 @@ public class RecvTransport extends Transport {
     return nativeConsume(mNativeTransport, listener, id, producerId, kind, rtpParameters, appData);
   }
 
+  public DataConsumer consumeData(
+      DataConsumer.Listener listener, String id, String producerId, long streamId, String label) {
+    return consumeData(listener, id, producerId, streamId, label, null, null);
+  }
+
+  public DataConsumer consumeData(
+      DataConsumer.Listener listener,
+      String id,
+      String producerId,
+      long streamId,
+      String label,
+      String protocol,
+      String appData) {
+    checkTransportExists();
+    return nativeConsumeData(
+        mNativeTransport, listener, id, producerId, streamId, label, protocol, appData);
+  }
+
   private static native long nativeGetNativeTransport(long transport);
 
   // may throws MediasoupException
@@ -81,6 +99,17 @@ public class RecvTransport extends Transport {
       String producerId,
       String kind,
       String rtpParameters,
+      String appData);
+
+  // may throws MediasoupException
+  private static native DataConsumer nativeConsumeData(
+      long transport,
+      DataConsumer.Listener listener,
+      String id,
+      String producerId,
+      long streamId,
+      String label,
+      String protocol,
       String appData);
 
   private static native void nativeFreeTransport(long transport);

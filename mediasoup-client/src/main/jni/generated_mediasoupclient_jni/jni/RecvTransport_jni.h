@@ -72,6 +72,34 @@ JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_RecvTransport_nativeConsum
       rtpParameters), base::android::JavaParamRef<jstring>(env, appData)).Release();
 }
 
+static base::android::ScopedJavaLocalRef<jobject> JNI_RecvTransport_ConsumeData(JNIEnv* env, jlong
+    transport,
+    const base::android::JavaParamRef<jobject>& listener,
+    const base::android::JavaParamRef<jstring>& id,
+    const base::android::JavaParamRef<jstring>& producerId,
+    jlong streamId,
+    const base::android::JavaParamRef<jstring>& label,
+    const base::android::JavaParamRef<jstring>& protocol,
+    const base::android::JavaParamRef<jstring>& appData);
+
+JNI_GENERATOR_EXPORT jobject Java_org_mediasoup_droid_RecvTransport_nativeConsumeData(
+    JNIEnv* env,
+    jclass jcaller,
+    jlong transport,
+    jobject listener,
+    jstring id,
+    jstring producerId,
+    jlong streamId,
+    jstring label,
+    jstring protocol,
+    jstring appData) {
+  return JNI_RecvTransport_ConsumeData(env, transport, base::android::JavaParamRef<jobject>(env,
+      listener), base::android::JavaParamRef<jstring>(env, id),
+      base::android::JavaParamRef<jstring>(env, producerId), streamId,
+      base::android::JavaParamRef<jstring>(env, label), base::android::JavaParamRef<jstring>(env,
+      protocol), base::android::JavaParamRef<jstring>(env, appData)).Release();
+}
+
 static void JNI_RecvTransport_FreeTransport(JNIEnv* env, jlong transport);
 
 JNI_GENERATOR_EXPORT void Java_org_mediasoup_droid_RecvTransport_nativeFreeTransport(
