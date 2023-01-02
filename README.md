@@ -13,7 +13,7 @@ mediasoup android client side library https://mediasoup.org
 Include `mediasoup-client-android`  into your project, for example, as a Gradle compile dependency:
 
 ```groovy
-implementation 'io.github.haiyangwu:mediasoup-client:3.4.0-beta'
+implementation 'io.github.haiyangwu:mediasoup-client:3.4.0'
 ```
 ### Example
 
