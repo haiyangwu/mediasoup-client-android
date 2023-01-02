@@ -1,4 +1,4 @@
-#define MSC_CLASS "producer_jni"
+#define MSC_CLASS "data_producer_jni"
 
 #include "data_producer_jni.h"
 #include "Logger.hpp"
