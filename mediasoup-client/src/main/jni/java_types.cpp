@@ -22,11 +22,6 @@ std::string JavaToNativeString(JNIEnv* jni, const JavaRef<jstring>& j_string)
 void JavaToNativeOptions(
   JNIEnv* env, const JavaRef<jobject>& configuration, jlong factory, PeerConnection::Options& options)
 {
-	if (configuration.is_null())
-	{
-		return;
-	}
-
 	if (!configuration.is_null())
 	{
 		webrtc::PeerConnectionInterface::RTCConfiguration rtc_config(
